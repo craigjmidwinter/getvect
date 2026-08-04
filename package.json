@@ -1,0 +1,41 @@
+{
+  "name": "getvect",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GetVect \u2014 local desktop raster-to-vector app (Electron + TypeScript + React)",
+  "main": "dist/main/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "postinstall": "node node_modules/electron/install.js && xattr -cr node_modules/electron/dist/Electron.app || true",
+    "clean": "node scripts/clean.mjs",
+    "build:node": "tsc -p tsconfig.node.json",
+    "build:renderer": "vite build",
+    "build": "npm run build:node && npm run build:renderer",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "start": "npm run build && electron .",
+    "dev": "node scripts/dev.mjs",
+    "fixtures": "node scripts/generate-fixtures.mjs",
+    "pretest": "npm run build",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "instruments": "npm run build:node && node instruments/run-instruments.mjs",
+    "instruments:selftest": "node instruments/run-instruments.mjs --engine=instruments/reference-engine.mjs --out=artifacts/metrics-selftest.json --tag=selftest",
+    "screenshots": "npm run build && node instruments/run-screenshots.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.2",
+    "@types/node": "^20.14.10",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^43.3.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sharp": "^0.33.5"
+  }
+}
