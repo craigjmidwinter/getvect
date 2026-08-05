@@ -133,7 +133,11 @@ preview and generate a different SVG at export time.
 | testid | element | required attributes / behaviour |
 | --- | --- | --- |
 | `export-svg` / `export-eps` / `export-dxf` | buttons | Enabled when `data-status="ready"`. Each calls `window.getvect.saveExport({ defaultName, contents, format })`. |
+| `export-pdf` / `export-png` | buttons | REFERENCE D5. Same contract as the three above. PDF is a vector document from the engine; PNG is rasterized from the *same* SVG by the renderer (`src/renderer/lib/raster.ts`) and sent with `encoding: 'base64'`. |
 | `export-status` | status element | **Required after a successful export:** `data-last-export-path` = the absolute path returned by the main process. The suite waits on this attribute; without it every D-series test fails. Leave it absent (not empty) before the first export and after a cancelled one. |
+
+While a save is in flight every export button is disabled, so a click cannot land on a
+second format while the first dialog is open. They re-enable when the dialog resolves.
 
 **Default filenames (D4):** `<source basename without extension>.<format>` — e.g.
 `logo-flat-512.png` → `logo-flat-512.svg`. The export must apply to the **currently
@@ -149,6 +153,16 @@ selected** image.
 - **DXF** — ASCII DXF with `SECTION`/`HEADER`/`ENDSEC`, `$EXTMIN` and `$EXTMAX` reflecting
   the artwork extents, an `ENTITIES` section containing `LWPOLYLINE`/`POLYLINE`/`SPLINE`/
   `HATCH`/`LINE` entities, terminated by `EOF`.
+- **PDF** (D5) — `%PDF-1.` header, a `/MediaBox [0 0 w h]` in source pixels, one page, a
+  content stream with painting operators, a byte-accurate `xref`/`startxref`, `%%EOF`.
+- **PNG** (D5) — a real PNG bitstream (`\x89PNG\r\n\x1a\n` signature, `IHDR` carrying the
+  source dimensions, `IEND`), rasterized from the exported SVG.
+
+**SVG document structure (D1).** `renderSvg` groups each colour's paths into a single
+`<g fill="#rrggbb">` layer — the structure the reference product emits — so a path element
+inherits its fill rather than repeating it. Anything parsing our SVG back into geometry
+must honour that inheritance; `parseSvgShapes` (src/engine/path.ts) does, and it is what
+the EPS/DXF/PDF writers use.
 
 ### Export dialog under test
 
@@ -169,6 +183,11 @@ that knows about tests.
 ```ts
 window.getvect.openImages(): Promise<string[]>            // native open dialog
 window.getvect.readFile(path: string): Promise<Uint8Array>
-window.getvect.saveExport({ defaultName, contents, format }): Promise<{ canceled, filePath }>
+window.getvect.saveExport({
+  defaultName,                       // "<source stem>.<format>"
+  contents,                          // text, or base64 for binary formats
+  format,                            // 'svg' | 'eps' | 'dxf' | 'pdf' | 'png'
+  encoding?,                         // 'utf8' (default) | 'base64'
+}): Promise<{ canceled, filePath }>  // native save dialog + write
 window.getvect.appInfo(): Promise<{ version, electron, e2e }>
 ```

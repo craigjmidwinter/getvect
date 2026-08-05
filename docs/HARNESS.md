@@ -24,7 +24,7 @@ npm run screenshots   # flow screenshots -> artifacts/screenshots/
 | `npm run build:renderer` | Renderer bundle only. |
 | `npm run typecheck` | Type-checks both projects without emitting. |
 | `npm test` | Playwright acceptance suite (`pretest` builds first). |
-| `npm run test:engine` | Engine contract tests (`node --test`, pure Node). Determinism, setting semantics, palette-override behaviour, EPS/DXF structure. |
+| `npm run test:engine` | Engine contract tests (`node --test`, pure Node). Determinism, setting semantics, palette-override behaviour, SVG layer grouping, EPS/DXF/PDF structure. |
 | `npm run test:headed` | Same, with a visible window. |
 | `npm run fixtures` | Regenerates `fixtures/` deterministically. |
 | `npm run instruments` | Measures the app engine on every fixture. |
@@ -53,6 +53,7 @@ title is prefixed with its REFERENCE.md checklist id:
 | `tests/e2e/b-engine.spec.ts` | **B1** auto-vectorize, progress, 10s/1024px + non-blocking UI · **B2** the four sliders each change output · **B3** palette shown / changed / merged / removed · **B4** enhance toggle |
 | `tests/e2e/c-preview.spec.ts` | **C1** toggle + side-by-side · **C2** zoom in/out/fit, pan, view sync · **C3** preview SVG == exported SVG |
 | `tests/e2e/d-export.spec.ts` | **D1** SVG validity + dimensions · **D2** EPS structure · **D3** DXF structure · **D4** default filenames, main-process save path, selected image |
+| `tests/e2e/d5-export-formats.spec.ts` | **D5** PDF structure (MediaBox, xref) · **D5** PNG bitstream + size · **D5** default filenames · **D1** per-colour `<g fill>` layers |
 
 Selectors are `data-testid` only. The full DOM contract is
 [docs/TESTIDS.md](./TESTIDS.md) — read it before building UI, it is what makes the app and
@@ -221,8 +222,8 @@ modules so each can be read on its own.
 | `color.ts` | Histogram → median cut → Lloyd refinement → index image → despeckle. |
 | `trace.ts` | Contour tracing via imagetracerjs's low-level pipeline; stroke banding and speck reconstruction. |
 | `path.ts` | The geometry model, the compact path-data writer, and the parser the exporters read back. |
-| `svg.ts` | SVG serialization: a backdrop `<rect>` plus one compound path per colour per stroke band. |
-| `eps.ts` / `dxf.ts` | Geometry-level converters. They recover shapes by parsing the result's SVG — which is what keeps preview, SVG, EPS and DXF the same drawing. |
+| `svg.ts` | SVG serialization: a backdrop `<rect>` plus one compound path per colour per stroke band, each colour wrapped in its own `<g fill="…">` layer (REFERENCE D1). |
+| `eps.ts` / `dxf.ts` / `pdf.ts` | Geometry-level converters. They recover shapes by parsing the result's SVG — which is what keeps preview, SVG, EPS, DXF and PDF the same drawing. PNG is the exception: it is a raster, so the renderer draws the exported SVG into a canvas (`src/renderer/lib/raster.ts`). |
 
 Two notes for anyone tuning it:
 

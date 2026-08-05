@@ -255,6 +255,27 @@ code {
 
 .zoom-level,
 .pan-state,
+/* Export bar: five formats is a lot of chrome, so the buttons are compact and
+   sit behind a label that says what the row is (REFERENCE D1-D3, D5). */
+.export-group .group-label {
+  color: var(--ink-dim);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-right: 2px;
+}
+
+.export-group button {
+  padding: 5px 8px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.export-group button.is-busy {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .export-status {
   color: var(--ink-dim);
   font-variant-numeric: tabular-nums;
