@@ -50,9 +50,11 @@ import { canvasIngest, decodeImageFile, flattenOnWhite, transparentRatio } from 
 import { rasterizeExemplarContent, rasterizeSvg } from './lib/render.mjs';
 import {
   alphaMask,
+  colorPresenceProfile,
   cropRegion,
   featureCornerAngles,
   foreignColorRatio,
+  parseColor,
   inkComponentRatio,
   inkRecall,
   layerCompactness,
@@ -82,10 +84,25 @@ import {
  * region, so adding a box can only tighten a fixture, never loosen it.
  */
 function salientRegions(fixture) {
-  if (Array.isArray(fixture.salientRegions)) {
-    return fixture.salientRegions.map((r, i) => ({ name: r.name ?? `region${i + 1}`, ...r }));
-  }
-  if (fixture.salientRegion) return [{ name: 'salient', ...fixture.salientRegion }];
+  /**
+   * A region may also NAME A COLOUR (`color`, optionally `colorTolerance`), and
+   * then every side of the comparison is additionally asked whether that colour
+   * survived into it (metrics.mjs `colorPresenceProfile`). The eyes of a mascot
+   * are the case: a hue-distinct feature small enough that losing its palette
+   * slot entirely moves no other number in this file.
+   */
+  const withColor = (r, i) => {
+    const region = { name: r.name ?? `region${i + 1}`, ...r };
+    if (r.color) {
+      const parsed = parseColor(r.color);
+      if (!parsed) throw new Error(`fixture ${fixture.id}: region "${region.name}" has an unparseable color "${r.color}"`);
+      region.colorTarget = parsed;
+      region.colorOpts = r.colorTolerance != null ? { tolerance: r.colorTolerance } : {};
+    }
+    return region;
+  };
+  if (Array.isArray(fixture.salientRegions)) return fixture.salientRegions.map(withColor);
+  if (fixture.salientRegion) return [withColor(fixture.salientRegion, 0)];
   return [];
 }
 
@@ -321,6 +338,12 @@ const REGION_GATES = [
   ['minStrictInkRecall', 'strictInkRecall', 'min', (v) => v.toFixed(4)],
   ['maxInkComponentRatio', 'inkComponentRatio', 'max', (v) => `${v.toFixed(2)}x`],
   ['maxForeignColorRatio', 'foreignColorRatio', 'max', (v) => `${(v * 100).toFixed(2)}%`],
+  // Did the colour this crop is ABOUT survive (metrics.mjs
+  // `colorPresenceProfile`)? Against the source's own share of it, and against
+  // the real product's trace of the same pixels.
+  ['minColorPresenceRatio', 'colorPresenceRatio', 'min', (v) => `${(v * 100).toFixed(1)}% of source`],
+  ['minColorPresenceOverExemplar', 'colorPresenceOverExemplar', 'min', (v) => `${v.toFixed(2)}x`],
+  ['minColorPresence', 'colorPresence', 'min', (v) => `${(v * 100).toFixed(2)}% of crop`],
   ['maxStrokeWidthCvRatio', 'strokeWidthCvRatio', 'max', (v) => `${v.toFixed(2)}x`],
   ['maxBandFit', 'bandFit', 'max', (v) => v.toFixed(2)],
   ['maxBandStep', 'bandStep', 'max', (v) => v.toFixed(1)],
@@ -452,6 +475,12 @@ async function main() {
             strictInkRecall: strictInkRecall(a, b),
             meanColorError: meanColorError(a, b),
             foreignColorRatio: foreignColorRatio(a, b),
+            // Did the region's named colour survive into the REAL PRODUCT's
+            // output? This is the half of the eyes question that makes ours a
+            // finding rather than an opinion.
+            ...(region.colorTarget
+              ? colorPresenceProfile(a, b, region.colorTarget, region.colorOpts)
+              : {}),
             ...(strokeWidthProfile(a, b) ?? {}),
             // Soft-shading banding: where the gradient got cut and what colour
             // each side was painted (metrics.mjs `shadingBandQuality`).
@@ -693,6 +722,12 @@ async function main() {
           // "Is there a colour in here that is not in the picture?" — see the
           // GATES note on maxRegionForeignColorRatio.
           foreignColorRatio: foreignColorRatio(refRegion, outRegion),
+          // "Is the colour that makes this feature a feature still in here?" —
+          // see metrics.mjs `colorPresenceProfile`. Only for regions that name
+          // one, because the question is meaningless without a target.
+          ...(region.colorTarget
+            ? colorPresenceProfile(refRegion, outRegion, region.colorTarget, region.colorOpts)
+            : {}),
           // "Are the small sharp features still there, still separate, and still
           // sharp?" and "did a crack open between two layers?". The corner
           // angles are read off the fitted geometry inside this box, so a crop
@@ -817,6 +852,14 @@ async function main() {
             r.exemplarStrictInkRecall = e.strictInkRecall;
             r.exemplarMeanColorError = e.meanColorError;
             r.exemplarForeignColorRatio = e.foreignColorRatio;
+            // The named colour, A/B'd. The real product keeping a hue we fold
+            // away is the whole finding; if it folds the colour too, the defect
+            // is the artwork's and not ours.
+            r.exemplarColorPresence = e.colorPresence;
+            r.exemplarColorPresenceRatio = e.colorPresenceRatio;
+            if (r.colorPresence != null && e.colorPresence > 0) {
+              r.colorPresenceOverExemplar = r.colorPresence / e.colorPresence;
+            }
             r.inkRecallRatio = r.inkRecall / Math.max(0.01, e.inkRecall);
             r.strictInkRecallRatio = r.strictInkRecall / Math.max(0.01, e.strictInkRecall);
             r.exemplarBandFit = e.bandFit;
@@ -880,6 +923,32 @@ async function main() {
         failures.push(`region "${region.name}" ${f}`);
       }
     }
+
+    /**
+     * ASPIRATIONS — the same gates, evaluated and printed, but never red.
+     *
+     * A bar the engine does not meet today has two honest homes: a ratchet at
+     * today's number with the target in a comment, or a `TODO` nobody runs. Both
+     * lose the same thing — the distance to the target stops being *measured*,
+     * so it can drift either way unnoticed and the day it is finally met, nobody
+     * finds out.
+     *
+     * `aspirations` is the third option: declare the number to aim at, in the
+     * same syntax as `thresholds`, and have every run print how far off it is.
+     * It cannot fail a build, so it can be set at the RIGHT value rather than at
+     * a survivable one. The mascot's eye colour is why this exists — the real
+     * product keeps a hue-distinct feature's palette slot and we fold it away,
+     * which is a known engine gap with an open issue, not a regression to gate.
+     */
+    const aspirations = checkThresholds(metrics, fixture.aspirations);
+    for (const [i, region] of (metrics.regions ?? []).entries()) {
+      const own = regions[i]?.aspirations;
+      if (!own) continue;
+      for (const a of checkThresholds(region, own, REGION_GATES)) {
+        aspirations.push(`region "${region.name}" ${a}`);
+      }
+    }
+
     if (failures.length) failed++;
     results.push({
       id: fixture.id,
@@ -893,6 +962,8 @@ async function main() {
       exemplar,
       thresholds: fixture.thresholds ?? null,
       failures,
+      // Reported, never gated — see the note where these are computed.
+      aspirations,
     });
   }
 
@@ -907,6 +978,9 @@ async function main() {
       failed,
       notImplemented,
       skipped: results.filter((r) => r.status.startsWith('skipped/')).length,
+      // Fixtures with at least one declared-but-unmet aspiration. Never part of
+      // the exit code.
+      aspirationsUnmet: results.filter((r) => r.aspirations?.length).length,
     },
     results,
   };
@@ -953,6 +1027,17 @@ async function main() {
           (region.exemplarForeignColorRatio != null
             ? ` vs ${fmt(region.exemplarForeignColorRatio * 100, 2)}%`
             : '') +
+          // The named colour, if this crop names one: how much of it the source
+          // has, how much we kept, and how much the real product kept.
+          (region.colorPresenceTarget != null
+            ? `, ${region.colorPresenceTarget} ${fmt((region.colorPresence ?? 0) * 100, 2)}% of crop ` +
+              `vs source ${fmt((region.sourceColorPresence ?? 0) * 100, 2)}% ` +
+              `(kept ${fmt((region.colorPresenceRatio ?? 0) * 100, 1)}%)` +
+              (region.exemplarColorPresence != null
+                ? `, real product ${fmt(region.exemplarColorPresence * 100, 2)}% ` +
+                  `(kept ${fmt((region.exemplarColorPresenceRatio ?? 0) * 100, 1)}%)`
+                : '')
+            : '') +
           (region.bandFit != null
             ? `, bands ${region.bandCount} fit ${fmt(region.bandFit)}` +
               (region.exemplarBandFit != null
@@ -991,11 +1076,19 @@ async function main() {
     }
     if (r.exemplar?.error) console.log(`  ${r.label ?? r.id}: exemplar unreadable — ${r.exemplar.error}`);
     if (r.failures?.length) console.log(`  ${r.label ?? r.id}: ${r.failures.join('; ')}`);
+    // Missed aspirations are printed every run and fail nothing: the point is
+    // that the distance to a known-unmet target stays measured.
+    if (r.aspirations?.length) {
+      console.log(`  ${r.label ?? r.id}: aspiration (not gated) — ${r.aspirations.join('; ')}`);
+    }
     if (r.error) console.log(`  ${r.label ?? r.id}: ${r.error.split('\n')[0]}`);
   }
   console.log(
     `\n${report.summary.passed} pass · ${report.summary.failed} fail · ` +
-      `${report.summary.notImplemented} not-implemented · ${report.summary.skipped} skipped`,
+      `${report.summary.notImplemented} not-implemented · ${report.summary.skipped} skipped` +
+      (report.summary.aspirationsUnmet
+        ? ` · ${report.summary.aspirationsUnmet} with an unmet aspiration (not gated)`
+        : ''),
   );
   console.log(`wrote ${metricsPath}`);
 
