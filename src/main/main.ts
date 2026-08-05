@@ -63,8 +63,16 @@ function appIconPath(): string | undefined {
 }
 
 if (!isE2E) {
-  // Before `whenReady`, so the macOS menu bar is built with the right name:
-  // set it later and the application menu still reads "Electron" in dev.
+  // Before `whenReady`: the default application menu is built at ready from
+  // `app.name`, and setting the name afterwards leaves it stale.
+  //
+  // What this does and does not buy, measured on macOS: in *development* the
+  // leftmost menu title is the running bundle's CFBundleName — literally
+  // `node_modules/electron/dist/Electron.app` — and no API can change it, so it
+  // still reads "Electron". What does change is everything derived from
+  // `app.name`: "About GetVect", "Hide GetVect", "Quit GetVect", and the
+  // window/notification identity. A packaged build has CFBundleName=GetVect
+  // (electron-builder.yml) and gets the menu title too.
   app.setName('GetVect');
 }
 
