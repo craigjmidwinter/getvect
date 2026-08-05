@@ -1,0 +1,149 @@
+name: Release
+
+# Tag-driven, and the tag is the source of truth for the version.
+#
+# The ritual is three commands (PUBLISH-CHECKLIST.md, "Cutting a release"):
+#
+#     npm version 0.1.1 --no-git-tag-version   # bump package.json
+#     git commit -am "Release 0.1.1" && git push
+#     git tag v0.1.1 && git push origin v0.1.1
+#
+# The first job step refuses to build if `v<package.json version>` is not the
+# tag that triggered it. A release whose package.json says 0.1.0 and whose dmg
+# is called 0.1.1 is a release that lies to its own updater — `latest-mac.yml`
+# carries the version the *app* reports, and every subsequent update check
+# compares against it.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)build and publish, e.g. v0.1.0'
+        required: true
+
+# `contents: write` is what lets electron-builder create the release and upload
+# assets to it. Nothing else is needed.
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: build · publish · un-draft
+    # macOS: the artefacts are a macOS dmg and zip, and the postinstall step
+    # that de-quarantines Electron is macOS-specific. This is also the only
+    # platform GetVect claims to support today.
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: The tag and package.json must agree
+        id: version
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          PKG="v$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag $TAG does not match package.json ($PKG). Bump the version, commit, then tag."
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The fast gate, deliberately not the full acceptance suite: typecheck
+      # plus the engine contracts (determinism, setting semantics, SVG/EPS/DXF/
+      # PDF structure, alpha handling) are pure Node, take a couple of minutes,
+      # and are what would make a shipped build *wrong*. Driving a real Electron
+      # window on a hosted runner is still too flaky to stand between a tag and
+      # a release — see the disabled `e2e` job in ci.yml.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Engine contract tests
+        run: npm run test:engine
+
+      - name: Build
+        run: npm run build
+
+      # `--publish always` rather than `gh release create`, because only
+      # electron-builder writes `latest-mac.yml` — the feed file the shipped
+      # app reads, carrying each artefact's sha512 and size. A release assembled
+      # by hand would have a dmg and a zip and no way for any installed copy to
+      # ever learn about it.
+      #
+      # The release is created as a draft (electron-builder.yml, `publish.releaseType`)
+      # so it is never the "latest release" while its assets are still uploading.
+      - name: Package and publish
+        run: npm run dist -- --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: The release must have all three artefacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          ASSETS=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          echo "$ASSETS"
+          for want in '\.dmg$' '\.zip$' '^latest-mac\.yml$'; do
+            echo "$ASSETS" | grep -qE "$want" || { echo "::error::no asset matching $want"; exit 1; }
+          done
+
+      - name: Release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cat > notes.md <<EOF
+          ## GetVect $VERSION
+
+          Raster → vector, on your machine. Drop in a PNG, JPEG or BMP; get back SVG, EPS, DXF, PDF or PNG.
+
+          **macOS, Apple Silicon.** Download \`GetVect-$VERSION-arm64.dmg\` below.
+
+          ### This build is not signed
+
+          There is no Developer ID certificate behind it yet, so macOS will quarantine it on
+          first launch. Either right-click the app in Applications and choose **Open**, or:
+
+          \`\`\`
+          xattr -dr com.apple.quarantine /Applications/GetVect.app
+          \`\`\`
+
+          The same fact is why GetVect will *tell* you about a new version rather than install
+          one: an unsigned macOS app cannot update itself in place.
+
+          ### Network
+
+          Two network touchpoints, both in your control: optional AI Enhance, and a
+          once-per-launch update check against GitHub Releases (disable with
+          \`GETVECT_NO_UPDATE_CHECK=1\`). Everything else — ingest, tracing, preview and every
+          export — runs offline.
+
+          Full docs: <https://getvect.midwinter.io/docs.html>
+          EOF
+          gh release edit "$TAG" --notes-file notes.md
+
+      # Last: the release goes public only once every asset is up and checked.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: gh release edit "$TAG" --draft=false --latest
