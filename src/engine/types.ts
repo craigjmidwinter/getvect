@@ -33,6 +33,37 @@ export interface RasterImage {
  * Ranges are inclusive and are what the UI sliders MUST emit (see
  * docs/TESTIDS.md for the matching DOM contract).
  */
+/**
+ * Model preset (REFERENCE B2). The reference product's first control: it decides
+ * what *kind* of picture the tracer is looking at before any slider is read.
+ */
+export type ModelPreset = 'clipart' | 'photo' | 'sketch' | 'drawing';
+
+/** Clipart's Detail Level enum, most detail first (REFERENCE B2 / OBSERVED-UI ①). */
+export type DetailLevel =
+  | 'maximum'
+  | 'ultra'
+  | 'very-high'
+  | 'high'
+  | 'medium'
+  | 'low'
+  | 'minimum';
+
+/** Noise reduction strength (REFERENCE B4). */
+export type NoiseReduction = 'off' | 'low' | 'high';
+
+/** Anti-aliasing handling (REFERENCE B4). `smart` is the halo-suppressing one. */
+export type AntiAliasing = 'off' | 'smart' | 'mid';
+
+/** How far a colour layer reaches under the layers above it (REFERENCE B5). */
+export type Overlap = 'full' | 'high';
+
+/** Filled layers vs stroked layers (REFERENCE B6). */
+export type ResultStyle = 'filled' | 'stroked';
+
+/** Output colour-layer ordering (REFERENCE B3, "sort order"). */
+export type SortOrder = 'coverage' | 'brightness' | 'hue';
+
 export interface VectorizeSettings {
   /** Number of colours in the quantized palette. Range 2..64. Slider `color-count`. */
   colorCount: number;
@@ -66,7 +97,72 @@ export interface VectorizeSettings {
    * When null/undefined the engine computes a palette of `colorCount` colours.
    */
   palette?: RgbColor[] | null;
+
+  // --- B2: model presets ----------------------------------------------------
+
+  /** Model preset. Default `clipart` — flat artwork is the primary target. */
+  preset?: ModelPreset;
+  /**
+   * Clipart's Detail Level. Multiplies the `detail` slider (see `detailFor` in
+   * index.ts) so both controls stay live: `high` is the neutral step.
+   */
+  detailLevel?: DetailLevel;
+  /** Drawing preset only: luminance split, 0..255. Default 128. */
+  bwThreshold?: number;
+
+  // --- B4: quality enhancement ---------------------------------------------
+
+  /** Denoise strength applied before quantization. Default `off`. */
+  noiseReduction?: NoiseReduction;
+  /**
+   * How antialiased edges are handled. `smart` folds transition pixels into the
+   * flat colours they sit between, so a soft boundary does not spawn its own
+   * near-duplicate colour layer; `mid` keeps a single blended step.
+   */
+  antiAliasing?: AntiAliasing;
+
+  // --- B5: advanced vectorization ------------------------------------------
+
+  /** Curve-fitting level: 0 = corners kept sharp, 1 = default, 2 = roundest. */
+  roundness?: 0 | 1 | 2;
+  /**
+   * Minimum surviving shape area in px² — the reference product's 0 / 5 / 90.
+   * Applied unconditionally (unlike the `despeckle` slider, which also weighs
+   * contrast), so "no shape smaller than this survives" is literally true.
+   */
+  minArea?: number;
+  /** Whether lower layers are painted under the layers above them. */
+  overlap?: Overlap;
+  /** Replace near-circular contours with exact circle geometry. */
+  circleDetection?: boolean;
+
+  // --- B6: result style -----------------------------------------------------
+
+  /** Filled layers (default) or stroked outlines. */
+  resultStyle?: ResultStyle;
+
+  // --- B3: output colour groups --------------------------------------------
+
+  /**
+   * Palette indices whose layer is dropped from the output. Disabling the
+   * dominant colour is how the sticker/decal workflow gets a transparent
+   * background: no backdrop rect is emitted at all.
+   */
+  disabledColors?: number[];
+  /**
+   * Percentage (0..100) below which two output colours are considered the same
+   * and merged into one layer. 0 disables merging; the reference product's
+   * default step is 5 %.
+   */
+  mergeThreshold?: number;
+  /** Order the colour layers are emitted in. */
+  sortOrder?: SortOrder;
 }
+
+/** Every field of `VectorizeSettings` resolved to a concrete value. */
+export type ResolvedSettings = Required<Omit<VectorizeSettings, 'palette'>> & {
+  palette: RgbColor[] | null;
+};
 
 /** Coarse progress phases, emitted in this order. */
 export type VectorizePhase =

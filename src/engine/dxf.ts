@@ -19,36 +19,97 @@ import { parseHex } from './color';
 import { boundsOf, flattenSubPath, parseSvgShapes } from './path';
 import type { RgbColor, VectorizeResult } from './types';
 
-/** The unambiguous corner of the AutoCAD Color Index, used as an approximation. */
-const ACI: Array<{ i: number; c: RgbColor }> = [
-  { i: 1, c: { r: 255, g: 0, b: 0 } },
-  { i: 2, c: { r: 255, g: 255, b: 0 } },
-  { i: 3, c: { r: 0, g: 255, b: 0 } },
-  { i: 4, c: { r: 0, g: 255, b: 255 } },
-  { i: 5, c: { r: 0, g: 0, b: 255 } },
-  { i: 6, c: { r: 255, g: 0, b: 255 } },
-  { i: 7, c: { r: 255, g: 255, b: 255 } },
-  { i: 8, c: { r: 128, g: 128, b: 128 } },
-  { i: 9, c: { r: 192, g: 192, b: 192 } },
-  { i: 12, c: { r: 191, g: 0, b: 0 } },
-  { i: 22, c: { r: 191, g: 127, b: 0 } },
-  { i: 32, c: { r: 191, g: 191, b: 0 } },
-  { i: 52, c: { r: 0, g: 191, b: 0 } },
-  { i: 92, c: { r: 0, g: 191, b: 191 } },
-  { i: 132, c: { r: 0, g: 0, b: 191 } },
-  { i: 172, c: { r: 127, g: 0, b: 191 } },
-  { i: 212, c: { r: 191, g: 0, b: 127 } },
-  { i: 250, c: { r: 51, g: 51, b: 51 } },
-  { i: 251, c: { r: 91, g: 91, b: 91 } },
-  { i: 252, c: { r: 132, g: 132, b: 132 } },
-  { i: 253, c: { r: 173, g: 173, b: 173 } },
-  { i: 254, c: { r: 214, g: 214, b: 214 } },
+/**
+ * The AutoCAD Color Index.
+ *
+ * 1-9 and 250-255 are fixed by the standard; 10-249 are 24 hues (15° apart) x
+ * 10 value/saturation steps, which is why they can be generated rather than
+ * typed out. Generating them matters: a hand-picked corner of the index (the
+ * previous 22 entries) collapsed every dark colour onto the grey ramp, so a
+ * navy layer and a near-black layer both came out as ACI 250 and became
+ * indistinguishable the moment the drawing was opened in CAD.
+ */
+const ACI_STEPS: Array<[number, number]> = [
+  [255, 255],
+  [255, 178],
+  [189, 255],
+  [189, 132],
+  [129, 255],
+  [129, 92],
+  [104, 255],
+  [104, 74],
+  [79, 255],
+  [79, 56],
 ];
 
-function nearestAci(color: RgbColor): number {
+function hsvToRgb(h: number, s: number, v: number): RgbColor {
+  const c = v * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = v - c;
+  const [r, g, b] =
+    h < 60
+      ? [c, x, 0]
+      : h < 120
+        ? [x, c, 0]
+        : h < 180
+          ? [0, c, x]
+          : h < 240
+            ? [0, x, c]
+            : h < 300
+              ? [x, 0, c]
+              : [c, 0, x];
+  const to255 = (n: number) => Math.max(0, Math.min(255, Math.round((n + m) * 255)));
+  return { r: to255(r), g: to255(g), b: to255(b) };
+}
+
+function buildAci(): Array<{ i: number; c: RgbColor }> {
+  const table: Array<{ i: number; c: RgbColor }> = [
+    { i: 1, c: { r: 255, g: 0, b: 0 } },
+    { i: 2, c: { r: 255, g: 255, b: 0 } },
+    { i: 3, c: { r: 0, g: 255, b: 0 } },
+    { i: 4, c: { r: 0, g: 255, b: 255 } },
+    { i: 5, c: { r: 0, g: 0, b: 255 } },
+    { i: 6, c: { r: 255, g: 0, b: 255 } },
+    { i: 7, c: { r: 255, g: 255, b: 255 } },
+    { i: 8, c: { r: 128, g: 128, b: 128 } },
+    { i: 9, c: { r: 192, g: 192, b: 192 } },
+  ];
+  for (let hue = 0; hue < 24; hue++) {
+    for (let step = 0; step < ACI_STEPS.length; step++) {
+      const [value, sat] = ACI_STEPS[step];
+      table.push({
+        i: 10 + hue * 10 + step,
+        c: hsvToRgb(hue * 15, sat / 255, value / 255),
+      });
+    }
+  }
+  for (const [i, g] of [
+    [250, 51],
+    [251, 91],
+    [252, 132],
+    [253, 173],
+    [254, 214],
+    [255, 255],
+  ] as Array<[number, number]>) {
+    table.push({ i, c: { r: g, g, b: g } });
+  }
+  return table;
+}
+
+const ACI = buildAci();
+
+/**
+ * Nearest ACI index, never reusing one already handed to a different colour.
+ *
+ * R12 entity colours are indices, so two layers sharing an index are the same
+ * colour to every reader — the palette silently loses a colour on export. When
+ * the best match is taken, the next-best free index is used instead.
+ */
+function nearestAci(color: RgbColor, taken?: Set<number>): number {
   let best = 7;
   let bestD = Infinity;
   for (const entry of ACI) {
+    if (taken?.has(entry.i)) continue;
     const d =
       (entry.c.r - color.r) ** 2 + (entry.c.g - color.g) ** 2 + (entry.c.b - color.b) ** 2;
     if (d < bestD) {
@@ -56,6 +117,7 @@ function nearestAci(color: RgbColor): number {
       best = entry.i;
     }
   }
+  taken?.add(best);
   return best;
 }
 
@@ -130,12 +192,16 @@ export function resultToDxf(result: VectorizeResult, options: DxfOptions = {}): 
   pair(out, 70, '0');
   pair(out, 62, '7');
   pair(out, 6, 'CONTINUOUS');
+  const aciOf = new Map<string, number>();
+  const takenAci = new Set<number>();
   for (const name of layers) {
     const rgb = parseHex(name.slice(2)) ?? { r: 0, g: 0, b: 0 };
+    const aci = nearestAci(rgb, takenAci);
+    aciOf.set(name, aci);
     pair(out, 0, 'LAYER');
     pair(out, 2, name);
     pair(out, 70, '0');
-    pair(out, 62, String(nearestAci(rgb)));
+    pair(out, 62, String(aci));
     pair(out, 6, 'CONTINUOUS');
   }
   pair(out, 0, 'ENDTAB');
@@ -147,8 +213,7 @@ export function resultToDxf(result: VectorizeResult, options: DxfOptions = {}): 
   let entities = 0;
   for (const shape of shapes) {
     const layer = layerNameFor(shape.fill);
-    const rgb = parseHex(shape.fill) ?? { r: 0, g: 0, b: 0 };
-    const aci = nearestAci(rgb);
+    const aci = aciOf.get(layer) ?? 7;
     for (const sp of shape.subpaths) {
       const points = flattenSubPath(sp, tolerance);
       if (points.length < 2) continue;
