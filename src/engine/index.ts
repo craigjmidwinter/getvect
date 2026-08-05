@@ -489,6 +489,45 @@ function darkInkSlots(palette: RgbColor[]): Uint8Array | undefined {
 }
 
 /**
+ * Luma at or above which a palette slot is the drawing's highlights. Same
+ * number `reserveExtremes` spends a slot on them with (src/engine/color.ts).
+ */
+const HIGHLIGHT_LUMA = 245;
+
+/**
+ * The slots an area floor is not allowed to empty: the drawing's ink and its
+ * highlights, one entry each.
+ *
+ * The ink half is old (`darkInkSlots`). The light half is the other end of the
+ * same argument, and it is the one the gold standard exposed: a white highlight
+ * is BY CONSTRUCTION small — the fangs and eye glints on the reference artwork
+ * are ~150px² each against Enhance's ~218px² floor — and unlike a stroke it is
+ * compact, so `keepElongated` does not save it either. Reserving a palette slot
+ * for white and then letting the floor merge every region painted with it
+ * delivers a swatch naming a colour that appears nowhere in the drawing:
+ * measured on this fixture, the delivered palette carried rgb(253,249,242) and
+ * the rendered SVG had zero pixels above luma 230 where the source has 382.
+ *
+ * Only the extreme entry at each end counts, for `darkInkSlots`' reason: an
+ * exemption granted to half the palette is not a protection, it is switching
+ * the floor off.
+ */
+function protectedSlots(palette: RgbColor[]): Uint8Array | undefined {
+  const flags = darkInkSlots(palette) ?? new Uint8Array(palette.length);
+  let lightest = -1;
+  let bestLuma = HIGHLIGHT_LUMA;
+  for (let i = 0; i < palette.length; i++) {
+    const luma = 0.299 * palette[i].r + 0.587 * palette[i].g + 0.114 * palette[i].b;
+    if (luma >= bestLuma) {
+      bestLuma = luma;
+      lightest = i;
+    }
+  }
+  if (lightest >= 0) flags[lightest] = 1;
+  return flags.some((f) => f === 1) ? flags : undefined;
+}
+
+/**
  * Every palette slot dark enough to be drawing ink, not just the darkest one.
  *
  * `darkInkSlots` is deliberately narrow because it exempts regions from *area*
@@ -789,7 +828,7 @@ export async function vectorize(
     });
   }
   const enhanceFloor = opts.enhance && opts.despeckle > 0 ? (width * height) / ENHANCE_FLOOR_DIVISOR : 0;
-  const inkSlots = darkInkSlots(clusters);
+  const inkSlots = protectedSlots(clusters);
   if (enhanceFloor > 1) {
     despeckleIndices(indices, width, height, {
       minArea: enhanceFloor,
@@ -807,6 +846,14 @@ export async function vectorize(
       palette: clusters,
       maxContrast: maxContrastFor(opts.despeckle),
       keepElongated: true,
+      /*
+       * Deliberately NOT given the highlight exemption the Enhance floor gets.
+       * The Enhance floor is a simplification — "this scrap is background
+       * texture" — and a drawn highlight is not background texture. This one is
+       * a noise filter, and a bright speck is exactly what it exists to remove:
+       * on `fixtures/logo-noisy-512.png` exempting the light slot here kept the
+       * seeded speckle and took the trace from 13 sub-paths to 105.
+       */
       transparentIndex: TRANSPARENT_INDEX,
     });
   }
