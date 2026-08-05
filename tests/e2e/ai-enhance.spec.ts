@@ -2,11 +2,11 @@
  * AI Enhance (optional, bring your own key).
  *
  * The feature that sends an image to a third party, so the things worth
- * asserting are the guard rails rather than the picture: the switch cannot be
- * armed without a key, the key never comes back out of the main process, a
- * successful run replaces the working image the engine traces, and a failure
- * falls back to the un-enhanced image with a message rather than hanging or
- * failing silently.
+ * asserting are the guard rails rather than the picture: the `ai` option of the
+ * one Enhance control cannot be armed without a key, the key never comes back
+ * out of the main process, a successful run replaces the working image the
+ * engine traces, and a failure falls back to the un-enhanced image with a
+ * message rather than hanging or failing silently.
  *
  * **Fully offline.** Under `GETVECT_E2E=1` the provider — and only the provider
  * — is the deterministic local stub in `src/main/aiEnhance.ts`: it returns a
@@ -20,9 +20,10 @@ import {
   TESTIDS,
   expect,
   loadViaPicker,
+  previewSvg,
   previewViewBox,
   saveAiKey,
-  setCheckbox,
+  setEnhanceMode,
   test,
   tid,
   waitForReady,
@@ -33,7 +34,13 @@ const STUB_SIZE: [number, number] = [256, 160];
 /** The stub's canned *JPEG* output — `STUB_JPEG_WIDTH`/`STUB_JPEG_HEIGHT`. */
 const STUB_JPEG_SIZE: [number, number] = [192, 128];
 
-test('[AI] the toggle is inert until a key is saved, and live once it is', async ({ page }) => {
+test('[AI] the AI option is inert until a key is saved, and live once it is', async ({ page }) => {
+  /**
+   * Same guarantee as when this was a checkbox, moved to the option that
+   * replaced it: AI Enhance cannot be armed without a key, because arming it
+   * without one can only produce an error. `Off` and `Local cleanup` stay
+   * selectable throughout — they need nothing from anybody.
+   */
   await loadViaPicker(page, FIXTURE.flat512);
   await waitForReady(page);
 
@@ -41,21 +48,24 @@ test('[AI] the toggle is inert until a key is saved, and live once it is', async
   await expect(group).toHaveAttribute('data-has-key', 'false');
   await expect(group).toHaveAttribute('data-enabled', 'false');
 
-  const toggle = page.locator(tid(TESTIDS.aiEnhanceToggle));
+  // `toBeDisabled()` does not read an <option>'s disabled state, so assert the
+  // property the browser actually exposes.
+  const aiOption = page.locator(`${tid(TESTIDS.enhanceToggle)} option[value="ai"]`);
   await expect(
-    toggle,
-    'the AI Enhance switch is live with no key saved — arming it can only produce an error',
-  ).toBeDisabled();
+    aiOption,
+    'the AI Enhance option is selectable with no key saved — choosing it can only produce an error',
+  ).toHaveJSProperty('disabled', true);
+  await expect(page.locator(tid(TESTIDS.enhanceToggle))).toBeEnabled();
   await expect(page.locator(tid(TESTIDS.aiKeyStatus))).toHaveAttribute('data-has-key', 'false');
 
   await saveAiKey(page, 'e2e-secret-key-1234');
-  await expect(toggle).toBeEnabled();
+  await expect(aiOption).toHaveJSProperty('disabled', false);
   await expect(group).toHaveAttribute('data-has-key', 'true');
 
-  // ...and clearing it takes the switch away again.
+  // ...and clearing it takes the option away again.
   await page.locator(tid(TESTIDS.aiKeyClearButton)).click();
   await expect(page.locator(tid(TESTIDS.aiKeyStatus))).toHaveAttribute('data-has-key', 'false');
-  await expect(toggle).toBeDisabled();
+  await expect(aiOption).toHaveJSProperty('disabled', true);
 });
 
 test('[AI] the key never comes back to the renderer', async ({ page }) => {
@@ -106,7 +116,7 @@ test('[AI] the key never comes back to the renderer', async ({ page }) => {
   await expect(page.locator(tid(TESTIDS.aiKeyStatus))).not.toContainText(secret);
 });
 
-test('[AI] the privacy notice is visible at the switch, not in a tooltip', async ({ page }) => {
+test('[AI] the privacy notice is visible at the control, not in a tooltip', async ({ page }) => {
   await loadViaPicker(page, FIXTURE.flat512);
   await waitForReady(page);
 
@@ -115,8 +125,10 @@ test('[AI] the privacy notice is visible at the switch, not in a tooltip', async
   await expect(notice).toContainText(/sends this image to/i);
   await expect(notice).toContainText(/stays on your machine/i);
 
-  // Rendered text, in the same box as the toggle — not a title attribute and
-  // not clipped to nothing.
+  // Rendered text, in the same box as the Enhance control — not a title
+  // attribute and not clipped to nothing. It is present whenever the AI option
+  // is *offered*, not only once it is chosen: a notice that appears after the
+  // decision is a receipt, not a disclosure.
   const box = await notice.boundingBox();
   expect(box, 'the privacy notice has no box').not.toBeNull();
   expect(box!.height, 'the privacy notice is collapsed to a sliver').toBeGreaterThan(8);
@@ -131,7 +143,7 @@ test.describe('with the stub slowed down so the in-flight state is observable', 
     expect(await previewViewBox(page), 'the source fixture is 512x512').toEqual([512, 512]);
 
     await saveAiKey(page, 'e2e-secret-key-1234');
-    await page.locator(tid(TESTIDS.aiEnhanceToggle)).click();
+    await setEnhanceMode(page, 'ai');
 
     // A distinct progress state, separate from "Tracing…": the image is on its
     // way to a server and the status line has to say so.
@@ -158,7 +170,7 @@ test.describe('with the stub slowed down so the in-flight state is observable', 
     ).toEqual(STUB_SIZE);
 
     // Turning it off puts the original back, without a second provider call.
-    await page.locator(tid(TESTIDS.aiEnhanceToggle)).click();
+    await setEnhanceMode(page, 'off');
     await waitForReady(page);
     expect(await previewViewBox(page)).toEqual([512, 512]);
     await expect(page.locator(tid(TESTIDS.aiEnhanceStatus))).toHaveAttribute('data-ai-state', 'off');
@@ -177,7 +189,7 @@ test('[AI] a provider failure falls back to the original image and says why', as
   await waitForReady(page);
 
   await saveAiKey(page, 'fail-auth');
-  await page.locator(tid(TESTIDS.aiEnhanceToggle)).click();
+  await setEnhanceMode(page, 'ai');
 
   const toast = page.locator(tid(TESTIDS.errorToast));
   await expect(toast).toBeVisible();
@@ -216,7 +228,7 @@ test('[AI] a provider that answers in JPEG is accepted, not rejected as "not a P
   await waitForReady(page);
 
   await saveAiKey(page, 'reply-jpeg');
-  await page.locator(tid(TESTIDS.aiEnhanceToggle)).click();
+  await setEnhanceMode(page, 'ai');
   await waitForReady(page);
 
   await expect(page.locator(tid(TESTIDS.aiEnhanceStatus))).toHaveAttribute('data-ai-state', 'done');
@@ -232,36 +244,54 @@ test('[AI] a network failure is reported as a network failure', async ({ page })
   await waitForReady(page);
 
   await saveAiKey(page, 'fail-network');
-  await page.locator(tid(TESTIDS.aiEnhanceToggle)).click();
+  await setEnhanceMode(page, 'ai');
 
   await expect(page.locator(tid(TESTIDS.errorToast))).toContainText(/could not reach/i);
   await waitForReady(page);
   expect(await previewViewBox(page)).toEqual([512, 512]);
 });
 
-test('[AI] the classical Enhance switch is untouched by any of it', async ({ page }) => {
+test('[AI] local cleanup and AI are alternatives, and both stay reachable', async ({ page }) => {
   /**
-   * Two different features that happen to share a word. The engine's Enhance
-   * bundle (denoise + smart AA + area floors) keeps its name, its position and
-   * its behaviour; AI Enhance is a separate switch that changes the bitmap
-   * *before* the engine sees it. With both on, the AI pass runs first and the
-   * classical bundle runs second, inside `vectorize()`.
+   * The successor to "the classical Enhance switch is untouched by any of it",
+   * and it has to assert the same two things: the engine's local Enhance bundle
+   * (denoise + smart AA + area floors) still exists and still behaves, and
+   * choosing AI still swaps the bitmap the engine sees.
+   *
+   * What changed is that they no longer compose. They were two independent
+   * checkboxes, so "both on" meant the AI pass produced flat art and the local
+   * bundle then denoised it again — a second cleanup over a solved problem,
+   * arrived at by accident rather than chosen. One control, three answers:
+   * picking AI *replaces* the local cleanup (`engineEnhanceFor` in App.tsx),
+   * and moving back to `local` restores it exactly.
    */
   await loadViaPicker(page, FIXTURE.flat512);
   await waitForReady(page);
-
-  await setCheckbox(page, TESTIDS.enhanceToggle, true);
-  await waitForReady(page);
-
   await saveAiKey(page, 'e2e-secret-key-1234');
-  await page.locator(tid(TESTIDS.aiEnhanceToggle)).click();
-  await waitForReady(page);
 
-  await expect(
-    page.locator(tid(TESTIDS.enhanceToggle)),
-    'arming AI Enhance changed the classical Enhance switch',
-  ).toBeChecked();
-  expect(await previewViewBox(page), 'both switches on: the AI bitmap is what got traced').toEqual(
+  // Pure classical: the source bitmap, cleaned up locally.
+  await setEnhanceMode(page, 'local');
+  await waitForReady(page);
+  const localSvg = await previewSvg(page);
+  expect(await previewViewBox(page), 'local cleanup traced something other than the source').toEqual(
+    [512, 512],
+  );
+
+  // Pure AI: the provider's bitmap, at the provider's own size.
+  await setEnhanceMode(page, 'ai');
+  await waitForReady(page);
+  expect(await previewViewBox(page), 'choosing AI did not swap the working image').toEqual(
     STUB_SIZE,
   );
+  await expect(page.locator(tid(TESTIDS.enhanceModeHint))).toContainText(
+    /replaces the local cleanup/i,
+  );
+
+  // ...and back, byte for byte: neither state is a door that only opens once.
+  await setEnhanceMode(page, 'local');
+  await waitForReady(page);
+  expect(
+    await previewSvg(page),
+    'returning to local cleanup did not restore the classical result',
+  ).toEqual(localSvg);
 });

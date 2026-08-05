@@ -290,6 +290,19 @@ export async function setSelect(page: Page, id: string, value: string) {
   await page.locator(tid(id)).selectOption(value);
 }
 
+/**
+ * Choose an Enhance mode (docs/TESTIDS.md B4).
+ *
+ * `enhance-toggle` is one `<select>` with three answers — `off` (trace the
+ * image as it arrived), `local` (the engine's denoise/simplify bundle) and `ai`
+ * (send it to the provider and trace what comes back, which *replaces* the
+ * local bundle). It was two independent checkboxes that read as the same switch
+ * twice; the `ai` option is disabled until a key is saved.
+ */
+export async function setEnhanceMode(page: Page, mode: 'off' | 'local' | 'ai') {
+  await page.locator(tid(TESTIDS.enhanceToggle)).selectOption(mode);
+}
+
 /** Set a checkbox by testid to an explicit state (click only if it differs). */
 export async function setCheckbox(page: Page, id: string, checked: boolean) {
   const box = page.locator(tid(id));
