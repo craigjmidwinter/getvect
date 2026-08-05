@@ -3,7 +3,7 @@
 Local desktop raster → vector app (Electron + TypeScript + React). Target behaviour is
 specified in [REFERENCE.md](./REFERENCE.md).
 
-**Current state: the REFERENCE checklist is implemented and measured green.** The app
+**Current state: the REFERENCE checklist is implemented…** The app
 does ingest (drag-drop + picker, multi-image sidebar), auto-vectorize in a worker, the
 four model presets with Clipart's detail levels, candidate palettes and a palette
 editor, output colour groups with per-colour disable (transparent background), noise
@@ -12,11 +12,21 @@ minimum area, overlap, circle detection), filled-vs-stroked result styles,
 original/vector/side-by-side preview with synchronised zoom & pan, and
 SVG/EPS/DXF/PDF/PNG export through the native save dialog.
 
-`npm test` runs both suites — 50 engine contract tests then 96 Playwright acceptance
-specs, 0 fail. `npm run instruments` 7 fixtures pass, including the blind A/B against
-the real the reference product exemplars (2.82x their sub-path count at 16 colours, 0.81x at 6,
-with lower mean colour error against the source in both cases, and 96 % ink recall —
-the hairlines the cleanup passes used to eat).
+**…measured against pixels the app could not actually produce.** The instruments fed
+`vectorize()` a white-flattened image while the renderer's canvas ingest hands it
+`(0,0,0,0)` for transparent pixels, so every transparent-background PNG — REFERENCE's
+sticker/decal use case — traced with an invented opaque black background and nothing
+noticed. The harness now feeds the engine the same pixels the UI does, and the resulting
+red is the honest state:
+
+- `npm run test:engine` — 50 pass, 6 fail (input alpha ignored; DXF flattens every curve;
+  circle detection finds one of three circular contours).
+- `npm test` — 100 acceptance specs pass, 8 fail (transparent export, app-vs-headless
+  decode parity, undecodable-file rejection, Drawing's dead colour controls, output
+  controls below the fold).
+- `npm run instruments` — 5 of 8 fixtures pass. `reference-artwork` now misses the
+  REFERENCE 3× economy bar at 4.51× the exemplar's sub-paths, and the two alpha fixtures
+  fail on `transparentAreaColorError`.
 
 ```bash
 npm install
@@ -40,7 +50,7 @@ src/renderer/    React UI (workspace, preview, settings) + vectorization worker
 src/engine/      pure vectorization engine (palette / trace / curve fit / SVG / EPS / DXF / PDF)
 src/shared/      testid constants shared by app and tests
 tests/e2e/       Playwright acceptance suite, one spec per checklist section
-tests/engine/    engine contract tests (node --test): contract, parity, rendered
+tests/engine/    engine contract tests (node --test): contract, parity, rendered, alpha
 instruments/     fidelity metrics + screenshot harness
 fixtures/        deterministic test images (npm run fixtures)
 scripts/         build/dev/fixture/postinstall tooling

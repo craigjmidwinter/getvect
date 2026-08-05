@@ -64,6 +64,14 @@ Files arriving through `file-input` must go down the exact same ingest code path
 A rejected file must (a) show `error-toast`, and (b) **not** create an `image-list-item`.
 In a mixed drop, supported files still load and the toast reports the rejected ones.
 
+**A file that fails to *decode* is a rejected file.** The extension filter is only the
+first gate: a text file named `.png` gets past it and dies in the decoder. The outcome
+must be identical to any other rejection — toast shown, no `image-list-item` left
+behind, selection and `status-text` unchanged for whatever was already loaded (`idle`
+when nothing was). A dead entry that can never produce a result is not a workspace the
+user can act on, and `export-size` must not keep advertising the previous image's byte
+count next to disabled buttons (see D).
+
 The toast must be **self-dismissing** (within ~10s) and **dismissable by hand** (it
 contains a button). It must *not* be cleared as a side effect of an unrelated
 successful ingest — a rejection the user never saw acknowledged is a rejection they
@@ -111,6 +119,14 @@ pixels to move. A geometry change no pixel can see does not count.
 Sketch must emit **grayscale only** (every layer colour has `r == g == b`); Drawing
 must emit **at most two** colours, black and white.
 
+**A preset owns its input controls.** Drawing always produces two colours, so while it
+is selected `color-count` and every `palette-size-option` must be **disabled or absent**
+— leaving a COLORS slider reading 4 next to a two-colour result is the control lying
+about the product. `bw-threshold` is Drawing's input control. Leaving the preset must
+restore the colour controls. (`fixtures/reference/OBSERVED-UI.md` records the real
+product replacing them with Black/White checkboxes plus the luminance histogram;
+matching that exactly is optional, disabling the dead ones is not.)
+
 ### Advanced vectorization (B5)
 
 | testid | element | required attributes / behaviour |
@@ -157,6 +173,12 @@ the flat fixture's exactly six colours).
 | `color-group-toggle` | checkbox per output colour | **Required:** `data-index`, `data-color`. One per palette entry. Unchecking removes that colour's layer from the SVG — and unchecking the dominant (index 0) colour must leave a genuinely **transparent** background: no full-bleed backdrop `<rect>`, and the corner pixels render with alpha 0. Re-checking restores the previous document exactly. |
 | `merge-threshold` | `<select>` | Percentage thresholds (the real product defaults to 5 %). Read as *coverage*: a colour group covering less than this share of the image is merged into its nearest surviving colour. Raising it must not increase the layer count. |
 | `color-sort` | `<select>` | Layer sort order. Changing it reorders `<g>` layers without changing which colours exist. |
+
+**Controls stay in view; lists may scroll.** At the app's **default** window size
+(1280×860) every output-colour *control* — `merge-threshold` and `color-sort` — must be
+inside the viewport without scrolling, and `color-count-hint` must render its text
+without clipping (`scrollWidth`/`scrollHeight` within its client box). What scrolls
+inside the panel is the colour-group checkbox list, not the knobs that operate on it.
 
 The palette editor and colour groups must not crowd out the artwork: at the app's
 minimum window size with a 64-colour palette, `settings-panel` must stay under 45 % of
@@ -207,6 +229,11 @@ the path count — denoising should simplify, not complicate.
   the two areas. "Fit" must not be the only way back.
 - **Inert when empty.** With no image loaded, `preview-toggle`, `preview-side-by-side`,
   `zoom-in`, `zoom-out` and `zoom-fit` are `disabled`.
+- **Fit follows the window.** Resizing the window re-runs the fit calculation while the
+  user has not chosen a zoom of their own: after a resize, `zoom-level`'s `data-zoom`
+  already equals what clicking `zoom-fit` would give. A zoom the user set by hand
+  (`zoom-in`/`zoom-out`/wheel) survives the resize instead — re-fitting is the default,
+  not an override.
 
 ### C3 — the preview is the export
 
@@ -252,7 +279,12 @@ selected** image.
   source dimensions, painting operators present, terminated by `%%EOF`.
 - **DXF** — ASCII DXF with `SECTION`/`HEADER`/`ENDSEC`, `$EXTMIN` and `$EXTMAX` reflecting
   the artwork extents, an `ENTITIES` section containing `LWPOLYLINE`/`POLYLINE`/`SPLINE`/
-  `HATCH`/`LINE` entities, terminated by `EOF`.
+  `HATCH`/`LINE` entities, terminated by `EOF`. **Curves must survive as curves:** a
+  drawing whose SVG is mostly curve commands has to carry `SPLINE` entities, and the DXF
+  must stay within 3× the EPS of the same drawing. Flattening every Bézier to line
+  segments throws away the fitting the tracer paid for and costs ~20× the bytes
+  (`tests/engine/parity.test.mjs` [D3]). The lines-vs-splines *choice* is a REFERENCE E
+  stretch feature; splines-by-default is not.
 - **PDF** (D5) — `%PDF-1.` header, a `/MediaBox [0 0 w h]` in source pixels, one page, a
   content stream with painting operators, a byte-accurate `xref`/`startxref`, `%%EOF`.
 - **PNG** (D5) — a real PNG bitstream (`\x89PNG\r\n\x1a\n` signature, `IHDR` carrying the
