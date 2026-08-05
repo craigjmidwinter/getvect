@@ -27,6 +27,7 @@
       <img class="word" src="assets/getvect-wordmark.svg" alt="GetVect" width="70" height="24">
     </a>
     <nav aria-label="Primary">
+      <a class="opt" href="#download">Download</a>
       <a class="opt" href="#demo">Demo</a>
       <a class="opt" href="#features">Features</a>
       <a class="opt" href="#enhance">AI Enhance</a>
@@ -49,8 +50,10 @@
             Drop in a PNG, JPEG or BMP. Get back SVG, EPS, DXF, PDF or PNG — traced by an
             offline engine, with a full control surface for palette, detail, smoothing and
             speck removal, and saved through the native dialog. Tracing, preview and export
-            make no network calls at all; the one thing that can is
-            <a href="#enhance">AI Enhance</a>, which is off until you turn it on.
+            make no network calls at all. There are exactly two network touchpoints, both in
+            your control: optional <a href="#enhance">AI Enhance</a>, and a once-per-launch
+            update check against GitHub Releases (disable with
+            <code>GETVECT_NO_UPDATE_CHECK=1</code>).
           </p>
           <ul class="wedge">
             <li>No account</li>
@@ -59,9 +62,13 @@
             <li>Offline by default</li>
           </ul>
           <div class="cta-row">
-            <a class="btn btn-primary" href="docs.html">Read the docs</a>
+            <!-- href is the releases page, which always works; download.js
+                 swaps in the direct .dmg link once it has resolved one. -->
+            <a class="btn btn-primary" id="hero-download"
+               href="https://github.com/craigjmidwinter/getvect/releases/latest">Download for macOS</a>
+            <a class="btn" href="docs.html">Read the docs</a>
             <a class="btn" href="https://github.com/craigjmidwinter/getvect">Source on GitHub</a>
-            <span class="meta">MIT · macOS · Node 20+</span>
+            <span class="meta">MIT · Apple Silicon · unsigned</span>
           </div>
         </div>
         <div class="hero-art">
@@ -275,6 +282,52 @@
     </div>
   </section>
 
+  <!-- ---- download ------------------------------------------------------ -->
+  <section id="download">
+    <div class="wrap">
+      <p class="eyebrow">Download</p>
+      <h2>One dmg. No account, no installer that asks questions.</h2>
+      <p class="lede">
+        macOS on Apple Silicon (M1 and later) is the only build today — that is where GetVect
+        is developed and where every acceptance test runs. Intel Macs, Windows and Linux are
+        buildable from source (<code>npm run dist</code>) but are not tested and are not
+        published, so they are not offered here as if they were.
+      </p>
+
+      <div class="cta-row">
+        <a class="btn btn-primary" id="download-button"
+           href="https://github.com/craigjmidwinter/getvect/releases/latest">Download for macOS</a>
+        <a class="btn" href="https://github.com/craigjmidwinter/getvect/releases">All releases</a>
+        <span class="meta" id="download-meta">Latest release · Apple Silicon · .dmg</span>
+      </div>
+
+      <div class="callout">
+        <span class="tag">It is not signed, and the first launch says so</span>
+        <p>There is no Apple Developer ID certificate behind this build yet, so macOS
+          quarantines it on download and will tell you it "cannot be opened". Nothing is wrong
+          with the file — an unsigned app is simply one nobody has paid Apple to vouch for.
+          Two ways past it:</p>
+        <p><strong>Right-click</strong> GetVect in Applications and choose <strong>Open</strong>,
+          then <strong>Open</strong> again in the dialog. Or, in Terminal:</p>
+        <p><code>xattr -dr com.apple.quarantine /Applications/GetVect.app</code></p>
+        <p>The same missing certificate is why GetVect <em>tells</em> you about a new version
+          instead of installing one: macOS refuses to let an unsigned app update itself in
+          place, and an updater that downloaded 150 MB and then failed would be worse than no
+          updater at all. When the certificate lands, the in-app updater is already written and
+          switches on.</p>
+      </div>
+
+      <div class="callout callout--flat">
+        <span class="tag">What it does on the network</span>
+        <p>Two network touchpoints, both in your control: optional
+          <a href="#enhance">AI Enhance</a>, and a once-per-launch update check against GitHub
+          Releases (disable with <code>GETVECT_NO_UPDATE_CHECK=1</code>). The check asks one
+          question, sends no identifier, and fails silently when you are offline. Everything
+          else — ingest, tracing, preview and every export — never leaves the machine.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- ---- how it was built ---------------------------------------------- -->
   <section id="built">
     <div class="wrap">
@@ -330,5 +383,6 @@
 </footer>
 
 <script src="demo.js" defer></script>
+<script src="download.js" defer></script>
 </body>
 </html>
