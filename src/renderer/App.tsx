@@ -121,6 +121,8 @@ interface ImageEntry {
   /** Object URL of that PNG, so the ORIGINAL pane shows the working image. */
   aiUrl: string | null;
   aiState: AiState;
+  /** The reason the last enhance failed — shown in the persistent status line. */
+  aiError: string | null;
 }
 
 /**
@@ -355,6 +357,7 @@ export function App() {
       aiRaster: null,
       aiUrl: null,
       aiState: 'idle',
+      aiError: null,
     }));
 
     setImages((prev) => [...prev, ...entries]);
@@ -496,13 +499,13 @@ export function App() {
       const image = imagesRef.current.find((entry) => entry.id === id);
       if (!image?.raster) return;
       if (!bridge) {
-        patchImage(id, { aiState: 'failed' });
+        patchImage(id, { aiState: 'failed', aiError: 'AI Enhance is only available in the desktop app.' });
         setToast('AI Enhance is only available in the desktop app.');
         requestVectorize(id);
         return;
       }
 
-      patchImage(id, { aiState: 'running' });
+      patchImage(id, { aiState: 'running', aiError: null });
       try {
         const png = await rasterToPngBytes(image.raster);
         const outcome = await bridge.aiEnhance.run({
@@ -532,14 +535,13 @@ export function App() {
           prev.map((entry) => {
             if (entry.id !== id) return entry;
             if (entry.aiUrl) URL.revokeObjectURL(entry.aiUrl);
-            return { ...entry, aiRaster: raster, aiUrl: url, aiState: 'done' };
+            return { ...entry, aiRaster: raster, aiUrl: url, aiState: 'done', aiError: null };
           }),
         );
       } catch (error) {
-        patchImage(id, { aiState: 'failed' });
-        setToast(
-          `${error instanceof Error ? error.message : String(error)} Tracing the original image instead.`,
-        );
+        const reason = error instanceof Error ? error.message : String(error);
+        patchImage(id, { aiState: 'failed', aiError: reason });
+        setToast(`${reason} Tracing the original image instead.`);
       }
       requestVectorize(id);
     },
@@ -555,7 +557,7 @@ export function App() {
       prev.map((entry) => {
         if (!entry.aiRaster && entry.aiState === 'idle') return entry;
         if (entry.aiUrl) URL.revokeObjectURL(entry.aiUrl);
-        return { ...entry, aiRaster: null, aiUrl: null, aiState: 'idle' };
+        return { ...entry, aiRaster: null, aiUrl: null, aiState: 'idle', aiError: null };
       }),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset on tier change only
@@ -1053,7 +1055,7 @@ export function App() {
       if (mode === 'ai') {
         setImages((prev) =>
           prev.map((image) =>
-            image.aiRaster || image.aiState !== 'failed' ? image : { ...image, aiState: 'idle' },
+            image.aiRaster || image.aiState !== 'failed' ? image : { ...image, aiState: 'idle', aiError: null },
           ),
         );
       }
@@ -1729,7 +1731,7 @@ export function App() {
                   className="hint"
                   data-ai-state={aiStateAttr}
                 >
-                  {aiStatusLabel(aiStateAttr, providerInfo.label)}
+                  {aiStatusLabel(aiStateAttr, providerInfo.label, selected?.aiError ?? null)}
                 </span>
               </div>
 
@@ -2074,7 +2076,7 @@ function describeEnhanceMode(mode: EnhanceMode, providerLabel: string): string {
 }
 
 /** One line describing where the AI pass is, for `ai-enhance-status`. */
-function aiStatusLabel(state: 'off' | AiState, providerLabel: string): string {
+function aiStatusLabel(state: 'off' | AiState, providerLabel: string, reason: string | null): string {
   switch (state) {
     case 'off':
       return 'Off — nothing leaves this machine.';
@@ -2085,7 +2087,8 @@ function aiStatusLabel(state: 'off' | AiState, providerLabel: string): string {
     case 'done':
       return 'Enhanced image traced.';
     case 'failed':
-      return 'Enhancement failed — tracing the original.';
+      // The toast auto-dismisses; this line is where the reason survives.
+      return reason ? `Enhancement failed — ${reason} Tracing the original.` : 'Enhancement failed — tracing the original.';
   }
 }
 
