@@ -30,6 +30,7 @@ npm run test:engine   # engine contract tests (pure Node, fast, no Electron)
 npm test              # engine contracts, then the Playwright acceptance suite
 npm run instruments   # fidelity metrics -> artifacts/metrics.json
 npm run screenshots   # labelled contact sheet -> artifacts/screenshots/
+npm run docs:screenshots # regenerate docs/assets/screenshot-*.png (the README's shots)
 ```
 
 Useful slices:

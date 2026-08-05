@@ -106,6 +106,176 @@ test('[B3] the output colour list itself is reachable without scrolling past the
   expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.w);
 });
 
+test('[B3] the output colour list survives the biggest palette the app offers', async ({ page }) => {
+  /**
+   * The viewport check above is necessary but not sufficient: a box inside the
+   * window can still be clipped by a scrolling *ancestor*, and that is exactly
+   * what happened. The colour column was the scroller, so with a large palette
+   * it measured 308px of content in a 255px box and the OUTPUT COLOURS block —
+   * last in the column — was cut off at the column's bottom edge while its
+   * bounding box still read as "on screen". Playwright's `toBeVisible()` does
+   * not catch it either: a clipped element is still laid out and still has a
+   * box.
+   *
+   * So the check is a hit test at the control's own centre — what a user's
+   * click actually lands on — done at the largest input palette (18), the case
+   * that overflows the column, and repeated for every visible control in the
+   * output block.
+   */
+  await loadViaPicker(page, FIXTURE.artwork);
+  await waitForReady(page);
+  await page.locator(`${tid(TESTIDS.paletteSizeOption)}[data-size="18"]`).click();
+  await waitForReady(page);
+
+  const toggles = page.locator(tid(TESTIDS.colorGroupToggle));
+  expect(await toggles.count(), 'no output colour groups at an 18-colour palette').toBeGreaterThan(
+    1,
+  );
+
+  for (const id of [TESTIDS.colorMergeThreshold, TESTIDS.colorSortOrder]) {
+    const hit = await hitTest(page, tid(id));
+    expect(hit, `${id}: ${hit.why}`).toMatchObject({ reachable: true });
+  }
+  const firstToggle = await hitTest(page, `${tid(TESTIDS.colorGroupToggle)} >> nth=0`);
+  expect(
+    firstToggle,
+    "B3's per-colour disable checkbox is not clickable where it is drawn — " +
+      `${firstToggle.why}`,
+  ).toMatchObject({ reachable: true });
+});
+
+test('[B3] at the app\'s own minimum window size nothing is hidden, only scrolled', async ({
+  app,
+  page,
+}) => {
+  /**
+   * 900x640 is the smallest window `src/main/main.ts` allows, and a control
+   * surface this size cannot show ~25 controls at once there. That is fine —
+   * *silently* not showing them is not. The check is therefore reachability
+   * rather than visibility: a control may start off screen, but scrolling its
+   * own scroller must bring it fully into view. A control that stays clipped
+   * after that is one the panel is hiding with `overflow: hidden`.
+   */
+  await loadViaPicker(page, FIXTURE.flat512);
+  await waitForReady(page);
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0].setSize(900, 640);
+  });
+  await page.waitForTimeout(400);
+
+  // Nothing inside the panel may overflow a box the user cannot scroll:
+  // `overflow: hidden` on a box with more content than room is the mechanism
+  // that hides a control outright, and `scrollIntoView` would paper over it
+  // (it scrolls hidden boxes too, which no user can).
+  const unscrollable = await page.evaluate(() => {
+    const out: string[] = [];
+    const panel = document.querySelector('.settings-panel');
+    if (!panel) return ['no settings panel'];
+    for (const el of [panel, ...panel.querySelectorAll('*')]) {
+      const style = getComputedStyle(el);
+      const name = `${el.tagName.toLowerCase()}.${el.className}`;
+      if (el.scrollHeight > el.clientHeight + 1 && /hidden|clip/.test(style.overflowY)) {
+        out.push(`${name} hides ${el.scrollHeight - el.clientHeight}px vertically`);
+      }
+      if (el.scrollWidth > el.clientWidth + 1 && /hidden|clip/.test(style.overflowX)) {
+        out.push(`${name} hides ${el.scrollWidth - el.clientWidth}px horizontally`);
+      }
+    }
+    return out;
+  });
+  expect(unscrollable, `content is clipped with no way to scroll to it: ${unscrollable.join('; ')}`)
+    .toEqual([]);
+
+  for (const id of [
+    TESTIDS.colorMergeThreshold,
+    TESTIDS.colorSortOrder,
+    TESTIDS.colorGroupToggle,
+    TESTIDS.paletteSwatch,
+    TESTIDS.paletteMergeButton,
+    TESTIDS.paletteRemoveButton,
+    TESTIDS.paletteSizeOption,
+  ]) {
+    const selector = `${tid(id)} >> nth=0`;
+    await page.locator(selector).evaluate((el) => {
+      el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+    const hit = await hitTest(page, selector);
+    expect(
+      hit,
+      `${id} cannot be brought on screen in a 900x640 window: ${hit.why}`,
+    ).toMatchObject({ reachable: true });
+  }
+});
+
+/**
+ * Is the whole control on screen where it is drawn, and does a click there land
+ * on it?
+ *
+ * Two things a bounding box cannot answer on its own:
+ *  - **clipping**: the box of an element inside an overflowing scroller is
+ *    reported in full even when only a sliver of it is painted, so the rect is
+ *    checked for containment inside every clipping ancestor (a scroller that
+ *    is already scrolled to show the element passes; one that hides part of it
+ *    does not);
+ *  - **covering**: `document.elementFromPoint` at the centre returns whatever
+ *    a click would actually hit.
+ */
+async function hitTest(page: import('@playwright/test').Page, selector: string) {
+  return page.locator(selector).evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    const fits = (a: DOMRect | { top: number; bottom: number; left: number; right: number }) =>
+      rect.top >= a.top - 0.5 &&
+      rect.bottom <= a.bottom + 0.5 &&
+      rect.left >= a.left - 0.5 &&
+      rect.right <= a.right + 0.5;
+
+    if (!fits({ top: 0, left: 0, right: window.innerWidth, bottom: window.innerHeight })) {
+      return {
+        reachable: false,
+        why:
+          `its box (y ${Math.round(rect.top)}-${Math.round(rect.bottom)}) leaves the ` +
+          `${window.innerHeight}px window`,
+      };
+    }
+
+    for (let node = el.parentElement; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+      const box = node.getBoundingClientRect();
+      // Client box: the padding box, i.e. inside the borders, which is what a
+      // scroller actually paints its content in.
+      const clip = {
+        top: box.top + node.clientTop,
+        left: box.left + node.clientLeft,
+        right: box.left + node.clientLeft + node.clientWidth,
+        bottom: box.top + node.clientTop + node.clientHeight,
+      };
+      if (!fits(clip)) {
+        return {
+          reachable: false,
+          why:
+            `it is clipped by ${node.tagName.toLowerCase()}.${node.className} — its box ` +
+            `(y ${Math.round(rect.top)}-${Math.round(rect.bottom)}) does not fit that box's ` +
+            `y ${Math.round(clip.top)}-${Math.round(clip.bottom)}`,
+        };
+      }
+    }
+
+    const x = rect.x + rect.width / 2;
+    const y = rect.y + rect.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    const reachable = !!hit && (hit === el || el.contains(hit) || hit.contains(el));
+    return {
+      reachable,
+      why: reachable
+        ? 'reachable'
+        : `a click at (${Math.round(x)},${Math.round(y)}) lands on ` +
+          `${hit ? `${hit.tagName.toLowerCase()}.${hit.className}` : 'nothing'} — the control is ` +
+          'covered',
+    };
+  });
+}
+
 test('[B3] the colour-count hint is readable, not clipped mid-sentence', async ({ page }) => {
   // "6 colours in the result — the image has no more to give" cut off at the
   // panel edge is a hint nobody can act on.
