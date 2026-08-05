@@ -10,6 +10,7 @@ import type {
   EnhanceRunRequest,
   EnhanceRunResult,
 } from '../shared/aiEnhance';
+import type { UpdateStatus } from '../shared/update';
 
 export interface GetVectApi {
   openImages(): Promise<string[]>;
@@ -33,6 +34,20 @@ export interface GetVectApi {
     hasKey(provider: EnhanceProviderId): Promise<boolean>;
     available(): Promise<boolean>;
     run(request: EnhanceRunRequest): Promise<EnhanceRunResult>;
+  };
+  /**
+   * Update check (src/main/updater.ts). Note there is no `check()`: the main
+   * process checks once per launch on its own schedule, and this side can only
+   * read the answer, act on it, or say "not this version".
+   */
+  update: {
+    status(): Promise<UpdateStatus>;
+    dismiss(version: string): Promise<UpdateStatus>;
+    /** notify mode: open the release page. auto mode: start the download. */
+    download(): Promise<UpdateStatus>;
+    /** auto mode only, and only once the download finished. */
+    install(): Promise<UpdateStatus>;
+    onChanged(callback: (status: UpdateStatus) => void): () => void;
   };
 }
 

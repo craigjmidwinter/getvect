@@ -1062,3 +1062,54 @@ button.toggle.is-on,
 .group-hex {
   text-transform: uppercase;
 }
+
+/* --- update banner ---------------------------------------------------------
+ *
+ * Fixed to the bottom-right corner and outside the app grid on purpose: the
+ * app must not reflow the moment a background check comes back, and an update
+ * notice must never sit between the user and their work. It is a status, not a
+ * dialog — no overlay, no focus trap, nothing behind it disabled.
+ */
+.update-banner {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 360px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel-2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.update-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.update-text > strong {
+  font-size: 12px;
+}
+
+.update-text > span {
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+
+.update-action {
+  flex: none;
+  border-color: var(--accent);
+}
+
+.update-dismiss {
+  flex: none;
+  font-size: 15px;
+  line-height: 1;
+}

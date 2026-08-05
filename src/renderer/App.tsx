@@ -34,6 +34,7 @@ import { basename, decodeBlob, mimeForName, stemOf } from './lib/decode';
 import { vectorizeImage } from './lib/engineClient';
 import { hasMeaningfulAlpha, rasterToPngBytes, svgToPngBase64 } from './lib/raster';
 import { Preview, fmt, type PreviewMode } from './components/Preview';
+import { UpdateBanner } from './components/UpdateBanner';
 
 /**
  * GetVect workspace — REFERENCE sections A (launch & ingest), B (the control
@@ -1196,6 +1197,11 @@ export function App() {
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
+      {/* Fixed-position and self-contained: it owns all of its own state via
+          the update bridge, renders nothing at all unless the main process
+          found a newer version, and never reflows the grid. */}
+      <UpdateBanner />
+
       <aside className="sidebar">
         <header className="brand">
           <h1>GetVect</h1>
