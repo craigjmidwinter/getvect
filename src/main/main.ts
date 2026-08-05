@@ -33,7 +33,12 @@ function createWindow(): void {
     },
   });
 
-  mainWindow.once('ready-to-show', () => mainWindow?.show());
+  // Under e2e the app must never steal focus from whatever the human is doing:
+  // the suite runs constantly in the background and each headed launch would
+  // otherwise activate over their foreground app.
+  mainWindow.once('ready-to-show', () =>
+    isE2E ? mainWindow?.showInactive() : mainWindow?.show(),
+  );
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
@@ -167,5 +172,11 @@ app.on('activate', () => {
 });
 
 void app.whenReady().then(() => {
+  if (isE2E && process.platform === 'darwin') {
+    // Accessory apps get no Dock icon and cannot become the active app, so
+    // test runs stay invisible to the user's session. Must be set before any
+    // window shows.
+    app.setActivationPolicy('accessory');
+  }
   createWindow();
 });
