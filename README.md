@@ -33,10 +33,10 @@ harness measures us against it on every run.
 
 ## Before / after
 
-![Fox sticker: 352 KB PNG at 500% zoom next to the 14 KB SVG GetVect traced from it](docs/assets/fox-before-after.png)
+![Fox sticker: 352 KB PNG at 200% zoom next to the 17 KB SVG GetVect traced from it](docs/assets/fox-before-after.png)
 
 The fox is our mascot and our demo fixture. Traced at 8 colours with Smart anti-aliasing,
-a 352 KB raster becomes a **14 KB SVG in 6 colour layers and 29 shapes** — curve-fitted
+a 352 KB raster becomes a **17 KB SVG in 5 colour layers and 36 shapes** — curve-fitted
 outlines, transparent background preserved, and infinitely re-scalable. (Same source
 through the real the reference product: 35.5 KB, 63 paths.) The full output is
 [`docs/assets/fox-vector.svg`](docs/assets/fox-vector.svg); the source and the
