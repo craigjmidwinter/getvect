@@ -784,10 +784,22 @@ button.toggle.is-on,
   flex: 1 1 auto;
 }
 
+/*
+ * The groups flow into as many columns as the panel is wide enough for.
+ *
+ * A single tall column meant the number of output colours the user could see
+ * was capped by the panel's height — at the app's default window size the
+ * seventh group of a seven-group result sat three pixels below the fold, which
+ * is indistinguishable from "there are six". The reference product draws the
+ * output colour groups as a wrapping row of circles for the same reason: the
+ * whole point of the control is to see the set at a glance. Each cell is wide
+ * enough for a checkbox, a chip and a six-digit hex.
+ */
 .group-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  align-content: start;
+  gap: 2px 10px;
   min-height: 44px;
   overflow-y: auto;
 }
