@@ -555,6 +555,18 @@ export interface DespeckleOptions {
    * merge into disappears, which is what a despeckle filter is for.
    */
   transparentIndex?: number;
+  /**
+   * Palette entries this filter is not allowed to merge away, one flag per
+   * index.
+   *
+   * The Enhance floor's job is to flatten a busy *background*, and area alone
+   * cannot tell a scrap of background pattern from a stroke of the drawing.
+   * The ink is the one colour where being small is normal — a 2px eyelid, the
+   * gap between two teeth — and where losing a region is not a simplification
+   * but a hole in the picture. Marking it protected states that directly
+   * instead of hoping the area/elongation/contrast tests happen to spare it.
+   */
+  protect?: Uint8Array;
 }
 
 /**
@@ -578,6 +590,7 @@ export function despeckleIndices(
   const onlyFringe = options.onlyFringe === true;
   const maxThickness = options.maxThickness ?? 3;
   const transparentIndex = options.transparentIndex ?? -1;
+  const protect = options.protect;
   if (minArea <= 1 && !onlyFringe) return 0;
   const n = width * height;
   const labels = new Int32Array(n).fill(-1);
@@ -651,8 +664,10 @@ export function despeckleIndices(
 
   const small: number[] = [];
   for (let l = 0; l < labelCount; l++) {
+    const own = indices[members[offsets[l]]];
     // Transparency is not speckle: a hole never merges into a colour.
-    if (transparentIndex >= 0 && indices[members[offsets[l]]] === transparentIndex) continue;
+    if (transparentIndex >= 0 && own === transparentIndex) continue;
+    if (protect && protect[own]) continue;
     if (onlyFringe) {
       // Thin bands only — a fringe is by definition a couple of pixels wide.
       if (areas[l] / maxDims[l] <= maxThickness) small.push(l);

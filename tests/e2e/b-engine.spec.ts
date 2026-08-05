@@ -7,6 +7,7 @@ import {
   fillsIn,
   loadViaPicker,
   previewSvg,
+  setSelect,
   setSlider,
   waitForReady,
 } from './helpers';
@@ -50,6 +51,12 @@ for (const [setting, id, from, to] of [
 ] as const) {
   test(`[B2] ${setting} observably changes the output`, async ({ page }) => {
     await loadViaPicker(page, FIXTURE.noisy512);
+    await waitForReady(page);
+    // Smart anti-aliasing is on by default and its index-image majority pass
+    // already removes single-pixel impulses, so the noise-removal controls have
+    // nothing left to act on. A control is measured where it has something to
+    // do; the default's own effect is asserted in b4-quality.spec.ts.
+    await setSelect(page, TESTIDS.settingAntiAliasing, 'off');
     await waitForReady(page);
     await setSlider(page, id, from);
     await waitForReady(page);

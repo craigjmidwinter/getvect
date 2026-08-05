@@ -62,6 +62,10 @@ test('[B5] roundness offers three levels and each changes the curve fitting', as
 test('[B5] minimum area offers 0/5/90 px2 and removes specks', async ({ page }) => {
   await loadViaPicker(page, FIXTURE.noisy512);
   await waitForReady(page);
+  // Isolated from Smart anti-aliasing: the specks a minimum-area floor drops
+  // are the ones the default cleanup has already dropped.
+  await setSelect(page, TESTIDS.settingAntiAliasing, 'off');
+  await waitForReady(page);
 
   const values = await page
     .locator(`${tid(TESTIDS.settingMinArea)} option`)

@@ -29,6 +29,19 @@ const fixture = (name) => join(root, 'fixtures', name);
 const load = async (name) => flattenOnWhite(await decodeImageFile(fixture(name)));
 const S = engine.DEFAULT_SETTINGS;
 
+/**
+ * Defaults with every optional cleanup off.
+ *
+ * `DEFAULT_SETTINGS` ships Smart anti-aliasing on (the real product does too —
+ * fixtures/reference/OBSERVED-UI.md — and it is what keeps the default output
+ * economical). Its index-image majority pass is also a very effective impulse
+ * remover, so on the speckled fixture the noise-removal controls have nothing
+ * left to remove and cannot be observed at all. Checks that ask "does THIS
+ * control do something" isolate it here; checks about the shipped configuration
+ * use `S`.
+ */
+const RAW = { ...S, antiAliasing: 'off' };
+
 const flat = await load('logo-flat-512.png');
 const noisy = await load('logo-noisy-512.png');
 const big = await load('logo-flat-1024.png');
@@ -119,6 +132,14 @@ test('each setting observably changes the output', async () => {
   // Necessary but NOT sufficient: a byte difference can be a geometry change no
   // pixel can see. tests/engine/rendered.test.mjs rasterizes both sides and
   // requires the picture itself to move.
+  //
+  // Measured with the OTHER cleanups off (`RAW`), because a control can only be
+  // observed where it has something to do: Smart anti-aliasing is on by default
+  // and its index-image majority pass already removes single-pixel impulses, so
+  // on the speckled fixture the despeckle slider was being asked to remove
+  // specks that no longer existed. That is a fact about the default bundle, not
+  // about the control — `[B4] anti-aliasing suppresses near-duplicate halo
+  // layers` is where the default's own effect is asserted.
   const cases = [
     ['colorCount', 8, 3],
     ['detail', 60, 5],
@@ -126,8 +147,8 @@ test('each setting observably changes the output', async () => {
     ['despeckle', 20, 90],
   ];
   for (const [key, from, to] of cases) {
-    const a = await engine.vectorize(noisy, { ...S, [key]: from });
-    const b = await engine.vectorize(noisy, { ...S, [key]: to });
+    const a = await engine.vectorize(noisy, { ...RAW, [key]: from });
+    const b = await engine.vectorize(noisy, { ...RAW, [key]: to });
     assert.notEqual(a.svg, b.svg, `${key} ${from} -> ${to} left the SVG unchanged`);
   }
 });
@@ -243,28 +264,67 @@ test('EPS export is structurally valid PostScript', async () => {
   assert.equal(eps, engine.toEps(await engine.vectorize(flat, S)));
 });
 
-test('DXF export is a well-formed R12 drawing', async () => {
+test('DXF export is a well-formed drawing in both curve variants', async () => {
+  // The real product offers "DXF (splines)" and "DXF (lines)" as separate
+  // downloads (fixtures/reference/OBSERVED-UI.md), and they are different
+  // dialects: SPLINE is an R13+ entity, so the spline variant declares R2000
+  // (AC1015) and carries handles, while the lines variant stays pure R12
+  // (AC1009) for readers — old CAD, cutters — that only implement POLYLINE.
   const r = await engine.vectorize(flat, S);
-  const dxf = engine.toDxf(r);
-  for (const token of ['SECTION', 'HEADER', '$EXTMIN', '$EXTMAX', 'ENTITIES', 'ENDSEC']) {
-    assert.ok(dxf.includes(token), `DXF is missing ${token}`);
-  }
-  assert.ok(dxf.trimEnd().endsWith('EOF'));
-  assert.match(dxf, /\bAC1009\b/);
-  assert.ok((dxf.match(/\bPOLYLINE\b/g) ?? []).length > 0);
+  const variants = [
+    { name: 'splines (default)', dxf: engine.toDxf(r), version: 'AC1015' },
+    { name: 'lines', dxf: engine.toDxf(r, { curves: 'lines' }), version: 'AC1009' },
+  ];
+  assert.notEqual(variants[0].dxf, variants[1].dxf, 'the two variants must differ');
 
-  // Group codes and values must pair up, and every code must be an integer.
-  const lines = dxf.split('\n').slice(0, -1);
-  assert.equal(lines.length % 2, 0, 'DXF group codes and values must pair up');
-  for (let i = 0; i < lines.length; i += 2) {
-    assert.match(lines[i], /^-?\d+$/, `bad group code at line ${i + 1}: ${lines[i]}`);
+  for (const { name, dxf, version } of variants) {
+    for (const token of ['SECTION', 'HEADER', '$EXTMIN', '$EXTMAX', 'ENTITIES', 'ENDSEC']) {
+      assert.ok(dxf.includes(token), `${name}: DXF is missing ${token}`);
+    }
+    assert.ok(dxf.trimEnd().endsWith('EOF'), `${name}: DXF must end with EOF`);
+    assert.match(dxf, new RegExp(`\\b${version}\\b`), `${name}: wrong $ACADVER`);
+    // The flat fixture is drawn from rectangles as well as discs, so a
+    // rectilinear POLYLINE has to survive whatever the curve variant is —
+    // nothing straight may be re-described as a curve.
+    assert.ok((dxf.match(/\bPOLYLINE\b/g) ?? []).length > 0, `${name}: no POLYLINE`);
+
+    // Group codes and values must pair up, and every code must be an integer.
+    const lines = dxf.split('\n').slice(0, -1);
+    assert.equal(lines.length % 2, 0, `${name}: group codes and values must pair up`);
+    for (let i = 0; i < lines.length; i += 2) {
+      assert.match(lines[i], /^-?\d+$/, `${name}: bad group code at line ${i + 1}: ${lines[i]}`);
+    }
+
+    // Extents must describe the artwork, not sit at the origin.
+    const extmax = /\$EXTMAX\n10\n(-?[\d.]+)\n20\n(-?[\d.]+)/.exec(dxf);
+    assert.ok(extmax, `${name}: $EXTMAX must carry x/y`);
+    assert.ok(Number(extmax[1]) > 0 && Number(extmax[2]) > 0);
+    assert.ok(Number(extmax[1]) <= 512 && Number(extmax[2]) <= 512);
   }
 
-  // Extents must describe the artwork, not sit at the origin.
-  const extmax = /\$EXTMAX\n10\n(-?[\d.]+)\n20\n(-?[\d.]+)/.exec(dxf);
-  assert.ok(extmax, '$EXTMAX must carry x/y');
-  assert.ok(Number(extmax[1]) > 0 && Number(extmax[2]) > 0);
-  assert.ok(Number(extmax[1]) <= 512 && Number(extmax[2]) <= 512);
+  // Every SPLINE has to be internally consistent: degree 3, and the knot count
+  // the format demands (control points + degree + 1). A reader that checks will
+  // reject the file otherwise, and one that does not will draw nonsense.
+  // Walk group-code pairs rather than pattern-matching text: a *value* of "0"
+  // looks exactly like the entity-start code 0 to a regular expression.
+  const pairs = [];
+  const all = variants[0].dxf.split('\n').slice(0, -1);
+  for (let i = 0; i < all.length; i += 2) pairs.push([Number(all[i]), all[i + 1]]);
+  const entities = [];
+  for (const [code, value] of pairs) {
+    if (code === 0) entities.push({ type: value, codes: [] });
+    else entities[entities.length - 1]?.codes.push([code, value]);
+  }
+  const splines = entities.filter((e) => e.type === 'SPLINE');
+  assert.ok(splines.length > 0, 'the spline variant must carry SPLINE entities');
+  for (const entity of splines) {
+    const first = (c) => Number(entity.codes.find(([code]) => code === c)?.[1]);
+    const count = (c) => entity.codes.filter(([code]) => code === c).length;
+    assert.equal(first(71), 3, 'splines must be degree 3');
+    assert.equal(first(72), count(40), 'declared knot count must match the knots present');
+    assert.equal(first(73), count(10), 'declared control count must match the points present');
+    assert.equal(count(40), count(10) + 4, 'knots must be controls + degree + 1');
+  }
 });
 
 test('PDF export is a well-formed one-page vector document', async () => {

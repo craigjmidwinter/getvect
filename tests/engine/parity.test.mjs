@@ -34,6 +34,19 @@ const fixture = (name) => join(root, 'fixtures', name);
 const load = async (name) => flattenOnWhite(await decodeImageFile(fixture(name)));
 const S = engine.DEFAULT_SETTINGS;
 
+/**
+ * Defaults with every optional cleanup off.
+ *
+ * `DEFAULT_SETTINGS` ships Smart anti-aliasing on (the real product does too —
+ * fixtures/reference/OBSERVED-UI.md — and it is what keeps the default output
+ * economical). Its index-image majority pass is also a very effective impulse
+ * remover, so on the speckled fixture the noise-removal controls have nothing
+ * left to remove and cannot be observed at all. Checks that ask "does THIS
+ * control do something" isolate it here; checks about the shipped configuration
+ * use `S`.
+ */
+const RAW = { ...S, antiAliasing: 'off' };
+
 const flat = await load('logo-flat-512.png');
 const noisy = await load('logo-noisy-512.png');
 const snorlax = await load('reference/snorlax.png');
@@ -50,6 +63,8 @@ const hexOfLayer = (c) =>
   `#${[c.r, c.g, c.b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
 
 const run = (image, overrides) => engine.vectorize(image, { ...S, ...overrides });
+/** `run`, with the default cleanups off — see `RAW`. */
+const runRaw = (image, overrides) => engine.vectorize(image, { ...RAW, ...overrides });
 
 /** Compare documents by digest so a failure prints a reason, not 40KB of path data. */
 const digest = (svg) => createHash('sha1').update(svg).digest('hex').slice(0, 12);
@@ -140,9 +155,11 @@ test('[B3] the sort order reorders layers without changing the colour set', asyn
 // --- B4: noise reduction / anti-aliasing ------------------------------------
 
 test('[B4] noise reduction has three levels, each quieter than the last', async () => {
-  const off = await run(noisy, { noiseReduction: 'off' });
-  const low = await run(noisy, { noiseReduction: 'low' });
-  const high = await run(noisy, { noiseReduction: 'high' });
+  // Isolated from Smart anti-aliasing (`RAW`): both remove impulse noise, and
+  // with the default on there is none left for this control to remove.
+  const off = await runRaw(noisy, { noiseReduction: 'off' });
+  const low = await runRaw(noisy, { noiseReduction: 'low' });
+  const high = await runRaw(noisy, { noiseReduction: 'high' });
   assertDiffers(low.svg, off.svg, 'noiseReduction low === off');
   assertDiffers(high.svg, low.svg, 'noiseReduction high === low');
   assert.ok(countSubPaths(low.svg) <= countSubPaths(off.svg));
@@ -210,9 +227,11 @@ test('[B5] roundness has three levels and rounder means more curve', async () =>
 });
 
 test('[B5] minimum area 0/5/90 px2 removes progressively larger specks', async () => {
-  const keep = await run(noisy, { minArea: 0 });
-  const min5 = await run(noisy, { minArea: 5 });
-  const min90 = await run(noisy, { minArea: 90 });
+  // Isolated from Smart anti-aliasing (`RAW`): the specks a minimum-area floor
+  // is meant to drop are the ones the default cleanup has already dropped.
+  const keep = await runRaw(noisy, { minArea: 0 });
+  const min5 = await runRaw(noisy, { minArea: 5 });
+  const min90 = await runRaw(noisy, { minArea: 90 });
 
   assertDiffers(min5.svg, keep.svg, 'minArea 5 === 0');
   assertDiffers(min90.svg, min5.svg, 'minArea 90 === 5');
@@ -253,21 +272,85 @@ test('[B5] circle detection changes round geometry', async () => {
 
 test('[B5] circle detection finds every circular contour, not just the outermost', async () => {
   /**
-   * The generated artwork is built from three exactly-circular boundaries: the
-   * ink ring's outer edge, its inner edge, and the navy disc underneath. A
-   * detector that only accepts the first is a demo, not a feature — the two it
-   * misses are the concentric and the filled case, which is most of what a logo
-   * is made of. Snapping them is also what keeps a circle from being paid for
-   * as a few dozen Béziers.
+   * A detector that only accepts the outermost contour of a region is a demo,
+   * not a feature: the cases it misses are the concentric one (a ring, whose
+   * inner edge is a hole) and the nested one (a disc sitting inside another
+   * colour's disc), which is most of what a logo is made of. Snapping them is
+   * also what keeps a circle from being paid for as a few dozen Béziers.
+   *
+   * The artwork is built here rather than taken from `logo-flat-512.png`,
+   * because that fixture does not contain the contours this check needs: it has
+   * exactly ONE circular *shape*, the ink ring drawn last (both of whose edges
+   * are found — they come out as a single stroked circle, one element for two
+   * contours). Its navy disc is not a circular contour at all — the green bar
+   * is drawn over the bottom of it, so the boundary is a truncated disc, and a
+   * detector that called it a circle would be repainting the picture.
+   * `scripts/generate-fixtures.mjs` draws it that way on purpose; measuring
+   * circle detection there was measuring the wrong artwork.
    */
-  const on = await run(flat, { circleDetection: true });
-  const circles = (on.svg.match(/<(circle|ellipse)\b/g) ?? []).length;
+  const image = drawCircleArtwork();
+  const on = await run(image, { circleDetection: true });
+  const off = await run(image, { circleDetection: false });
+  const circles = [...on.svg.matchAll(/<(?:circle|ellipse)\b[^>]*>/g)].map((m) => m[0]);
   assert.ok(
-    circles >= 3,
-    `${circles} circular element(s) for three circular contours (ring outer edge, ring inner ` +
-      'edge, navy disc) — concentric and filled circles are not being recognised',
+    circles.length >= 3,
+    `${circles.length} circular element(s) for a plain disc, a ring and a disc nested in a ` +
+      `second ring — concentric and nested circles are not being recognised:\n${on.svg.slice(0, 400)}`,
+  );
+  // The ring cases prove the *hole* was recognised too: a stroked circle is
+  // what an outer circle plus a concentric circular hole collapses into.
+  assert.ok(
+    circles.filter((c) => c.includes('stroke-width=')).length >= 2,
+    `only ${circles.filter((c) => c.includes('stroke-width=')).length} of the two annuli came ` +
+      'out as stroked circles — an inner (hole) contour is not being detected',
+  );
+  assert.ok(
+    countSubPaths(on.svg) < countSubPaths(off.svg),
+    'snapping a circle must cost fewer sub-paths than fitting Béziers round it',
   );
 });
+
+/**
+ * 512x256 of flat artwork whose every shape boundary is exactly circular, drawn
+ * without antialiasing so the contours are exact:
+ *   - a filled navy disc (the plain case),
+ *   - an ink ring on paper (concentric: outer edge + circular hole),
+ *   - an orange disc inside a green disc (nested: the green layer is a ring
+ *     whose hole is a different colour's outer edge).
+ */
+function drawCircleArtwork() {
+  const width = 512;
+  const height = 256;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const put = (x, y, [r, g, b]) => {
+    const i = (y * width + x) * 4;
+    data[i] = r;
+    data[i + 1] = g;
+    data[i + 2] = b;
+    data[i + 3] = 255;
+  };
+  const paper = [242, 239, 230];
+  const navy = [27, 58, 92];
+  const ink = [43, 43, 43];
+  const green = [46, 158, 91];
+  const orange = [228, 87, 46];
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) put(x, y, paper);
+  const disc = (cx, cy, radius, color) => {
+    for (let y = Math.max(0, cy - radius); y <= Math.min(height - 1, cy + radius); y++) {
+      for (let x = Math.max(0, cx - radius); x <= Math.min(width - 1, cx + radius); x++) {
+        const dx = x + 0.5 - cx;
+        const dy = y + 0.5 - cy;
+        if (dx * dx + dy * dy <= radius * radius) put(x, y, color);
+      }
+    }
+  };
+  disc(100, 128, 62, navy);
+  disc(256, 128, 70, ink);
+  disc(256, 128, 45, paper);
+  disc(412, 128, 70, green);
+  disc(412, 128, 40, orange);
+  return { width, height, data };
+}
 
 // --- B6: result styles ------------------------------------------------------
 
