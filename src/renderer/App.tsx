@@ -1292,7 +1292,7 @@ export function App() {
               <span className="settings-summary">{summaryOf(selected)}</span>
             </div>
 
-            <div className="settings-column is-colors">
+            <div className="settings-column is-input-colors">
               <div className="panel-title">Input palette</div>
               <div className="palette-sizes" role="radiogroup" aria-label="Candidate palettes">
                 {PALETTE_SIZES.map((size) => (
@@ -1406,7 +1406,9 @@ export function App() {
                   </button>
                 </div>
               </div>
+            </div>
 
+            <div className="settings-column is-output-colors">
               {/* REFERENCE B3 — output colour groups. */}
               <div data-testid={TESTIDS.colorGroups} className="color-groups">
                 <div className="panel-title">Output colours</div>
