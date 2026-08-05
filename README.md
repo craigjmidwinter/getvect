@@ -2,7 +2,9 @@
 
 <img src="docs/assets/fox-mascot.png" alt="The GetVect fox" width="180">
 
-# GetVect
+<img src="docs/assets/getvect-wordmark.svg" alt="GetVect" width="420">
+
+<br>
 
 **Raster → vector, entirely on your machine.**
 
@@ -246,4 +248,6 @@ Tracing builds on [imagetracerjs](https://github.com/jankovicsandras/imagetracer
 (Unlicense) for boundary extraction; curve fitting, colour handling and every exporter are
 this project's own. The test harness uses [sharp](https://github.com/lovell/sharp) and
 [resvg-js](https://github.com/yisibl/resvg-js). The fox mascot is original artwork
-generated for this project and is MIT-licensed along with the rest of the repo.
+generated for this project and is MIT-licensed along with the rest of the repo. The
+wordmark is set in [Sedgwick Ave Display](https://fonts.google.com/specimen/Sedgwick+Ave+Display)
+(SIL Open Font License), shipped as converted outlines in `docs/assets/getvect-wordmark.svg`.
