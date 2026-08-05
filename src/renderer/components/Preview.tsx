@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { TESTIDS } from '../../shared/testids';
 
 /**
@@ -10,14 +10,26 @@ import { TESTIDS } from '../../shared/testids';
  * `data-zoom` / `data-pan-x` / `data-pan-y` (docs/TESTIDS.md C).
  *
  * Geometry: each view is an `overflow:hidden` window with an absolutely
- * positioned anchor at its centre. The stage hanging off that anchor is exactly
- * image-sized and transformed with
+ * positioned anchor at its centre. The stage hanging off that anchor is
+ * *laid out* at `zoom x imageSize` and translated by
  *
- *     scale(zoom) translate(pan - imageSize / 2)
+ *     translate(zoom * (pan - imageSize / 2))
  *
  * so `pan` is measured in *image pixels* (the unit docs/TESTIDS.md requires for
  * `pan-state`) and zooming keeps the pane centre fixed. Nothing here depends on
  * the view's own pixel size, so the two views cannot drift apart.
+ *
+ * WHY LAYOUT SIZE AND NOT `transform: scale()`
+ * --------------------------------------------
+ * This used to be `scale(zoom) translate(...)` on an image-sized stage, which
+ * is geometrically the same picture and visually a different product: Chromium
+ * rasterizes a scaled layer ONCE at its layout size and then stretches that
+ * texture on the GPU. The live `<svg>` in the vector view was therefore shown
+ * as an upscaled bitmap — at 258% the "vector" pane was exactly as soft as the
+ * raster next to it, which defeats the one comparison the app exists to make.
+ *
+ * Changing the *layout* size instead forces Chromium to re-rasterize the SVG at
+ * the new size, i.e. at device resolution, so curves stay curves at every zoom.
  */
 
 export type PreviewMode = 'original' | 'vector' | 'side-by-side';
@@ -50,6 +62,60 @@ interface PreviewProps {
 
 /** Attribute-safe number formatting — both views must emit identical strings. */
 export const fmt = (n: number): string => String(Math.round(n * 1e6) / 1e6);
+
+/**
+ * Above this zoom the ORIGINAL view stops smoothing and shows its true pixels
+ * (`image-rendering: pixelated`).
+ *
+ * The side-by-side exists to say "pixels vs curves", and browser bilinear
+ * smoothing quietly argues the opposite: it makes the source look like it has
+ * detail it does not have, so the honest half of the comparison is the one that
+ * flatters the input. Past 2x every source pixel covers a 2x2 block or more,
+ * which is the point at which the smoothing is inventing more than it is
+ * showing — and it is also where the smeared version stops reading as "detail"
+ * and starts reading as "out of focus".
+ *
+ * Below the threshold the default stays: `pixelated` at 100% is not a truer
+ * picture, it is the same picture with nearest-neighbour resampling artefacts,
+ * and at Fit (typically < 100%) it looks plainly broken.
+ */
+const PIXELATE_ABOVE_ZOOM = 2;
+
+/**
+ * Layout ceiling for the stage, per axis, in CSS pixels.
+ *
+ * A layout box beyond this is where Chromium's raster tiling starts to give up
+ * (blank tiles, dropped content), so past it the residual is taken as a
+ * transform again: 40x on a 1024px image is a magnifier for looking at one
+ * corner, not a crispness comparison, and MAX_ZOOM is 64.
+ */
+const MAX_STAGE_PX = 16_384;
+
+/**
+ * The zoom the stage is currently *laid out* at, which lags `zoom` by at most
+ * one frame.
+ *
+ * Re-laying-out a few thousand `<path>`s is not free, and a wheel gesture
+ * changes the zoom on every event. Committing the layout size on a rAF
+ * coalesces a burst into one relayout per frame, and the residual
+ * `zoom / layoutZoom` scale (below) keeps the picture geometrically exact in
+ * the meantime — so a fast gesture may show a stretched texture for a frame or
+ * two, and the resting state is always freshly rasterized. Tests can wait on
+ * `data-render-zoom === data-zoom` rather than guessing (docs/TESTIDS.md C).
+ */
+function useLayoutZoom(target: number): number {
+  const [layoutZoom, setLayoutZoom] = useState(target);
+  useEffect(() => {
+    if (layoutZoom === target) return;
+    if (typeof requestAnimationFrame !== 'function') {
+      setLayoutZoom(target);
+      return;
+    }
+    const handle = requestAnimationFrame(() => setLayoutZoom(target));
+    return () => cancelAnimationFrame(handle);
+  }, [target, layoutZoom]);
+  return layoutZoom;
+}
 
 export function Preview({
   mode,
@@ -119,22 +185,44 @@ export function Preview({
     };
   }, [onPanBy]);
 
+  /**
+   * How big the stage may be laid out. Below the ceiling this is simply `zoom`,
+   * so the residual scale is exactly 1 and nothing is stretched.
+   */
+  const targetLayoutZoom = image
+    ? Math.min(zoom, MAX_STAGE_PX / Math.max(image.width, image.height))
+    : zoom;
+  const layoutZoom = useLayoutZoom(targetLayoutZoom);
+  const residual = layoutZoom > 0 ? zoom / layoutZoom : 1;
+
   const viewAttrs = {
     'data-zoom': fmt(zoom),
     'data-pan-x': fmt(pan.x),
     'data-pan-y': fmt(pan.y),
+    /** The zoom the stage is rasterized at; equals `data-zoom` at rest. */
+    'data-render-zoom': fmt(layoutZoom),
   } as const;
 
+  /**
+   * `translate` then `scale`: a point p (image px) lands at
+   * `zoom * (p + pan - size/2)` either way, but the scale is 1 at rest, so the
+   * stage is a plain translated box at its true size and the SVG inside it
+   * rasterizes at device resolution.
+   */
   const stageStyle: CSSProperties = image
     ? {
-        width: `${image.width}px`,
-        height: `${image.height}px`,
-        transform: `scale(${zoom}) translate(${pan.x - image.width / 2}px, ${pan.y - image.height / 2}px)`,
+        width: `${image.width * layoutZoom}px`,
+        height: `${image.height * layoutZoom}px`,
+        transform:
+          `translate(${zoom * (pan.x - image.width / 2)}px, ${zoom * (pan.y - image.height / 2)}px)` +
+          (residual === 1 ? '' : ` scale(${residual})`),
       }
     : {};
 
   const showOriginal = mode === 'original' || mode === 'side-by-side';
   const showVector = mode === 'vector' || mode === 'side-by-side';
+  /** See PIXELATE_ABOVE_ZOOM: past 2x the source shows its pixels, not a blur. */
+  const pixelated = image != null && zoom > PIXELATE_ABOVE_ZOOM;
 
   return (
     <div
@@ -149,11 +237,18 @@ export function Preview({
         testid={TESTIDS.previewOriginal}
         label="Original"
         hidden={!showOriginal}
-        attrs={viewAttrs}
+        attrs={{ ...viewAttrs, 'data-pixelated': String(pixelated) }}
         stageStyle={stageStyle}
       >
         {image ? (
-          <img className="raster" src={image.url} width={image.width} height={image.height} alt="" draggable={false} />
+          <img
+            className="raster"
+            src={image.url}
+            width={image.width}
+            height={image.height}
+            alt=""
+            draggable={false}
+          />
         ) : null}
       </View>
       <View
