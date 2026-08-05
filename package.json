@@ -38,7 +38,7 @@
     "dev": "node scripts/dev.mjs",
     "fixtures": "node scripts/generate-fixtures.mjs",
     "pretest": "npm run build",
-    "test": "node --test tests/engine/*.test.mjs && playwright test",
+    "test": "node scripts/run-tests.mjs",
     "pretest:engine": "npm run build:node",
     "test:engine": "node --test tests/engine/*.test.mjs",
     "test:headed": "playwright test --headed",

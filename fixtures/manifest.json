@@ -156,20 +156,66 @@
         "enhance": true
       },
       "exemplar": "reference/artwork.svg",
+      "salientRegion": {
+        "x": 300,
+        "y": 200,
+        "width": 360,
+        "height": 200
+      },
       "thresholds": {
         "meanColorError": 7,
         "ssim": 0.9,
         "minInkRecall": 0.94,
+        "minRegionInkRecall": 0.93,
+        "maxMeanColorErrorRatio": 1,
+        "minDxfSplines": 1,
+        "maxDxfEpsBytesRatio": 3,
         "maxTransparentAreaColorError": 8,
         "maxPathRatio": 3,
         "maxSubPathRatio": 3,
         "maxBytesRatio": 5,
         "maxTinySubPathRatio": 0.02,
         "minCurveCommandRatio": 0.5,
-        "maxNearDuplicateFills": 4,
+        "maxNearDuplicateFills": 0,
         "maxMs": 10000
       },
       "note": "Gold-standard exemplar (REFERENCE \"blind A/B\"). Judged at 16 colours + enhance, the settings the captured output corresponds to (fixtures/reference/OBSERVED-UI.md records Smart anti-aliasing and Enhance on; our Enhance bundles that same cleanup). It anchors ECONOMY (paths/sub-paths/bytes/curve ratio); fidelity is gated absolutely here and relatively in reference-artwork-6c."
+    },
+    {
+      "id": "reference-artwork-noenhance",
+      "file": "reference/artwork.png",
+      "kind": "clipart",
+      "format": "png",
+      "width": 1046,
+      "height": 833,
+      "supported": true,
+      "distinctColors": null,
+      "settings": {
+        "colorCount": 16,
+        "enhance": false
+      },
+      "exemplar": "reference/artwork.svg",
+      "salientRegion": {
+        "x": 300,
+        "y": 200,
+        "width": 360,
+        "height": 200
+      },
+      "thresholds": {
+        "meanColorError": 7,
+        "ssim": 0.9,
+        "minInkRecall": 0.92,
+        "minRegionInkRecall": 0.9,
+        "maxMeanColorErrorRatio": 1,
+        "maxTransparentAreaColorError": 8,
+        "maxBytesRatio": 8,
+        "maxSubPathRatio": 12,
+        "maxPathRatio": 3,
+        "maxTinySubPathRatio": 0.02,
+        "minCurveCommandRatio": 0.5,
+        "maxMs": 10000
+      },
+      "note": "REFERENCE economy at the DEFAULT quality settings (Enhance off), which no other exemplar gate covers. Looser ratios than reference-artwork on purpose — the point is that the out-of-the-box configuration is measured at all, not that it matches a run with every cleanup on."
     },
     {
       "id": "reference-artwork-6c",

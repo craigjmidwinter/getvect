@@ -17,13 +17,15 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Resvg } from '@resvg/resvg-js';
 
-import { decodeImageFile, flattenOnWhite } from '../../instruments/lib/decode.mjs';
+import { canvasIngest, decodeImageFile, flattenOnWhite } from '../../instruments/lib/decode.mjs';
 import {
   countCubics,
   countSubPaths,
+  cropRegion,
   curveCommandRatio,
   inkRecall,
   meanColorError,
+  nearDuplicateFillPairs,
   perColorCoverageDelta,
   pixelMismatchRatio,
   svgStructure,
@@ -36,12 +38,25 @@ const engine = require(join(root, 'dist/engine/index.js'));
 const fixture = (name) => join(root, 'fixtures', name);
 
 const load = async (name) => flattenOnWhite(await decodeImageFile(fixture(name)));
+/**
+ * ONE DECODE CONTRACT (docs/HARNESS.md). What the engine is handed is what the
+ * renderer's canvas ingest produces — `(0,0,0,0)` for every transparent pixel —
+ * while fidelity is judged against the same file flattened on white. The
+ * gold-standard source is 33 % transparent, and the difference is not
+ * cosmetic: fed the flattened image the face keeps 0.956 of its ink, fed the
+ * pixels the app actually produces it keeps 0.865. A contract measured on
+ * pixels the product never sees is not a contract.
+ */
+const loadIngest = async (name) => canvasIngest(await decodeImageFile(fixture(name)));
 const S = engine.DEFAULT_SETTINGS;
 
 const flat = await load('logo-flat-512.png');
 const noisy = await load('logo-noisy-512.png');
 const photo = await load('photo-gradient-512x384.jpg');
+/** Judged against (opaque). */
 const artwork = await load('reference/artwork.png');
+/** Handed to the engine (alpha preserved). */
+const artworkIn = await loadIngest('reference/artwork.png');
 
 /** Rasterize an SVG at the given size into the engine's RasterImage shape. */
 function render(svg, width, height) {
@@ -113,7 +128,7 @@ test('[B2] smoothing changes the shape of a curved boundary', async () => {
 });
 
 test('[quality] outlines are curve-fitted, not a pixel staircase', async () => {
-  const r = await engine.vectorize(artwork, { ...S, colorCount: 16, enhance: true });
+  const r = await engine.vectorize(artworkIn, { ...S, colorCount: 16, enhance: true });
   const ratio = curveCommandRatio(r.svg);
   // fixtures/reference/artwork.svg (real the reference product output) scores 0.639.
   assert.ok(
@@ -162,7 +177,7 @@ test('[quality] the gold-standard exemplar is matched on economy and fidelity', 
   // the exemplar's (not thousands of specks), file size within ~5x".
   const exemplar = readFileSync(fixture('reference/artwork.svg'), 'utf8');
   const ex = svgStructure(exemplar);
-  const r = await engine.vectorize(artwork, { ...S, colorCount: 16, enhance: true });
+  const r = await engine.vectorize(artworkIn, { ...S, colorCount: 16, enhance: true });
   const ours = svgStructure(r.svg);
 
   assert.ok(
@@ -187,7 +202,7 @@ test('[quality] hairlines stay unbroken through the cleanup passes', async () =>
    * test deleted them piece by piece and left dashes. MAE and SSIM barely
    * noticed — 0.3 % of the pixels — which is why this is measured separately.
    */
-  const r = await engine.vectorize(artwork, { ...S, colorCount: 16, enhance: true });
+  const r = await engine.vectorize(artworkIn, { ...S, colorCount: 16, enhance: true });
   const recall = inkRecall(artwork, render(r.svg, r.width, r.height));
   assert.ok(
     recall >= 0.94,
@@ -198,7 +213,7 @@ test('[quality] hairlines stay unbroken through the cleanup passes', async () =>
   // Enhance must not be the setting that costs you the linework: with every
   // cleanup off the trace is noisier but keeps everything, and Enhance has to
   // stay in the same class.
-  const raw = await engine.vectorize(artwork, { ...S, colorCount: 16 });
+  const raw = await engine.vectorize(artworkIn, { ...S, colorCount: 16 });
   const rawRecall = inkRecall(artwork, render(raw.svg, raw.width, raw.height));
   assert.ok(
     recall >= rawRecall - 0.03,
@@ -206,10 +221,105 @@ test('[quality] hairlines stay unbroken through the cleanup passes', async () =>
   );
 });
 
+/**
+ * The face of the gold-standard artwork: both eyes, both fangs, the mouth
+ * curve. Same box `fixtures/manifest.json` gives `reference-artwork` as its
+ * `salientRegion`, so the instrument gate and this contract cannot drift.
+ */
+const ARTWORK_FACE = { x: 300, y: 200, width: 360, height: 200 };
+
+test('[B1] the face survives the Enhance bundle, not just the frame average', async () => {
+  /**
+   * A blind A/B against the real product was lost here with every gate green.
+   * Rasterized side by side, ours had a mouth broken into dark blobs, both
+   * white fangs gone (one inverted to a blob) and the right eye swallowed by a
+   * shading wedge, while the real output kept two clean eye arcs, two crisp
+   * fangs and one unbroken mouth. The whole-frame numbers could not see it:
+   * MAE 5.37, SSIM 0.9168, ink recall 0.9421 against a 0.94 floor — because
+   * the face is 8 % of the canvas and every one of those scores is
+   * area-weighted.
+   *
+   * Measured inside the face, the same output scores 0.865 while the SAME
+   * image with Enhance off scores 0.912 and with Enhance off + Smart AA 0.965.
+   * So this is the Enhance bundle eating thin dark line art, not a limit of
+   * the tracer.
+   */
+  const r = await engine.vectorize(artworkIn, { ...S, colorCount: 16, enhance: true });
+  const rendered = render(r.svg, r.width, r.height);
+  const recall = inkRecall(cropRegion(artwork, ARTWORK_FACE), cropRegion(rendered, ARTWORK_FACE));
+  assert.ok(
+    recall >= 0.93,
+    `only ${(recall * 100).toFixed(1)}% of the face's ink survives (eyes, fangs, mouth) — ` +
+      'the whole-frame ink recall cannot see this because the face is 8% of the canvas',
+  );
+
+  // ...and Enhance must not be the reason. Whatever the bundle buys in economy,
+  // it may not cost the salient region more than a point of ink.
+  const raw = await engine.vectorize(artworkIn, { ...S, colorCount: 16 });
+  const rawRecall = inkRecall(
+    cropRegion(artwork, ARTWORK_FACE),
+    cropRegion(render(raw.svg, raw.width, raw.height), ARTWORK_FACE),
+  );
+  assert.ok(
+    recall >= rawRecall - 0.01,
+    `Enhance drops face ink recall from ${rawRecall.toFixed(3)} to ${recall.toFixed(3)} — the ` +
+      'cleanup that buys the economy budget is being paid for out of the face',
+  );
+});
+
+test('[quality] colour layers are distinct colours, not a near-duplicate patchwork', async () => {
+  /**
+   * The real exemplar's eight `<g fill>` layers are never closer than 37 RGB
+   * units apart. Ours emitted rgb(213,202,193) beside rgb(197,186,179) (26.6)
+   * and rgb(94,149,169) beside rgb(115,162,180) (27.0), which renders as
+   * blotchy banding across the belly and arms — recolour one swatch and the
+   * body turns out to be a speckled mosaic of two near-identical creams. The
+   * metric's window was 24 and reported 0; it is 32 now, and this is the
+   * contract that keeps it honest.
+   */
+  const r = await engine.vectorize(artworkIn, { ...S, colorCount: 16, enhance: true });
+  const pairs = nearDuplicateFillPairs(r.svg);
+  const exemplar = nearDuplicateFillPairs(readFileSync(fixture('reference/artwork.svg'), 'utf8'));
+  assert.equal(exemplar, 0, 'the exemplar itself must have no near-duplicate layers');
+  assert.equal(
+    pairs,
+    0,
+    `${pairs} pair(s) of colour layers within 32 RGB units — layers that close are one region ` +
+      'split into a patchwork, not two colours a user asked for',
+  );
+});
+
+test('[quality] the DEFAULT quality settings stay in the exemplar economy class', async () => {
+  /**
+   * Every exemplar gate runs at `enhance: true`, so the configuration a user
+   * gets out of the box was never measured: at 16 colours with Enhance off the
+   * output is 396 KB / 1747 sub-paths against the exemplar's 31 KB / 65 — 13x
+   * bytes, 27x shapes. The limits below are much looser than the enhance-on
+   * 5x/3x, and still well inside what the engine has been measured doing:
+   * Smart anti-aliasing alone (no Enhance) reaches 5.3x / 9.3x. The real
+   * product's own measured effect for that control is -81 % path count
+   * (fixtures/reference/OBSERVED-UI.md).
+   */
+  const exemplar = svgStructure(readFileSync(fixture('reference/artwork.svg'), 'utf8'));
+  const r = await engine.vectorize(artworkIn, { ...S, colorCount: 16 });
+  const ours = svgStructure(r.svg);
+  assert.ok(
+    ours.subPathCount <= exemplar.subPathCount * 12,
+    `${ours.subPathCount} shapes vs the exemplar's ${exemplar.subPathCount} ` +
+      `(${(ours.subPathCount / exemplar.subPathCount).toFixed(1)}x, limit 12x) at the default ` +
+      'quality settings',
+  );
+  assert.ok(
+    ours.bytes <= exemplar.bytes * 8,
+    `${(ours.bytes / 1024).toFixed(0)} KB vs the exemplar's ${(exemplar.bytes / 1024).toFixed(0)} KB ` +
+      `(${(ours.bytes / exemplar.bytes).toFixed(1)}x, limit 8x) at the default quality settings`,
+  );
+});
+
 test('[quality] the black outline survives a small colour budget', async () => {
   // At 6 colours the real product keeps artwork's black outline; a plain
   // coverage-ranked palette loses it into dark teal and the drawing falls apart.
-  const r = await engine.vectorize(artwork, { ...S, colorCount: 6, enhance: true });
+  const r = await engine.vectorize(artworkIn, { ...S, colorCount: 6, enhance: true });
   const darkest = r.palette
     .map((c) => 0.299 * c.r + 0.587 * c.g + 0.114 * c.b)
     .reduce((a, b) => Math.min(a, b), 255);

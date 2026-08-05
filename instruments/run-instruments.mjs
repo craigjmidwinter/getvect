@@ -22,6 +22,8 @@
  *   artifacts/vector/<id>.svg       the engine's output
  *   artifacts/raster/<id>.png       that SVG re-rasterized at source size
  *   artifacts/diff/<id>.png         amplified absolute difference
+ *   artifacts/region/<id>.png       the salient-region crop of the re-raster,
+ *                                   for fixtures that declare `salientRegion`
  *   stdout                          human-readable table
  *
  * Exit codes: 0 all measured fixtures pass · 1 a measured fixture missed a
@@ -37,6 +39,7 @@ import { Resvg } from '@resvg/resvg-js';
 import { canvasIngest, decodeImageFile, flattenOnWhite, transparentRatio } from './lib/decode.mjs';
 import {
   alphaMask,
+  cropRegion,
   inkRecall,
   maskedMeanColorError,
   meanColorError,
@@ -101,6 +104,47 @@ async function rasterizeSvg(svg, width, height) {
   };
 }
 
+/**
+ * Rasterize an exemplar SVG **from its own content**, not from its declared
+ * viewBox.
+ *
+ * `fixtures/reference/artwork.svg` declares an 11520x9280 viewBox and draws its
+ * artwork in the top-left quarter of it. Rasterizing that box against the
+ * source scored the real product a mean colour error of 63.55 — worse than any
+ * plausible output of ours — so `exemplarMeanColorErrorRatio` was ~0.08 for
+ * everything and the fidelity half of the A/B gate measured nothing. Rendering
+ * at 2x, trimming the uniform border and resizing to the source is the
+ * comparison a critic makes by hand: the same exemplar then scores MAE 13.50 /
+ * SSIM 0.886 / ink recall 0.973, which is a number worth being measured against.
+ */
+async function rasterizeExemplarContent(svg, width, height) {
+  const big = new Resvg(svg, {
+    fitTo: { mode: 'width', value: width * 2 },
+    background: 'white',
+    font: { loadSystemFonts: false },
+  })
+    .render()
+    .asPng();
+  // `trim` removes a uniform border; on an exemplar that already fills its
+  // frame it is a no-op, so this is safe for every exemplar we ship.
+  const trimmed = await sharp(big).flatten({ background: '#fff' }).trim({ threshold: 10 }).toBuffer();
+  const meta = await sharp(trimmed).metadata();
+  const { data, info } = await sharp(trimmed)
+    .resize(width, height, { fit: 'fill' })
+    .flatten({ background: '#fff' })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  return {
+    contentBox: { width: meta.width, height: meta.height },
+    image: {
+      width: info.width,
+      height: info.height,
+      data: new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength),
+    },
+  };
+}
+
 async function writeDiff(a, b, file, amplify = 4) {
   const out = Buffer.alloc(a.width * a.height * 3);
   for (let i = 0, o = 0; i < a.data.length; i += 4, o += 3) {
@@ -135,6 +179,16 @@ const GATES = [
   // the alpha-0 background opaque (the black-rectangle blocker) scores ~255
   // here while MAE/SSIM over the whole frame can still look survivable.
   ['maxTransparentAreaColorError', 'transparentAreaColorError', 'max', (v) => v.toFixed(2)],
+  // The salient region (fixture `salientRegion`). Whole-frame scores are
+  // area-weighted and cannot see a destroyed face; these are the same numbers
+  // computed inside the crop that carries the meaning.
+  ['minRegionInkRecall', 'regionInkRecall', 'min', (v) => v.toFixed(4)],
+  ['maxRegionMeanColorError', 'regionMeanColorError', 'max', (v) => v.toFixed(2)],
+  ['minRegionSsim', 'regionSsim', 'min', (v) => v.toFixed(4)],
+  // D3: the DXF must carry the curves the SVG paid for, and must not balloon
+  // past the EPS of the same drawing by flattening them into vertex runs.
+  ['minDxfSplines', 'dxfSplineCount', 'min', String],
+  ['maxDxfEpsBytesRatio', 'dxfEpsBytesRatio', 'max', (v) => `${v.toFixed(2)}x`],
   ['maxBytes', 'svgBytes', 'max', String],
   ['maxMs', 'wallClockMs', 'max', (v) => v.toFixed(0)],
   // Relative to the gold-standard exemplar (REFERENCE lines 80-83).
@@ -175,6 +229,9 @@ function table(rows) {
     ['tiny%', (r) => fmt(r.metrics ? r.metrics.tinySubPathRatio * 100 : null, 1), 6],
     ['curve', (r) => fmt(r.metrics?.curveCommandRatio, 3), 6],
     ['ink', (r) => fmt(r.metrics?.inkRecall, 3), 6],
+    // Ink recall inside the fixture's salient region, when it declares one —
+    // the number that catches a destroyed face behind a green whole-frame score.
+    ['rgnInk', (r) => fmt(r.metrics?.regionInkRecall, 3), 6],
     ['SVG KB', (r) => fmt(r.metrics ? r.metrics.svgBytes / 1024 : null, 1), 8],
     ['ms', (r) => fmt(r.metrics?.wallClockMs, 0), 6],
   ];
@@ -188,7 +245,7 @@ async function main() {
   const manifest = JSON.parse(await fs.readFile(join(fixturesDir, 'manifest.json'), 'utf8'));
   const engine = await loadEngine();
 
-  for (const sub of ['vector', 'raster', 'diff']) {
+  for (const sub of ['vector', 'raster', 'diff', 'region']) {
     await fs.mkdir(join(artifactsDir, sub), { recursive: true });
   }
 
@@ -204,23 +261,36 @@ async function main() {
    * fixtures/reference/) the same way we measure ours, so the comparison
    * REFERENCE lines 80-83 asks for is a number instead of an eyeball.
    */
-  async function measureExemplar(relPath, source) {
-    if (exemplarCache.has(relPath)) return exemplarCache.get(relPath);
+  async function measureExemplar(relPath, source, region) {
+    const cacheKey = `${relPath}::${region ? JSON.stringify(region) : ''}`;
+    if (exemplarCache.has(cacheKey)) return exemplarCache.get(cacheKey);
     let measured = null;
     try {
       const svg = await fs.readFile(join(fixturesDir, relPath), 'utf8');
-      const rendered = await rasterizeSvg(svg, source.width, source.height);
-      const traced = flattenOnWhite(rendered.image);
+      // Straight viewBox rasterization, kept for context only — it is what the
+      // gate used to be scored on and it is meaningless for an exemplar whose
+      // artwork does not fill its declared viewBox.
+      const asDeclared = flattenOnWhite(
+        (await rasterizeSvg(svg, source.width, source.height)).image,
+      );
+      const fair = await rasterizeExemplarContent(svg, source.width, source.height);
+      const traced = fair.image;
       measured = {
         file: relPath,
         ...svgStructure(svg),
+        contentBox: fair.contentBox,
         meanColorError: meanColorError(source, traced),
         ssim: ssim(source, traced),
+        inkRecall: inkRecall(source, traced),
+        meanColorErrorAsDeclared: meanColorError(source, asDeclared),
+        regionInkRecall: region
+          ? inkRecall(cropRegion(source, region), cropRegion(traced, region))
+          : null,
       };
     } catch (err) {
       measured = { file: relPath, error: err.message };
     }
-    exemplarCache.set(relPath, measured);
+    exemplarCache.set(cacheKey, measured);
     return measured;
   }
 
@@ -371,9 +441,53 @@ async function main() {
       engineReportedMs: typeof result.durationMs === 'number' ? result.durationMs : null,
     };
 
+    /**
+     * The salient region. REFERENCE's blind A/B is lost or won on the part of
+     * the picture a person looks at, and every whole-frame number here is
+     * area-weighted: the gold-standard face is 8 % of the canvas, so losing the
+     * mouth and both fangs moved `inkRecall` by 0.03 and MAE by 1.5 while every
+     * gate stayed green. Same metrics, computed inside the crop.
+     */
+    const region = fixture.salientRegion ?? null;
+    if (region) {
+      const refRegion = cropRegion(reference, region);
+      const outRegion = cropRegion(traced, region);
+      metrics.salientRegion = region;
+      metrics.regionInkRecall = inkRecall(refRegion, outRegion);
+      metrics.regionMeanColorError = meanColorError(refRegion, outRegion);
+      metrics.regionSsim = ssim(refRegion, outRegion);
+      await sharp(Buffer.from(outRegion.data.buffer, outRegion.data.byteOffset, outRegion.data.byteLength), {
+        raw: { width: outRegion.width, height: outRegion.height, channels: 4 },
+      })
+        .png()
+        .toFile(join(artifactsDir, 'region', `${fixture.id}.png`));
+    }
+
+    /**
+     * D3/D2 structure. Computed only for fixtures that gate it, because the
+     * converters serialize the whole drawing and the photo fixture's DXF is
+     * tens of megabytes of geometry nobody reads.
+     */
+    const gatesExports =
+      fixture.thresholds?.minDxfSplines != null || fixture.thresholds?.maxDxfEpsBytesRatio != null;
+    if (gatesExports && typeof engine.toDxf === 'function' && typeof engine.toEps === 'function') {
+      try {
+        const dxf = engine.toDxf(result);
+        const eps = engine.toEps(result);
+        metrics.dxfBytes = Buffer.byteLength(dxf, 'utf8');
+        metrics.epsBytes = Buffer.byteLength(eps, 'utf8');
+        metrics.dxfSplineCount = (dxf.match(/\n\s*0\nSPLINE\b/g) ?? []).length;
+        metrics.dxfVertexCount = (dxf.match(/\n\s*0\nVERTEX\b/g) ?? []).length;
+        metrics.epsCurveCount = (eps.match(/\bcurveto\b/g) ?? []).length;
+        metrics.dxfEpsBytesRatio = metrics.dxfBytes / Math.max(1, metrics.epsBytes);
+      } catch (err) {
+        metrics.exportError = err.message;
+      }
+    }
+
     let exemplar = null;
     if (fixture.exemplar) {
-      exemplar = await measureExemplar(fixture.exemplar, source);
+      exemplar = await measureExemplar(fixture.exemplar, source, region);
       if (!exemplar.error) {
         metrics.exemplarBytesRatio = metrics.svgBytes / exemplar.bytes;
         metrics.exemplarSubPathRatio = metrics.subPathCount / Math.max(1, exemplar.subPathCount);
@@ -381,6 +495,14 @@ async function main() {
         metrics.exemplarMeanColorErrorRatio =
           metrics.meanColorError / Math.max(0.01, exemplar.meanColorError);
         metrics.exemplarCurveCommandRatio = exemplar.curveCommandRatio;
+        metrics.exemplarInkRecall = exemplar.inkRecall;
+        if (region && exemplar.regionInkRecall != null) {
+          metrics.exemplarRegionInkRecall = exemplar.regionInkRecall;
+          // < 1 means the real product renders the salient region better than
+          // we do — the blind A/B, as one number.
+          metrics.regionInkRecallRatio =
+            metrics.regionInkRecall / Math.max(0.01, exemplar.regionInkRecall);
+        }
       }
     }
 
@@ -427,7 +549,27 @@ async function main() {
           `subpaths ${fmt(r.metrics.exemplarSubPathRatio)}x (${r.metrics.subPathCount} vs ${e.subPathCount}), ` +
           `paths ${fmt(r.metrics.exemplarPathRatio)}x (${r.metrics.pathCount} vs ${e.pathCount}), ` +
           `curve ratio ${fmt(r.metrics.curveCommandRatio, 3)} vs ${fmt(e.curveCommandRatio, 3)}, ` +
-          `MAE ${fmt(r.metrics.meanColorError)} vs ${fmt(e.meanColorError)}`,
+          `MAE ${fmt(r.metrics.meanColorError)} vs ${fmt(e.meanColorError)} ` +
+          `(exemplar rasterized from its ${e.contentBox?.width}x${e.contentBox?.height} content box)`,
+      );
+    }
+    if (r.metrics?.regionInkRecall != null) {
+      const box = r.metrics.salientRegion;
+      console.log(
+        `  ${r.id}: salient region ${box.width}x${box.height}@${box.x},${box.y} — ` +
+          `ink ${fmt(r.metrics.regionInkRecall, 4)}` +
+          (r.metrics.exemplarRegionInkRecall != null
+            ? ` vs exemplar ${fmt(r.metrics.exemplarRegionInkRecall, 4)} (${fmt(r.metrics.regionInkRecallRatio)}x)`
+            : '') +
+          `, MAE ${fmt(r.metrics.regionMeanColorError)}, SSIM ${fmt(r.metrics.regionSsim, 4)}`,
+      );
+    }
+    if (r.metrics?.dxfBytes != null) {
+      console.log(
+        `  ${r.id}: exports — DXF ${fmt(r.metrics.dxfBytes / 1024, 1)} KB ` +
+          `(${r.metrics.dxfSplineCount} SPLINE, ${r.metrics.dxfVertexCount} VERTEX) vs ` +
+          `EPS ${fmt(r.metrics.epsBytes / 1024, 1)} KB (${r.metrics.epsCurveCount} curveto) — ` +
+          `${fmt(r.metrics.dxfEpsBytesRatio)}x`,
       );
     }
     if (r.metrics?.sourceTransparentRatio > 0) {

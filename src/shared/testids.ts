@@ -72,6 +72,7 @@ export const TESTIDS = {
   previewPane: 'preview-pane', // + data-mode original|vector|side-by-side
   previewOriginal: 'preview-original',
   previewVector: 'preview-vector', // contains the live <svg>
+  previewViewLabel: 'preview-view-label', // ORIGINAL / VECTOR corner badge, one per view
   previewToggle: 'preview-toggle',
   previewSideBySide: 'preview-side-by-side',
   zoomIn: 'zoom-in',
