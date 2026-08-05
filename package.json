@@ -37,6 +37,7 @@
     "start": "npm run build && electron .",
     "dev": "node scripts/dev.mjs",
     "fixtures": "node scripts/generate-fixtures.mjs",
+    "assets": "npm run build:node && node scripts/regenerate-derived-assets.mjs",
     "pretest": "npm run build",
     "test": "node scripts/run-tests.mjs",
     "pretest:engine": "npm run build:node",
