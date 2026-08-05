@@ -2,6 +2,8 @@
 node_modules/
 dist/
 .vite/
+# electron-builder output: GetVect.app, the dmg and the zip (npm run dist)
+release/
 
 # generated, fully reproducible from the scripts (see docs/HARNESS.md)
 artifacts/

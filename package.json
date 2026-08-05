@@ -2,7 +2,7 @@
   "name": "getvect",
   "version": "0.1.0",
   "private": true,
-  "description": "Local, offline desktop raster-to-vector app \u2014 PNG/JPEG/BMP to SVG/EPS/DXF/PDF/PNG. No account, no credits, no upload.",
+  "description": "Local, offline desktop raster-to-vector app — PNG/JPEG/BMP to SVG/EPS/DXF/PDF/PNG. No account, no credits, no upload.",
   "keywords": [
     "vectorize",
     "vectorizer",
@@ -45,7 +45,8 @@
     "instruments": "npm run build:node && node instruments/run-instruments.mjs",
     "instruments:selftest": "node instruments/run-instruments.mjs --engine=instruments/reference-engine.mjs --out=artifacts/metrics-selftest.json --tag=selftest",
     "screenshots": "npm run build && node instruments/run-screenshots.mjs",
-    "docs:screenshots": "npm run build && node scripts/docs-screenshots.mjs"
+    "docs:screenshots": "npm run build && node scripts/docs-screenshots.mjs",
+    "dist": "electron-builder"
   },
   "devDependencies": {
     "@playwright/test": "^1.47.2",
@@ -54,6 +55,7 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "electron": "^43.3.0",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.5.4",
     "vite": "^5.4.2"
   },
