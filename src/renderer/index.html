@@ -13,6 +13,16 @@
       content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' data: blob:"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- The UI is dark-only (src/renderer/styles.css); say so before first paint
+         so form controls and scrollbars are not rendered light for a frame. -->
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="GetVect — local, offline raster-to-vector. PNG, JPEG and BMP in; SVG, EPS, DXF, PDF and PNG out. No account, no credits, no upload."
+    />
+    <!-- Relative so Vite fingerprints it into dist/renderer/assets/ and the
+         file:// load in the packaged app still resolves it. -->
+    <link rel="icon" type="image/png" sizes="32x32" href="./favicon.png" />
     <title>GetVect</title>
   </head>
   <body>
