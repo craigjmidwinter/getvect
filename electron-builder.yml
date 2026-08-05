@@ -13,6 +13,38 @@ appId: com.craigmidwinter.getvect
 productName: GetVect
 copyright: © 2026 Craig Midwinter
 
+# Where `npm run dist -- --publish always` uploads, and — via the app-update.yml
+# electron-builder writes into the bundle's resources — where the shipped app
+# looks for `latest-mac.yml` when it checks for updates once per launch
+# (src/main/updater.ts).
+#
+# `releaseType: draft` is load-bearing. electron-builder creates the release,
+# then uploads the dmg, the zip and latest-mac.yml one at a time; a release that
+# went public at step one would be the newest release on GitHub — and therefore
+# what the site's Download button resolves to — while it was still missing its
+# assets. The release workflow un-drafts it as its last step, after every asset
+# is up (.github/workflows/release.yml).
+publish:
+  provider: github
+  owner: craigjmidwinter
+  repo: getvect
+  releaseType: draft
+
+# THE FLIP-TO-AUTO SWITCH, and the only thing that has to change when a
+# Developer ID certificate lands.
+#
+# electron-builder copies `extraMetadata` into the packaged package.json, so
+# this is a property of the *build*, not of the source: the same commit can
+# produce a signed `auto` build and an unsigned `notify` one. The app reads it
+# at startup (`readUpdateMode` in src/main/updater.ts).
+#
+# It says `notify` because Squirrel.Mac refuses to install an update it cannot
+# validate against the running app's signature, and this app is unsigned. An
+# `auto` build here today would download ~150 MB on every launch and fail at the
+# last step, forever. See src/shared/update.ts.
+extraMetadata:
+  updateMode: notify
+
 directories:
   buildResources: build
   output: release
@@ -24,6 +56,13 @@ directories:
 # harness-only; see PUBLISH-CHECKLIST.md "Dependency licence hygiene") out of
 # the distributed bundle. Sourcemaps and .d.ts files are build artefacts of the
 # TypeScript step, not runtime inputs.
+#
+# The one runtime dependency that is not `electron` — electron-updater — obeys
+# the same rule rather than earning an exception to it: `scripts/bundle-updater.mjs`
+# compiles it and its sixteen transitive packages into
+# `dist/main/vendor/electron-updater.js`, which the `dist/**/*` line below
+# already ships. No allowlist to keep in sync, and exactly one readable file of
+# vendored third-party code in the app.
 files:
   - dist/**/*
   - package.json
