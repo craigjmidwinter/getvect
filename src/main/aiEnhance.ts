@@ -93,7 +93,11 @@ export interface EnhanceRequest {
 
 export interface EnhanceProvider {
   readonly id: EnhanceProviderId;
-  /** Re-illustrate `image`, returning PNG bytes. Throws `EnhanceError`. */
+  /**
+   * Re-illustrate `image`, returning encoded image bytes in whatever format the
+   * provider chose — `runEnhance` sniffs the type; it is not the provider's job
+   * to promise one. Throws `EnhanceError`.
+   */
   enhance(request: EnhanceRequest): Promise<Uint8Array>;
 }
 
@@ -596,10 +600,19 @@ async function loadKey(id: EnhanceProviderId): Promise<StoredKey> {
  * what `ENHANCE_TIMEOUT_MS` is for.
  */
 /**
- * Opt-in debugging: when GETVECT_AI_DEBUG_DIR is set, every successful enhance
- * writes its exact input, output and a small metadata file there so a bad
- * result can be inspected after the fact. Never on by default — these are the
- * user's images being written to disk.
+ * Opt-in debugging: when GETVECT_AI_DEBUG_DIR is set, an enhance writes its
+ * exact input and a small metadata file there — plus the output, when there was
+ * one — so a bad result can be inspected after the fact. Never on by default:
+ * these are the user's images being written to disk.
+ *
+ * **Failures dump too, and they are the reason this exists.** A run that
+ * succeeded and looks wrong can at least be reproduced from the picture on the
+ * screen; a run that failed leaves one sentence in a toast, and the two
+ * questions that sentence cannot answer are "what exactly did we send" and
+ * "which failure was it". So a failed run writes the input it was given and a
+ * `meta.json` carrying `ok: false`, the typed `code` and the message — and no
+ * output file, because there is no output. `message` has already been through
+ * `redact`, so no key material reaches the disk.
  */
 async function debugDump(
   provider: EnhanceProviderId,
@@ -607,20 +620,39 @@ async function debugDump(
   transparent: boolean,
   durationMs: number,
   input: Uint8Array,
-  output: Uint8Array,
-  mimeType: EnhanceImageMime,
+  result:
+    | { ok: true; output: Uint8Array; mimeType: EnhanceImageMime }
+    | { ok: false; code: EnhanceErrorCode; message: string },
 ): Promise<void> {
   const dir = process.env.GETVECT_AI_DEBUG_DIR;
   if (!dir) return;
   try {
     await fs.mkdir(dir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const extension = mimeType.slice('image/'.length);
-    await fs.writeFile(path.join(dir, `${stamp}-input.png`), input);
-    await fs.writeFile(path.join(dir, `${stamp}-output.${extension}`), output);
+    const label = result.ok ? stamp : `${stamp}-failed`;
+    await fs.writeFile(path.join(dir, `${label}-input.png`), input);
+    if (result.ok) {
+      const extension = result.mimeType.slice('image/'.length);
+      await fs.writeFile(path.join(dir, `${label}-output.${extension}`), result.output);
+    }
     await fs.writeFile(
-      path.join(dir, `${stamp}-meta.json`),
-      JSON.stringify({ provider, model: GEMINI_MODELS[quality], quality, transparent, durationMs, mimeType, inputBytes: input.length, outputBytes: output.length }, null, 2),
+      path.join(dir, `${label}-meta.json`),
+      JSON.stringify(
+        {
+          ok: result.ok,
+          provider,
+          model: GEMINI_MODELS[quality],
+          quality,
+          transparent,
+          durationMs,
+          inputBytes: input.length,
+          ...(result.ok
+            ? { mimeType: result.mimeType, outputBytes: result.output.length }
+            : { code: result.code, message: result.message }),
+        },
+        null,
+        2,
+      ),
     );
   } catch {
     // Debugging must never break the feature.
@@ -641,10 +673,29 @@ export async function runEnhance(request: EnhanceRunRequest): Promise<EnhanceRun
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ENHANCE_TIMEOUT_MS);
+  const input = request.image instanceof Uint8Array ? request.image : new Uint8Array(request.image);
+  const quality: EnhanceQuality = request.quality === 'best' ? 'best' : 'fast';
+  const started = Date.now();
+  /**
+   * Every exit from here that is not a success goes through this, so a failure
+   * is as inspectable as a success. It is the one that needs to be: a failed run
+   * leaves nothing behind but a sentence in a toast.
+   *
+   * `debugDump` is a no-op without `GETVECT_AI_DEBUG_DIR` and swallows its own
+   * errors, so awaiting it cannot change what the caller gets.
+   */
+  const failed = async (
+    code: EnhanceErrorCode,
+    message: string,
+  ): Promise<EnhanceRunResult> => {
+    await debugDump(request.provider, quality, Boolean(request.transparent), Date.now() - started, input, {
+      ok: false,
+      code,
+      message,
+    });
+    return { ok: false, code, message };
+  };
   try {
-    const input = request.image instanceof Uint8Array ? request.image : new Uint8Array(request.image);
-    const quality: EnhanceQuality = request.quality === 'best' ? 'best' : 'fast';
-    const started = Date.now();
     const image = await provider.enhance({
       image: input,
       transparent: Boolean(request.transparent),
@@ -654,18 +705,21 @@ export async function runEnhance(request: EnhanceRunRequest): Promise<EnhanceRun
     });
     const mimeType = sniffImageMime(image);
     if (!mimeType) {
-      return {
-        ok: false,
-        code: 'bad-response',
-        message: `the provider returned ${image.length} bytes that are not a PNG, JPEG or WebP`,
-      };
+      return await failed(
+        'bad-response',
+        `the provider returned ${image.length} bytes that are not a PNG, JPEG or WebP`,
+      );
     }
-    await debugDump(request.provider, quality, Boolean(request.transparent), Date.now() - started, input, image, mimeType);
+    await debugDump(request.provider, quality, Boolean(request.transparent), Date.now() - started, input, {
+      ok: true,
+      output: image,
+      mimeType,
+    });
     return { ok: true, image, mimeType };
   } catch (error) {
-    if (error instanceof EnhanceError) return { ok: false, code: error.code, message: error.message };
-    if (controller.signal.aborted) return { ok: false, code: 'timeout', message: 'timed out' };
-    return { ok: false, code: 'unknown', message: redact(messageOf(error), apiKey) };
+    if (error instanceof EnhanceError) return await failed(error.code, error.message);
+    if (controller.signal.aborted) return await failed('timeout', 'timed out');
+    return await failed('unknown', redact(messageOf(error), apiKey));
   } finally {
     clearTimeout(timer);
   }
