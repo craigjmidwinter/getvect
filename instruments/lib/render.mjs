@@ -33,22 +33,39 @@ export async function rasterizeSvg(svg, width, height) {
 }
 
 /**
- * An exemplar: rasterized from its **content box**, not its viewBox.
+ * An exemplar: rasterized so its artwork lands where the source's artwork is.
  *
- * `fixtures/reference/artwork.svg` declares an 11520x9280 viewBox and draws its
- * artwork in the top-left quarter of it. Rasterizing that box against the source
- * scored the real product a mean colour error of 63.55 — worse than any
- * plausible output of ours — so every ratio against it was meaningless, and a
- * "we beat the exemplar" assertion written that way passes for the wrong reason
- * (it compares our paw against the exemplar's empty margin). Rendering at 2x,
- * trimming the uniform border and resizing to the source is the comparison a
- * critic makes by hand: the same exemplar then scores MAE 13.50 / SSIM 0.886 /
- * ink recall 0.973.
+ * Two cases, and getting them the wrong way round makes every ratio against the
+ * exemplar meaningless.
  *
- * For an exemplar that already fills its frame the trim is a no-op, so this is
- * safe for every exemplar we ship.
+ * **Already in source coordinates.** `fixtures/reference/fox-sticker-clipart-8colors-smartAA.svg`
+ * declares `width="1024" height="1024"` for a 1024x1024 source: the real product
+ * wrote the source's own pixel dimensions into the file, so the drawing is
+ * already registered against the source and the only correct thing to do is
+ * rasterize it as declared. Trimming it would be actively wrong — this artwork
+ * is a sticker with 76.5 % transparent margin, and cropping to the ink and
+ * stretching that to the full frame scored the real product MAE 77.1 (against
+ * 3.0 rasterized as declared), i.e. it moved the fox's paw into our muzzle.
+ *
+ * **Not in source coordinates.** Some captures declare a padded frame and draw
+ * the artwork in a corner of it (the retired capture this fallback was first
+ * measured on declared an 11520x9280 viewBox for a 1046x833 source and drew
+ * inside the top-left quarter of it).
+ * Rasterizing *that* box against the source scored the real product MAE 63.55 —
+ * worse than any plausible output of ours — because it compared our paw against
+ * the exemplar's empty margin. Rendering at 2x, trimming the uniform border and
+ * resizing to the source is the comparison a critic makes by hand.
+ *
+ * The discriminator is the declared size, not a guess about the picture: an
+ * exemplar that names the source's dimensions is registered, one that does not
+ * has to be aligned by its content.
  */
 export async function rasterizeExemplarContent(svg, width, height) {
+  const declared = /<svg\b[^>]*?\bwidth="([\d.]+)"[^>]*?\bheight="([\d.]+)"/.exec(svg);
+  if (declared && Math.round(+declared[1]) === width && Math.round(+declared[2]) === height) {
+    const { image } = await rasterizeSvg(svg, width, height);
+    return { contentBox: { width, height }, image };
+  }
   const big = new Resvg(svg, {
     fitTo: { mode: 'width', value: width * 2 },
     background: 'white',
