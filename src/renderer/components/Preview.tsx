@@ -34,6 +34,8 @@ interface PreviewProps {
   pan: { x: number; y: number };
   /** Drag delta in CSS pixels; the pane converts to image pixels itself. */
   onPanBy: (dxImage: number, dyImage: number) => void;
+  /** Wheel notch + pointer offset from the pane centre, in CSS pixels. */
+  onWheelZoom: (deltaY: number, offsetFromCentre: { x: number; y: number }) => void;
   image: PreviewImage | null;
   /** The exact SVG document the engine produced (REFERENCE C3). */
   svg: string | null;
@@ -44,7 +46,17 @@ interface PreviewProps {
 /** Attribute-safe number formatting — both views must emit identical strings. */
 export const fmt = (n: number): string => String(Math.round(n * 1e6) / 1e6);
 
-export function Preview({ mode, zoom, pan, onPanBy, image, svg, paneRef, busy }: PreviewProps) {
+export function Preview({
+  mode,
+  zoom,
+  pan,
+  onPanBy,
+  onWheelZoom,
+  image,
+  svg,
+  paneRef,
+  busy,
+}: PreviewProps) {
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
@@ -57,6 +69,27 @@ export function Preview({ mode, zoom, pan, onPanBy, image, svg, paneRef, busy }:
     },
     [],
   );
+
+  /**
+   * Wheel zoom (REFERENCE C2). The handler is attached natively rather than
+   * through React's synthetic `onWheel` because React registers wheel listeners
+   * as passive, and a passive listener cannot `preventDefault()` — the page
+   * would scroll under the artwork.
+   */
+  useEffect(() => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const rect = pane.getBoundingClientRect();
+      onWheelZoom(event.deltaY, {
+        x: event.clientX - (rect.x + rect.width / 2),
+        y: event.clientY - (rect.y + rect.height / 2),
+      });
+    };
+    pane.addEventListener('wheel', onWheel, { passive: false });
+    return () => pane.removeEventListener('wheel', onWheel);
+  }, [paneRef, onWheelZoom]);
 
   useEffect(() => {
     const move = (event: MouseEvent) => {
@@ -123,12 +156,14 @@ export function Preview({ mode, zoom, pan, onPanBy, image, svg, paneRef, busy }:
         attrs={viewAttrs}
         stageStyle={stageStyle}
       >
-        {svg ? (
-          <div className="svg-host" dangerouslySetInnerHTML={{ __html: svg }} />
-        ) : (
-          <div className="svg-placeholder">{busy ? 'tracing…' : ''}</div>
-        )}
+        {svg ? <div className="svg-host" dangerouslySetInnerHTML={{ __html: svg }} /> : null}
       </View>
+      {busy ? (
+        <div data-testid={TESTIDS.previewBusy} className="preview-busy" role="status">
+          <span className="spinner" aria-hidden="true" />
+          <span>Vectorizing…</span>
+        </div>
+      ) : null}
       {!image ? <p className="preview-empty">No image loaded yet — drop one on the left.</p> : null}
     </div>
   );

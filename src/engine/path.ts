@@ -8,6 +8,8 @@
  * `<rect>` plus `<path>` with absolute `M`/`L`/`Q`/`C`/`Z` commands.
  */
 
+import { circleSubPath } from './fit';
+
 export type Segment =
   | { t: 'L'; x: number; y: number }
   | { t: 'Q'; cx: number; cy: number; x: number; y: number }
@@ -22,14 +24,19 @@ export interface SubPath {
 }
 
 export interface Shape {
-  /** `#rrggbb`. */
+  /** `#rrggbb` or `rgb(r, g, b)` — the paint colour, whichever role it plays. */
   fill: string;
   /**
-   * Same-colour outline width, or 0. Sub-pixel contours are stroked so they
-   * render at all (see `STROKE_BANDS` in trace.ts); every export format has to
-   * carry that width or those specks disappear on conversion.
+   * Outline width, or 0. The stroked result style (REFERENCE B6) draws every
+   * colour layer as an outline; every export format has to carry that width or
+   * the stroked document converts to an empty page.
    */
   strokeWidth: number;
+  /**
+   * True when the shape is outline-only (`fill="none"`), so the converters
+   * stroke it instead of filling it.
+   */
+  unfilled?: boolean;
   subpaths: SubPath[];
 }
 
@@ -53,11 +60,9 @@ export function num(value: number, precision: number): string {
 /**
  * Serialize subpaths into a compact `d` attribute.
  *
- * Three compactions, all of them standard SVG:
- *   - repeated commands drop the letter (`L1 2L3 4` → `L1 2 3 4`). This is
- *     where a naive writer silently corrupts its own output: without the
- *     letter the coordinate lists must still be separated, or `45` followed by
- *     `171.4` reads back as the single number `45171.4`;
+ * Two compactions, both of them standard SVG (a third — dropping a repeated
+ * command letter — is deliberately NOT done; see `letter` below):
+ *   - axis-aligned lines become `h`/`v`, which is most of a traced contour;
  *   - a leading `-` is its own separator, so no space precedes it;
  *   - coordinates are relative (`m`/`l`/`q`/`c`), which on traced artwork is a
  *     large win — deltas along a contour are single digits where absolute
@@ -78,8 +83,16 @@ export function toPathData(subpaths: SubPath[], precision: number, relative = tr
   let cy = 0;
   let started = false;
 
+  // Every segment states its command letter.
+  //
+  // SVG lets a repeated command drop the letter (`L1 2L3 4` → `L1 2 3 4`), and
+  // an earlier version of this writer did. It saves about a byte per segment
+  // and costs something worth more: a document where the number of curves can
+  // no longer be counted. `instruments/lib/metrics.mjs` — and any reader
+  // eyeballing the file — counts command letters, so eliding them makes a
+  // staircase of a thousand `l` segments look like a handful of commands. The
+  // reference product's own output spells every command out too.
   const letter = (l: string) => {
-    if (l === cmd) return;
     out += l;
     cmd = l;
     needSep = false;
@@ -276,28 +289,67 @@ export function parseSvgShapes(svg: string): ParsedSvg {
   // the walk keeps a stack of inherited fills rather than looking at each
   // element in isolation.
   const groupFills: Array<string | null> = [];
+  // The stroked result style (B6) states the colour as the group's `stroke`
+  // with `fill="none"`, so the walk tracks both roles.
+  const groupStrokes: Array<{ color: string | null; width: number }> = [];
   const inherited = (): string | null => {
     for (let i = groupFills.length - 1; i >= 0; i--) {
       if (groupFills[i]) return groupFills[i];
     }
     return null;
   };
+  const inheritedStroke = (): { color: string | null; width: number } => {
+    for (let i = groupStrokes.length - 1; i >= 0; i--) {
+      if (groupStrokes[i].color) return groupStrokes[i];
+    }
+    return { color: null, width: 0 };
+  };
 
-  const elements = svg.match(/<\/?(g|rect|path)\b[^>]*\/?>/g) ?? [];
+  const elements = svg.match(/<\/?(g|rect|path|circle)\b[^>]*\/?>/g) ?? [];
   for (const el of elements) {
     if (el.startsWith('</g')) {
       groupFills.pop();
+      groupStrokes.pop();
       continue;
     }
     if (el.startsWith('<g')) {
       // A self-closing `<g/>` opens nothing.
-      if (!el.endsWith('/>')) groupFills.push(normalizeFill(ATTR(el, 'fill')));
+      if (!el.endsWith('/>')) {
+        groupFills.push(normalizeFill(ATTR(el, 'fill')));
+        groupStrokes.push({
+          color: normalizeFill(ATTR(el, 'stroke')),
+          width: Number(ATTR(el, 'stroke-width') ?? 0) || 0,
+        });
+      }
       continue;
     }
     // An explicit `fill="none"` means "not filled", not "ask the group".
     const own = ATTR(el, 'fill');
     const fill = own !== null ? normalizeFill(own) : inherited();
-    if (!fill) continue;
+    if (!fill) {
+      // Outline-only geometry still has to reach EPS/DXF/PDF (REFERENCE B6).
+      const outline = inheritedStroke();
+      const ownStroke = normalizeFill(ATTR(el, 'stroke'));
+      const color = ownStroke ?? outline.color;
+      if (!color) continue;
+      const width = Number(ATTR(el, 'stroke-width') ?? outline.width) || outline.width || 1;
+      if (el.startsWith('<circle')) {
+        const sp = circleSubPathOf(el);
+        if (sp) shapes.push({ fill: color, strokeWidth: width, unfilled: true, subpaths: [sp] });
+        continue;
+      }
+      const d = ATTR(el, 'd');
+      if (!d) continue;
+      const subpaths = parsePathData(d);
+      if (!subpaths.length) continue;
+      shapes.push({ fill: color, strokeWidth: width, unfilled: true, subpaths });
+      continue;
+    }
+    if (el.startsWith('<circle')) {
+      const sp = circleSubPathOf(el);
+      if (sp) shapes.push({ fill, strokeWidth: 0, subpaths: [sp] });
+      continue;
+    }
     if (el.startsWith('<rect')) {
       const x = Number(ATTR(el, 'x') ?? 0);
       const y = Number(ATTR(el, 'y') ?? 0);
@@ -335,6 +387,21 @@ export function parseSvgShapes(svg: string): ParsedSvg {
     });
   }
   return { width, height, shapes };
+}
+
+/**
+ * `<circle>` → four cubic quarter-arcs.
+ *
+ * Circle Detection (REFERENCE B5) emits real `<circle>` elements, and every
+ * export format is generated by parsing the SVG back (C3), so the converters
+ * would silently drop those shapes if this did not exist.
+ */
+function circleSubPathOf(el: string): SubPath | null {
+  const cx = Number(ATTR(el, 'cx') ?? 0);
+  const cy = Number(ATTR(el, 'cy') ?? 0);
+  const r = Number(ATTR(el, 'r') ?? 0);
+  if (!Number.isFinite(cx) || !Number.isFinite(cy) || !(r > 0)) return null;
+  return circleSubPath({ cx, cy, r });
 }
 
 function normalizeFill(fill: string | null): string | null {

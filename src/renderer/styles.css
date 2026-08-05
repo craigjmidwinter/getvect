@@ -127,6 +127,17 @@ code {
   border-color: var(--accent);
 }
 
+/* The window says it will take the file before you let go (REFERENCE A1). */
+.app[data-dragging='true'] .drop-zone {
+  border-color: var(--accent);
+  background: rgba(92, 157, 255, 0.12);
+}
+
+.app[data-dragging='true'] .preview-pane {
+  outline: 2px dashed var(--accent);
+  outline-offset: -6px;
+}
+
 .drop-headline {
   margin: 0 0 2px;
   font-weight: 600;
@@ -276,12 +287,26 @@ code {
   color: var(--accent);
 }
 
-.export-status {
+/* Fixed boxes: the row must not re-flow when these gain text (REFERENCE D4). */
+.export-status,
+.export-size {
   color: var(--ink-dim);
   font-variant-numeric: tabular-nums;
-  min-width: 44px;
-  text-align: center;
-  font-size: 12px;
+  font-size: 11px;
+  flex: none;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.export-size {
+  width: 56px;
+  text-align: right;
+}
+
+.export-status {
+  width: 132px;
+  text-align: left;
 }
 
 /* --- preview ------------------------------------------------------------- */
@@ -361,8 +386,43 @@ code {
   height: 100%;
 }
 
-.svg-placeholder {
+/*
+ * The busy overlay lives in the pane, NOT in the zoom/pan stage: at 40x zoom a
+ * spinner inside the stage would be scaled off screen (REFERENCE C, and
+ * docs/TESTIDS.md `preview-busy`).
+ */
+.preview-busy {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(10, 12, 16, 0.72);
   color: var(--ink-dim);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .preview-empty {
@@ -378,19 +438,103 @@ code {
 
 /* --- settings ------------------------------------------------------------ */
 
+/*
+ * Fixed height, three scrolling columns.
+ *
+ * Both properties are load-bearing rather than cosmetic: the panel is mounted
+ * from the moment an image exists and never changes size, so the artwork above
+ * it does not jump when a result lands or when a palette gains a swatch
+ * (REFERENCE B1). Everything that can grow — swatches, colour groups — scrolls
+ * inside its own box.
+ */
 .settings-panel {
   border-top: 1px solid var(--line);
   background: var(--panel);
-  padding: 10px 12px 12px;
+  padding: 10px 12px;
+  height: 224px;
+  display: grid;
+  grid-template-columns: minmax(230px, 1.25fr) minmax(170px, 0.9fr) minmax(210px, 1.1fr);
+  gap: 14px;
+  overflow: hidden;
+}
+
+.settings-column {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.settings-column + .settings-column {
+  border-left: 1px solid var(--line);
+  padding-left: 12px;
 }
 
 .settings-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
-  gap: 10px 16px;
+  grid-template-columns: repeat(2, minmax(90px, 1fr));
+  gap: 6px 12px;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.panel-title,
+.group-label,
+.field-label,
+.slider-label,
+.palette-title {
+  color: var(--ink-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.field select {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.field input[type='range'] {
+  flex: 1 1 auto;
+}
+
+button.toggle.is-on,
+.chip.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(92, 157, 255, 0.12);
+}
+
+.chip {
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 2px 7px;
+  cursor: pointer;
+}
+
+.palette-sizes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .slider {
@@ -402,10 +546,6 @@ code {
 .slider-label {
   display: flex;
   justify-content: space-between;
-  color: var(--ink-dim);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
 .slider-label em {
@@ -413,7 +553,8 @@ code {
   color: var(--ink);
 }
 
-.slider-hint {
+.slider-hint,
+.hint {
   color: var(--ink-dim);
   font-size: 10px;
   letter-spacing: 0.02em;
@@ -422,35 +563,28 @@ code {
 
 .settings-summary {
   color: var(--ink-dim);
-  font-size: 11px;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.settings-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .switch {
   display: flex;
   align-items: center;
   gap: 6px;
+  font-size: 12px;
 }
 
 .palette-editor {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  border-top: 1px solid var(--line);
-  padding-top: 10px;
+  gap: 6px;
 }
 
 /* A re-trace is in flight: the swatches still describe the SVG on screen. */
-.palette-editor.is-stale .swatches,
-.palette-editor.is-stale .palette-selected {
+.palette-editor.is-stale .swatches {
   opacity: 0.55;
 }
 
@@ -460,45 +594,37 @@ code {
   gap: 10px;
 }
 
-.palette-title {
-  color: var(--ink-dim);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
 .palette-title em {
   font-style: normal;
   color: var(--ink);
   margin-left: 6px;
 }
 
-.palette-selected {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-variant-numeric: tabular-nums;
-  text-transform: uppercase;
-}
-
 .swatch-chip {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border-radius: 3px;
+  flex: none;
 }
 
+/* One row, scrolled — a wrapping strip changes height with the palette size. */
 .swatches {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
+  height: 30px;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .swatch {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border-radius: 5px;
   border: 1px solid var(--line);
+  flex: none;
 }
 
 .swatch.is-active {
@@ -509,23 +635,57 @@ code {
 .palette-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   flex-wrap: wrap;
   color: var(--ink-dim);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .palette-actions label {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
+}
+
+.palette-actions select {
+  max-width: 92px;
+  font-size: 11px;
 }
 
 .palette-actions input[type='color'] {
-  width: 34px;
-  height: 26px;
+  width: 30px;
+  height: 22px;
   padding: 0;
   background: none;
   border: 1px solid var(--line);
   border-radius: 5px;
+}
+
+.color-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 84px;
+  overflow-y: auto;
+}
+
+.group-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+}
+
+.group-hex {
+  text-transform: uppercase;
 }

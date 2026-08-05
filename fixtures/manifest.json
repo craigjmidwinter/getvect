@@ -33,9 +33,10 @@
       "height": 512,
       "supported": true,
       "distinctColors": 1862,
+      "compareTo": "logo-flat-512.png",
       "thresholds": {
-        "meanColorError": 14,
-        "ssim": 0.7,
+        "meanColorError": 8,
+        "ssim": 0.9,
         "maxPaths": 1200,
         "maxSubPaths": 1200,
         "maxTinySubPathRatio": 0.1,
@@ -44,7 +45,7 @@
         "maxBytes": 409600,
         "maxMs": 10000
       },
-      "note": "Same mark + seeded speckle. Exercises despeckle and the enhance toggle (B4)."
+      "note": "Same mark + seeded speckle. Exercises despeckle, Minimum Area (B5) and the enhance toggle (B4). Fidelity is measured against the CLEAN original (compareTo) because that is what despeckling is supposed to recover: the speckled source scores SSIM 0.35 against the clean artwork, so scoring against it would reward reproducing every speck."
     },
     {
       "id": "logo-flat-1024",
@@ -137,7 +138,7 @@
         "maxNearDuplicateFills": 4,
         "maxMs": 10000
       },
-      "note": "Gold-standard exemplar (REFERENCE \"blind A/B\"). Judged at 16 colours + enhance, the setting the captured output corresponds to. artwork.svg is a low-colour capture, so it anchors ECONOMY (paths/sub-paths/bytes/curve ratio); fidelity is gated absolutely here and relatively in reference-artwork-6c."
+      "note": "Gold-standard exemplar (REFERENCE \"blind A/B\"). Judged at 16 colours + enhance, the settings the captured output corresponds to (fixtures/reference/OBSERVED-UI.md records Smart anti-aliasing and Enhance on; our Enhance bundles that same cleanup). It anchors ECONOMY (paths/sub-paths/bytes/curve ratio); fidelity is gated absolutely here and relatively in reference-artwork-6c."
     },
     {
       "id": "reference-artwork-6c",

@@ -53,7 +53,11 @@ function shapeOps(shape: Shape, out: string[]): void {
     }
     out.push('closepath');
   }
-  if (shape.strokeWidth > 0) {
+  if (shape.unfilled) {
+    // Outline-only layer (REFERENCE B6): stroke it, do not fill it.
+    out.push(`${num(shape.strokeWidth || 1, 3)} setlinewidth 1 setlinejoin 1 setlinecap`);
+    out.push('stroke');
+  } else if (shape.strokeWidth > 0) {
     // `eofill` consumes the path, so keep a copy to stroke afterwards. Without
     // this the sub-pixel contours (which have no area to fill) vanish.
     out.push('gsave');

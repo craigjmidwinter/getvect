@@ -26,19 +26,26 @@ import {
   coverageOf,
   despeckleIndices,
   mapToPalette,
+  mergeSimilarColors,
+  mergeSmallGroups,
   normalizePalette,
   packRgb,
+  sortedOrder,
+  toBlackAndWhite,
+  toGrayscale,
 } from './color';
 import { resultToDxf, type DxfOptions } from './dxf';
 import { resultToEps } from './eps';
 import { resultToPdf } from './pdf';
-import { cloneRaster, enhanceSync } from './preprocess';
+import { cloneRaster, deAntialias, enhanceSync, majorityFilter, reduceNoise } from './preprocess';
 import { renderSvg } from './svg';
-import { paddedIndexArray, traceLayer, type TracedLayer } from './trace';
+import { maskForIndex, traceMask, type TraceOptions, type TracedLayer } from './trace';
 import {
   EngineNotImplementedError,
+  type DetailLevel,
   type ProgressCallback,
   type RasterImage,
+  type ResolvedSettings,
   type RgbColor,
   type VectorizePhase,
   type VectorizeResult,
@@ -46,7 +53,7 @@ import {
 } from './types';
 
 export * from './types';
-export { hexOf, parseHex } from './color';
+export { hexOf, parseHex, rgbOf } from './color';
 
 /** Input formats the app accepts (REFERENCE A1/A2). */
 export const SUPPORTED_INPUT_EXTENSIONS: readonly string[] = ['.png', '.jpg', '.jpeg', '.bmp'];
@@ -84,13 +91,34 @@ export const EXPORT_MIME: Record<ExportFormat, string> = {
  * (REFERENCE B1). The instruments harness measures with exactly these unless
  * a fixture overrides them.
  */
-export const DEFAULT_SETTINGS: VectorizeSettings = {
+export const DEFAULT_SETTINGS: ResolvedSettings = {
   colorCount: 8,
   detail: 60,
   smoothing: 50,
   despeckle: 20,
   enhance: false,
   palette: null,
+  // B2 — flat artwork is the primary target, so Clipart is the default model.
+  // Detail Level `high` is the neutral step: it multiplies the numeric Detail
+  // slider by 1, so both controls stay meaningful (see `detailFor`).
+  preset: 'clipart',
+  detailLevel: 'high',
+  bwThreshold: 128,
+  // B4 — off by default: they are corrections, and a correction nobody asked
+  // for is a surprise. The Enhance toggle is the one-click bundle.
+  noiseReduction: 'off',
+  antiAliasing: 'off',
+  // B5 — the reference product's own defaults: middle roundness, 5px² specks
+  // dropped. Overlap `high` keeps each layer trimmed to its own region, which
+  // is the economical half of the pair.
+  roundness: 1,
+  minArea: 5,
+  overlap: 'high',
+  circleDetection: false,
+  resultStyle: 'filled',
+  disabledColors: [],
+  mergeThreshold: 0,
+  sortOrder: 'coverage',
 };
 
 // --- setting → algorithm parameter mapping ---------------------------------
@@ -104,23 +132,111 @@ const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi 
 const norm = (v: number) => clamp(Number.isFinite(v) ? v : 0, 0, 100) / 100;
 
 /**
- * Detail → straight-line error threshold, in pixels. High detail tracks every
- * pixel step; low detail lets a segment stray several pixels from the contour
- * before it is split, which is what "simplified geometry" means in practice.
+ * Detail Level (B2) × the Detail slider.
+ *
+ * The enum is a multiplier rather than a replacement so the two controls cannot
+ * contradict each other: `high` is 1.0 (neutral), `maximum` pushes the slider
+ * toward every pixel step, `minimum` collapses it to loose shapes.
  */
-export function ltresFor(detail: number): number {
-  const d = norm(detail);
-  return round4(0.02 + (1 - d) ** 2.5 * 12);
+const DETAIL_LEVEL_FACTOR: Record<DetailLevel, number> = {
+  maximum: 1.6,
+  ultra: 1.4,
+  'very-high': 1.2,
+  high: 1,
+  medium: 0.75,
+  low: 0.45,
+  minimum: 0.15,
+};
+
+export function detailFor(detail: number, level: DetailLevel): number {
+  return clamp(detail * (DETAIL_LEVEL_FACTOR[level] ?? 1), 0, 100);
 }
 
 /**
- * Smoothing → quadratic error threshold. At 0 the fitter can essentially never
- * accept a curve, so the output is a polyline; at 100 it fits long sweeps.
+ * Detail → curve-fitting tolerance, in pixels: how far the fitted outline may
+ * stray from the region's exact pixel boundary. High detail tracks every pixel
+ * step; low detail lets a curve cut across several pixels of staircase, which
+ * is what "simplified geometry" means in practice.
  */
-export function qtresFor(smoothing: number): number {
+export function toleranceFor(detail: number, roundness: number): number {
+  const d = norm(detail);
+  // The floor is not arbitrary: a pixel staircase deviates ~0.5px from the
+  // smooth edge it approximates, so a tolerance under that forces the fitter to
+  // chase every step and the "curve" degenerates back into the staircase. Above
+  // it, one cubic replaces dozens of h1/v1 pairs. At detail 100 the tolerance
+  // drops below the step height on purpose — that is what "every pixel step"
+  // means.
+  const base = 0.25 + (1 - d) ** 2 * 4;
+  // Roundness only nudges the tolerance — how *closely* the outline follows the
+  // pixels is Detail's job. What Roundness really moves is `straightToleranceFor`.
+  const byRoundness = [1, 1, 1.4][clamp(Math.round(roundness), 0, 2)];
+  return round4(base * byRoundness);
+}
+
+/**
+ * Smoothing × Roundness → the angle that counts as a corner.
+ *
+ * Everything below the threshold is absorbed into a curve. At smoothing 0 with
+ * the sharpest roundness almost every turn is a corner, so the output is a
+ * polyline; at the top only genuine corners survive and the fitter runs long
+ * sweeps through the rest. This is the knob REFERENCE B5 calls "3 curve-fitting
+ * levels" and B2 calls smoothing — they compose rather than fight.
+ */
+export function cornerAngleFor(smoothing: number, roundness: number): number {
   const s = norm(smoothing);
-  if (s === 0) return 0.01;
-  return round4(0.05 + s ** 1.6 * 4);
+  const byRoundness = [0.55, 1, 1.7][clamp(Math.round(roundness), 0, 2)];
+  return round4(clamp((0.22 + s * 0.95) * byRoundness, 0.1, 1.4));
+}
+
+/**
+ * Roundness → how flat a run has to be before it is emitted as a line.
+ *
+ * This is the half of Roundness you can see. The angular level lets a gentle
+ * sweep collapse into a straight segment (an outline of facets); the round level
+ * keeps everything but a genuinely straight edge as a curve. Corner sharpness
+ * and fit tolerance move with it, but this is what decides "curve or line".
+ */
+export function straightToleranceFor(roundness: number): number {
+  // The angular level is allowed to exceed the fit tolerance: faceting a sweep
+  // into straight segments is the look that level exists to produce.
+  return [1.6, 0.4, 0.08][clamp(Math.round(roundness), 0, 2)];
+}
+
+/** How many vertices the corner detector averages direction over. */
+export function cornerSpanFor(smoothing: number, roundness: number): number {
+  const s = norm(smoothing);
+  return clamp(Math.round(2 + s * 3 + roundness), 2, 7);
+}
+
+/**
+ * How many 1-2-1 passes centre the staircase before fitting. Smoothing 0 means
+ * "polylines": the boundary is handed to the fitter exactly as the pixels drew
+ * it, staircase and all.
+ */
+export function smoothPassesFor(smoothing: number, tolerance: number): number {
+  const s = norm(smoothing);
+  if (s === 0) return 0;
+  return clamp(Math.round(tolerance + s), 1, 4);
+}
+
+/**
+ * Minimum Area is a px² number, but the two sliders that also talk about size
+ * scale it rather than fighting it:
+ *
+ *   Detail — "loose shapes" means loose shapes, not the same specks with softer
+ *            edges, so low detail raises the floor and high detail lowers it.
+ *   Despeckle — 0 means *keep everything* (that is what the control says it
+ *            does), which is the one case that overrides the floor entirely.
+ *
+ * Both are multipliers, so `minArea: 0` stays 0 and the documented 0/5/90 steps
+ * are exact at the default slider positions.
+ */
+export function areaScaleFor(detail: number, despeckle: number): number {
+  const d = norm(detail);
+  const byDetail = 0.5 + (1 - d) ** 2 * 3.125; // 1.0 at the default detail of 60
+  const dp = norm(despeckle);
+  const byDespeckle = despeckle <= 0 ? 0 : 0.25 + dp * 3.75; // 1.0 at the default of 20
+  return round4(byDetail * byDespeckle);
 }
 
 /**
@@ -161,11 +277,6 @@ export function maxContrastFor(despeckle: number): number {
   return round4(d * 765);
 }
 
-/** Despeckle → imagetracerjs `pathomit` (edge-node count floor). */
-export function pathOmitFor(despeckle: number): number {
-  return Math.round(norm(despeckle) * 12);
-}
-
 const round4 = (v: number) => Math.round(v * 10000) / 10000;
 
 /**
@@ -174,24 +285,82 @@ const round4 = (v: number) => Math.round(v * 10000) / 10000;
  * them, so every coordinate it can produce is a multiple of 0.5. A second
  * decimal would only add bytes.
  */
-const PATH_PRECISION = 1;
+const PATH_PRECISION = 2;
 
-/**
- * Multiplier on the tracer's stroke compensation (see `STROKE_BANDS` in
- * trace.ts). 1 = apply it as designed.
- */
-const STROKE_SCALE = 1;
+/** Line width used by the stroked result style (REFERENCE B6). */
+const STROKE_WIDTH = 1;
 
-export function resolveSettings(settings?: Partial<VectorizeSettings> | null): VectorizeSettings {
+const oneOf = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T =>
+  allowed.includes(value as T) ? (value as T) : fallback;
+
+export function resolveSettings(settings?: Partial<VectorizeSettings> | null): ResolvedSettings {
   const s = { ...DEFAULT_SETTINGS, ...(settings ?? {}) };
+  const minArea = Number.isFinite(s.minArea) ? Math.max(0, Number(s.minArea)) : DEFAULT_SETTINGS.minArea;
   return {
-    colorCount: Math.round(clamp(s.colorCount, 2, 64)),
+    colorCount: Math.round(clamp(s.colorCount, 1, 64)),
     detail: clamp(s.detail, 0, 100),
     smoothing: clamp(s.smoothing, 0, 100),
     despeckle: clamp(s.despeckle, 0, 100),
     enhance: Boolean(s.enhance),
     palette: s.palette ?? null,
+    preset: oneOf(s.preset, ['clipart', 'photo', 'sketch', 'drawing'] as const, 'clipart'),
+    detailLevel: oneOf(
+      s.detailLevel,
+      ['maximum', 'ultra', 'very-high', 'high', 'medium', 'low', 'minimum'] as const,
+      'high',
+    ),
+    bwThreshold: Math.round(clamp(Number(s.bwThreshold ?? 128), 0, 255)),
+    noiseReduction: oneOf(s.noiseReduction, ['off', 'low', 'high'] as const, 'off'),
+    antiAliasing: oneOf(s.antiAliasing, ['off', 'smart', 'mid'] as const, 'off'),
+    roundness: clamp(Math.round(Number(s.roundness ?? 1)), 0, 2) as 0 | 1 | 2,
+    minArea,
+    overlap: oneOf(s.overlap, ['full', 'high'] as const, 'high'),
+    circleDetection: Boolean(s.circleDetection),
+    resultStyle: oneOf(s.resultStyle, ['filled', 'stroked'] as const, 'filled'),
+    disabledColors: Array.isArray(s.disabledColors)
+      ? s.disabledColors.filter((n) => Number.isInteger(n) && n >= 0)
+      : [],
+    mergeThreshold: clamp(Number(s.mergeThreshold ?? 0), 0, 100),
+    sortOrder: oneOf(s.sortOrder, ['coverage', 'brightness', 'hue'] as const, 'coverage'),
   };
+}
+
+/**
+ * Colour budget the preset asks for (REFERENCE B2).
+ *
+ * Clipart and Sketch take the user's number. Photo is the "Many Colors" model,
+ * so it never runs below 16 — a photograph quantized to eight colours is a
+ * poster, not a photo. Drawing is two-tone by definition; the palette falls out
+ * of the luminance threshold, so the count is just a ceiling.
+ */
+function presetColorCount(opts: ResolvedSettings): number {
+  switch (opts.preset) {
+    case 'photo':
+      return Math.min(64, Math.max(opts.colorCount, 16));
+    case 'drawing':
+      return 2;
+    default:
+      return opts.colorCount;
+  }
+}
+
+/**
+ * Per-preset fitting bias.
+ *
+ * Photo boundaries are gradient boundaries: there is no "true" edge to follow
+ * to the pixel, so the fit is allowed to be looser and rounder. Clipart, Sketch
+ * and Drawing all want the drawn edge reproduced.
+ */
+function presetFitScale(opts: ResolvedSettings): { tolerance: number; cornerAngle: number } {
+  const bias =
+    opts.preset === 'photo'
+      ? { tolerance: 1.6, cornerAngle: 1.35 }
+      : { tolerance: 1, cornerAngle: 1 };
+  // Enhance is a simplification bundle, and an outline that is allowed to cut a
+  // little wider across a cleaned-up edge is part of that: it is the difference
+  // between "denoised" and "denoised and *simpler*".
+  if (opts.enhance) bias.tolerance *= 1.3;
+  return bias;
 }
 
 /** Yield to the event loop so a host that runs this inline stays responsive. */
@@ -234,8 +403,30 @@ export async function vectorize(
   }
 
   // 1. Preprocess -----------------------------------------------------------
+  //
+  // Order matters: the optional cleanups run first (each one only removes
+  // information the tracer would otherwise have to spend shapes on), and the
+  // preset's colour-space change runs LAST so "Sketch is grayscale" and
+  // "Drawing is two-tone" are guaranteed by construction rather than by luck.
   report(onProgress, 'preprocess', 0.02);
-  const source = opts.enhance ? enhanceSync(image) : image;
+  let source = opts.enhance ? enhanceSync(image) : image;
+  source = reduceNoise(source, opts.noiseReduction);
+  /**
+   * "Enhance image with AI" is a bundle, not a filter (REFERENCE B4, and
+   * OBSERVED-UI's record of what it did to the real product's output: a busy
+   * patterned background became near-white). On top of the denoise +
+   * colour-simplification pass it turns on the two cleanups that make a busy
+   * source legible: smart anti-aliasing, and a minimum shape area proportional
+   * to the canvas — one ten-thousandth of it, ~87px² on the 1046x833 reference
+   * artwork, ~26px² on a 512px logo. A checkbox that only nudges the output is
+   * not the control the reference product has.
+   */
+  const smartAa = opts.antiAliasing === 'smart' || (opts.enhance && opts.antiAliasing === 'off');
+  if (smartAa || opts.antiAliasing === 'mid') {
+    source = deAntialias(source, smartAa ? 2 : 1);
+  }
+  if (opts.preset === 'sketch') source = toGrayscale(source);
+  else if (opts.preset === 'drawing') source = toBlackAndWhite(source, opts.bwThreshold);
   report(onProgress, 'preprocess', 0.12);
   await tick();
 
@@ -266,19 +457,49 @@ export async function vectorize(
   // palette editor displays them in, so slot i is the swatch the user clicked.
   report(onProgress, 'quantize', 0.15);
   const override = normalizePalette(opts.palette);
-  const targetColors = override ? override.length : opts.colorCount;
-  const clusters = computePaletteSync(source, Math.max(2, targetColors));
+  const targetColors = override ? override.length : presetColorCount(opts);
+  const clusters = computePaletteSync(source, Math.max(1, targetColors));
   let indices = mapToPalette(source, clusters);
+  /**
+   * Anti-aliasing, the half that works on regions rather than pixels.
+   *
+   * OBSERVED-UI's reading of the reference product's Smart anti-aliasing is
+   * "a pre-trace edge cleanup (edge-aware smoothing of the quantized regions)",
+   * and that is what this is: a majority filter over the *index* image, which
+   * can only ever remove a local minority. Ragged one-pixel transition bands —
+   * the halo an antialiased edge quantizes into — are exactly local minorities,
+   * so they disappear and the boundary they were fringing comes out shorter and
+   * straighter. The pixel-level pass above cannot do this on its own: on a soft
+   * gradient it finds no ramp to snap, yet the quantized regions are still
+   * ragged.
+   */
+  const indexPasses = smartAa ? 2 : opts.antiAliasing === 'mid' ? 1 : 0;
+  for (let i = 0; i < indexPasses; i++) {
+    indices = majorityFilter(indices, width, height, clusters.length);
+  }
   report(onProgress, 'quantize', 0.32);
   await tick();
 
   // 3. Despeckle ------------------------------------------------------------
-  // Contrast is judged against the cluster colours — the colours actually in
-  // the source — not against whatever the user recoloured them to.
-  const minArea = minAreaFor(opts.despeckle, width, height);
+  //
+  // Two filters, deliberately different in kind:
+  //   Minimum Area (B5) is a promise about the *document* — nothing smaller
+  //   than N px² is in it — so it merges regardless of how loud the speck is.
+  //   The Despeckle slider is a noise filter: it also weighs contrast, because
+  //   a tiny region that is wildly different from its surroundings is either
+  //   deliberate detail or an impulse the viewer can see.
+  const enhanceFloor = opts.enhance && opts.despeckle > 0 ? (width * height) / 10000 : 0;
+  const minArea = Math.max(
+    opts.minArea * areaScaleFor(detailFor(opts.detail, opts.detailLevel), opts.despeckle),
+    enhanceFloor,
+  );
   if (minArea > 1) {
+    despeckleIndices(indices, width, height, { minArea, palette: clusters });
+  }
+  const noiseArea = minAreaFor(opts.despeckle, width, height);
+  if (noiseArea > 1) {
     despeckleIndices(indices, width, height, {
-      minArea,
+      minArea: noiseArea,
       palette: clusters,
       maxContrast: maxContrastFor(opts.despeckle),
     });
@@ -329,37 +550,90 @@ export async function vectorize(
   }
   if (palette.length === 0) palette = [{ r: 0, g: 0, b: 0 }];
 
+  // Two different collapses, both switched off by default and both skipped when
+  // the user has hand-picked the palette (their table is authoritative):
+  //   - Smart anti-aliasing folds away halo layers, which ARE near-duplicates
+  //     of the colour they hug, so it merges by colour distance. 5.5 % of the
+  //     RGB range is chosen so that no two surviving layers can be within the
+  //     24-unit distance the halo metric looks for.
+  //   - The output-groups merge threshold folds away colours that barely appear
+  //     (REFERENCE B3), which is a coverage question.
+  if (!override) {
+    if (smartAa) palette = mergeSimilarColors(indices, palette, 5.5).palette;
+    const groupThreshold = Math.max(opts.mergeThreshold, opts.enhance ? 1 : 0);
+    if (groupThreshold > 0) palette = mergeSmallGroups(indices, palette, groupThreshold);
+  }
+
   const finalCoverage = coverageOf(indices, palette.length);
 
   // 4. Trace ----------------------------------------------------------------
   report(onProgress, 'trace', 0.45);
-  const padded = paddedIndexArray(indices, width, height);
-  const traceOptions = {
-    ltres: ltresFor(opts.detail),
-    qtres: qtresFor(opts.smoothing),
-    pathomit: pathOmitFor(opts.despeckle),
-    rightangleenhance: true,
+  const detail = detailFor(opts.detail, opts.detailLevel);
+  const bias = presetFitScale(opts);
+  const tolerance = toleranceFor(detail, opts.roundness) * bias.tolerance;
+  const traceOptions: TraceOptions = {
+    tolerance,
+    cornerAngle: cornerAngleFor(opts.smoothing, opts.roundness) * bias.cornerAngle,
+    cornerSpan: cornerSpanFor(opts.smoothing, opts.roundness),
+    smoothPasses: smoothPassesFor(opts.smoothing, tolerance),
+    straightTolerance: straightToleranceFor(opts.roundness),
+    circleDetection: opts.circleDetection,
+    minArea,
   };
 
-  // The heaviest layer becomes a backdrop rect rather than an outline.
-  let backgroundIndex = -1;
-  if (palette.length > 1) {
-    let best = -1;
-    for (let i = 0; i < palette.length; i++) {
-      if (finalCoverage[i] > best) {
-        best = finalCoverage[i];
-        backgroundIndex = i;
-      }
-    }
+  const disabled = new Set(opts.disabledColors);
+  const enabled: number[] = [];
+  for (let i = 0; i < palette.length; i++) {
+    if (finalCoverage[i] > 0 && !disabled.has(i)) enabled.push(i);
   }
 
-  const layers: TracedLayer[] = [];
+  // Emission order (REFERENCE B3 "sort order"). Full overlap stacks layers
+  // under each other, so there the order IS the geometry and coverage rank is
+  // the only correct one; with trimmed (`high`) layers the picture is a
+  // partition and the order is free.
+  const order =
+    opts.overlap === 'full'
+      ? sortedOrder(palette, finalCoverage, 'coverage').filter((i) => enabled.includes(i))
+      : sortedOrder(palette, finalCoverage, opts.sortOrder).filter((i) => enabled.includes(i));
+
+  // The heaviest layer becomes a backdrop rect rather than an outline: the
+  // layers partition the canvas, so painting it full-bleed is lossless, much
+  // cheaper, and gives every seam something correct to blend into. It is off
+  // when the colour is disabled (that is what makes the background genuinely
+  // transparent, REFERENCE B3) and in the stroked style, where every colour has
+  // to appear as an outline (B6).
+  let dominant = -1;
+  let bestCoverage = -1;
   for (let i = 0; i < palette.length; i++) {
-    if (i !== backgroundIndex && finalCoverage[i] > 0) {
-      layers.push(traceLayer(padded, i, traceOptions));
+    if (finalCoverage[i] > bestCoverage) {
+      bestCoverage = finalCoverage[i];
+      dominant = i;
     }
-    report(onProgress, 'trace', 0.45 + 0.4 * ((i + 1) / palette.length));
-    if (i % 4 === 3) await tick();
+  }
+  // Only the *dominant* colour may become the backdrop. Promoting the runner-up
+  // when the dominant one is switched off would hand the user a differently
+  // coloured full-bleed rectangle instead of the transparency they asked for.
+  const backgroundIndex =
+    opts.resultStyle === 'filled' && dominant >= 0 && !disabled.has(dominant) ? dominant : -1;
+
+  const layers: TracedLayer[] = [];
+  const mask = new Uint8Array(width * height);
+  for (let position = 0; position < order.length; position++) {
+    const i = order[position];
+    if (i !== backgroundIndex) {
+      if (opts.overlap === 'full') {
+        // Full overlap: the layer reaches under everything painted after it, so
+        // neighbouring layers cannot leave a seam between them.
+        const above = new Uint8Array(palette.length);
+        for (let q = position; q < order.length; q++) above[order[q]] = 1;
+        for (let p = 0; p < mask.length; p++) mask[p] = above[indices[p]];
+      } else {
+        maskForIndex(indices, i, mask);
+      }
+      layers.push(traceMask(mask, width, height, i, traceOptions));
+    }
+    report(onProgress, 'trace', 0.45 + 0.4 * ((position + 1) / Math.max(1, order.length)));
+    if (position % 4 === 3) await tick();
   }
   await tick();
 
@@ -370,7 +644,8 @@ export async function vectorize(
     height,
     precision: PATH_PRECISION,
     backgroundIndex,
-    strokeScale: STROKE_SCALE,
+    resultStyle: opts.resultStyle,
+    strokeWidth: STROKE_WIDTH,
   });
   report(onProgress, 'done', 1);
 
