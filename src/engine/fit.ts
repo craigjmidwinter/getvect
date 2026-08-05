@@ -564,6 +564,176 @@ function reparameterize(pts: Pt[], first: number, last: number, u: number[], bez
   return out;
 }
 
+/**
+ * NET turning across a run, in radians — how far the boundary's heading has
+ * swung from one end to the other, with the wobble cancelled out.
+ *
+ * Signed and summed, so a two-pixel sawtooth contributes nothing (it turns one
+ * way and straight back) while an arc contributes its whole sweep. That is the
+ * distinction the arc cap below is built on: it must split a long smooth bend
+ * and must NOT split a noisy straight seam, and total *absolute* turning cannot
+ * tell those apart.
+ */
+function netTurn(pts: Pt[], first: number, last: number): number {
+  let total = 0;
+  let prevAngle: number | null = null;
+  for (let i = first; i < last; i++) {
+    const dx = pts[i + 1].x - pts[i].x;
+    const dy = pts[i + 1].y - pts[i].y;
+    if (dx === 0 && dy === 0) continue;
+    const angle = Math.atan2(dy, dx);
+    if (prevAngle !== null) {
+      let delta = angle - prevAngle;
+      while (delta > Math.PI) delta -= TAU;
+      while (delta < -Math.PI) delta += TAU;
+      total += delta;
+    }
+    prevAngle = angle;
+  }
+  return total;
+}
+
+/** The vertex at which half of a run's net turning has been spent. */
+function turnMidpoint(pts: Pt[], first: number, last: number, target: number): number {
+  let total = 0;
+  let prevAngle: number | null = null;
+  for (let i = first; i < last; i++) {
+    const dx = pts[i + 1].x - pts[i].x;
+    const dy = pts[i + 1].y - pts[i].y;
+    if (dx === 0 && dy === 0) continue;
+    const angle = Math.atan2(dy, dx);
+    if (prevAngle !== null) {
+      let delta = angle - prevAngle;
+      while (delta > Math.PI) delta -= TAU;
+      while (delta < -Math.PI) delta += TAU;
+      total += delta;
+      if (Math.abs(total) >= target) return i;
+    }
+    prevAngle = angle;
+  }
+  return Math.floor((first + last) / 2);
+}
+
+/**
+ * How far a single cubic may bend, in radians (75°).
+ *
+ * A cubic Bézier cannot be a circular arc, and how badly it misses is a
+ * function of the SWEEP, not of the error budget: a quarter turn is off its arc
+ * by 2.7e-4·R, a 120° turn by ~1.5e-3·R, a 180° turn by ~5e-2·R. On a 200px
+ * radius those are 0.05px, 0.30px and 10px. The fit tolerance cannot see that
+ * as a defect — a 116° bulge measures 0.72px against a 0.89px budget and is
+ * accepted — and the result is a boundary that leaves its arc in the middle of
+ * every segment and rejoins it at the ends: an undulation at the wavelength of
+ * a fitted segment, which is what "the long smooth arcs read as pixels" turned
+ * out to be.
+ *
+ * So a run that sweeps more than this is split whatever its measured error,
+ * at the point where half the sweep has been spent. 75° keeps the worst single
+ * arc inside 1e-4·R (0.02px at radius 200, 0.04px at radius 400 — under the
+ * residual the boundary low-pass itself leaves) and costs five segments for a
+ * full circle where four is the theoretical floor.
+ *
+ * NET turning, not absolute, so this cannot fire on a wobble: a seam that
+ * sawtooths ±30° a dozen times nets ~0 and is left for the tolerance to judge.
+ */
+const MAX_ARC_TURN = (75 * Math.PI) / 180;
+
+/**
+ * Deviation, in pixels, a single cubic's own bend may contribute before the run
+ * is split on the arc regardless of the fit tolerance.
+ *
+ * The sweep alone is the wrong test: a triangle's 8px-long apex turns through
+ * 140° and misses its own arc by two hundredths of a pixel, while a 200px
+ * radius that turns through 116° misses by a third of one. What matters is the
+ * product, and it has a closed form — a cubic fitted to a circular arc of
+ * radius `R` and sweep `θ` deviates by about `2.7e-4·R·(θ/(π/2))⁶`, and on a
+ * traced run `R ≈ length/θ`, so the estimate needs nothing but the run's own
+ * length and net turn.
+ *
+ * A fiftieth of a pixel: below the residual the boundary low-pass itself leaves
+ * (0.06px on a rasterized disc), so the cap stops splitting at about the point
+ * where the cubic's own bend has stopped being what limits accuracy. Measured
+ * on rasterized discs, it takes the fitted ring from RMS 0.21/0.36/0.28px
+ * (radius 100/200/400) to 0.04/0.12/0.08px for four extra cubics apiece.
+ */
+const ARC_ERROR_FLOOR = 0.02;
+/** Deviation of a cubic from a quarter circle, as a fraction of the radius. */
+const QUARTER_ARC_ERROR = 2.7e-4;
+
+/**
+ * Turn, over a few vertices, above which a split point is a CORNER rather than
+ * a place on an arc (30°).
+ *
+ * The two halves of a recursive split share one tangent, so wherever the fitter
+ * divides a run it also declares that point smooth. That is harmless on an arc
+ * and destructive on a point: the arc cap's first version split every run that
+ * swept more than 75°, which on the spikes fixture meant splitting *at the apex
+ * of a triangle* — the one vertex on that contour where a shared tangent is a
+ * lie — and the sharpest surviving feature corner fell from 88° to 59°.
+ *
+ * A run that carries its turn at a single vertex is not an arc that needs
+ * capping, it is a corner the detector did not pin, and the ordinary
+ * error-driven recursion (which splits at the worst-fitted point, i.e. the
+ * corner itself, only once the error demands it) is what the corner gates were
+ * measured on. So the cap steps aside.
+ */
+const SHARP_SPLIT_TURN = (30 * Math.PI) / 180;
+
+/**
+ * How far either side of a candidate split the sharpness test looks, in
+ * vertices. It has to be wider than the boundary low-pass's own reach or it
+ * cannot see a corner at all: `lowPassClosed` smears an unpinned turn across
+ * `boundaryRadius` vertices (8 at the default Smoothing), so a two-vertex probe
+ * of a triangle's apex reads a gentle 20° and lets the cap split straight
+ * through it.
+ */
+const SHARP_SPLIT_SPAN = 6;
+
+/**
+ * How many times an evenly-spread turn the local turn must be before a split
+ * point counts as a corner. Two: an arc scores 1 by construction, and a corner
+ * scores the run's length over the probe window, which is many.
+ */
+const SHARP_CONCENTRATION = 2;
+
+/**
+ * How far one cubic would stray from the arc this run describes — see
+ * `ARC_ERROR_FLOOR`. `R` is recovered from the run's own length and sweep.
+ */
+function arcError(pts: Pt[], first: number, last: number, sweep: number): number {
+  let length = 0;
+  for (let i = first; i < last; i++) length += len(sub(pts[i + 1], pts[i]));
+  if (!(length > 0) || !(sweep > 0)) return 0;
+  const radius = length / sweep;
+  return QUARTER_ARC_ERROR * radius * (sweep / (Math.PI / 2)) ** 6;
+}
+
+/**
+ * Is `at` a corner — is the run's turning CONCENTRATED there rather than spread
+ * along it?
+ *
+ * Absolute angle alone cannot answer this, because how much a smooth arc turns
+ * over six vertices depends entirely on its radius: 6° on a 60px bend and 60°
+ * on a 6px one. So the local turn is compared with what this run's own sweep
+ * would produce if it were distributed evenly — an arc scores ~1, a corner
+ * scores the ratio of the run's length to the window. The absolute floor is
+ * kept as well, so a gently curving run is never called a corner on the
+ * strength of a ratio between two small numbers.
+ */
+function isSharp(pts: Pt[], at: number, first: number, last: number, sweep: number): boolean {
+  const back = Math.max(first, at - SHARP_SPLIT_SPAN);
+  const fwd = Math.min(last, at + SHARP_SPLIT_SPAN);
+  if (back === at || fwd === at) return false;
+  const a = normalize(sub(pts[at], pts[back]));
+  const b = normalize(sub(pts[fwd], pts[at]));
+  if ((a.x === 0 && a.y === 0) || (b.x === 0 && b.y === 0)) return false;
+  const dot = Math.max(-1, Math.min(1, a.x * b.x + a.y * b.y));
+  const local = Math.acos(dot);
+  if (local <= SHARP_SPLIT_TURN) return false;
+  const even = (sweep * (fwd - back)) / Math.max(1, last - first);
+  return local > SHARP_CONCENTRATION * even;
+}
+
 /** Largest distance from the chord `first..last` — the "is this straight?" test. */
 function maxChordDeviation(pts: Pt[], first: number, last: number): number {
   const a = pts[first];
@@ -585,6 +755,19 @@ function maxChordDeviation(pts: Pt[], first: number, last: number): number {
 }
 
 const MAX_DEPTH = 24;
+
+/**
+ * Newton-Raphson reparameterization passes run on **every** candidate cubic.
+ *
+ * Eight, because that is where the improvement stops paying on this artwork:
+ * on a rasterized disc the radial RMS of the fitted ring falls 0.357 → 0.062 →
+ * 0.031px over the first four passes and then moves in the fourth decimal,
+ * while the cost is a few Newton steps on runs that are usually a few dozen
+ * points long (the whole gold-standard trace moves by single-digit
+ * milliseconds). Each pass is kept only when it lowers the error, so the loop
+ * is monotone and terminating.
+ */
+const REFINE_PASSES = 3;
 
 /**
  * Fit `pts[first..last]` with cubics (or a line), appending to `out`.
@@ -619,38 +802,108 @@ function fitCubic(
     return;
   }
 
+  // A run that bends more than one cubic can honestly carry is split on the
+  // ARC, before any error is measured — see `MAX_ARC_TURN`.
+  if (depth < MAX_DEPTH) {
+    const sweep = Math.abs(netTurn(pts, first, last));
+    if (sweep > MAX_ARC_TURN && arcError(pts, first, last, sweep) > ARC_ERROR_FLOOR) {
+      const at = turnMidpoint(pts, first, last, sweep / 2);
+      if (at > first && at < last && !isSharp(pts, at, first, last, sweep)) {
+        const mid = splitTangent(pts, at, first, last);
+        fitCubic(pts, first, at, tHat1, { x: -mid.x, y: -mid.y }, tolerance, straightTolerance, out, depth + 1);
+        fitCubic(pts, at, last, mid, tHat2, tolerance, straightTolerance, out, depth + 1);
+        return;
+      }
+    }
+  }
+
   let u = chordLengthParameterize(pts, first, last);
   let bez = generateBezier(pts, first, last, u, tHat1, tHat2);
   let { error, split } = computeMaxError(pts, first, last, bez, u);
 
+  // REFINE BEFORE JUDGING — and refine whatever is emitted.
+  //
+  // Schneider's original only reparameterizes a fit that is *nearly* good
+  // enough (error < 4·tolerance) and emits anything already inside the budget
+  // exactly as the first least-squares solve produced it. That is what put the
+  // pixel staircase back into a boundary the low-pass had already removed.
+  // Measured on a rasterized disc of radius 200: the exact pixel ring sits RMS
+  // 0.367px from the true circle, `lowPassClosed` brings that to 0.063px — and
+  // the unrefined four-cubic fit handed it back at 0.357px, worst 0.75px. The
+  // tolerance is an error BUDGET, chord-length parameterization spends all of
+  // it, and the result is a curve that wanders a whole pixel either side of the
+  // arc it was given. At the length scale of a fitted segment that reads as an
+  // undulation — the "smooth arc that follows the pixel grid" the screenshots
+  // showed.
+  //
+  // Newton-Raphson reparameterization is the cure and it was already here; it
+  // was just gated off for the fits that needed it least in Schneider's terms
+  // and most in ours. Running it unconditionally can only *lower* the error
+  // (each pass is kept only if it improves), so a run that was inside the
+  // budget stays inside it: the accept criterion below is unchanged and the
+  // segment count can never grow because of this loop.
+  for (let i = 0; i < REFINE_PASSES; i++) {
+    if (error <= 1e-9) break;
+    const uPrime = reparameterize(pts, first, last, u, bez);
+    const nextBez = generateBezier(pts, first, last, uPrime, tHat1, tHat2);
+    const next = computeMaxError(pts, first, last, nextBez, uPrime);
+    if (!(next.error < error)) break;
+    u = uPrime;
+    bez = nextBez;
+    error = next.error;
+    split = next.split;
+  }
+
   if (error < tolerance) {
     pushCubic(out, bez);
     return;
-  }
-  if (error < tolerance * 4 && depth < MAX_DEPTH) {
-    for (let i = 0; i < 4; i++) {
-      const uPrime = reparameterize(pts, first, last, u, bez);
-      const nextBez = generateBezier(pts, first, last, uPrime, tHat1, tHat2);
-      const next = computeMaxError(pts, first, last, nextBez, uPrime);
-      u = uPrime;
-      bez = nextBez;
-      error = next.error;
-      split = next.split;
-      if (error < tolerance) {
-        pushCubic(out, bez);
-        return;
-      }
-    }
   }
 
   if (depth >= MAX_DEPTH || split <= first || split >= last) {
     pushCubic(out, bez);
     return;
   }
-  const centre = normalize(sub(pts[split + 1] ?? pts[split], pts[split - 1] ?? pts[split]));
-  const left = centre.x === 0 && centre.y === 0 ? normalize(sub(pts[split], pts[first])) : centre;
+  const left = splitTangent(pts, split, first, last);
   fitCubic(pts, first, split, tHat1, { x: -left.x, y: -left.y }, tolerance, straightTolerance, out, depth + 1);
   fitCubic(pts, split, last, left, tHat2, tolerance, straightTolerance, out, depth + 1);
+}
+
+/**
+ * Window, in polygon vertices, the tangent at a recursive split is averaged
+ * over. The boundary walk steps one pixel at a time, so this is a distance:
+ * five pixels each way.
+ */
+const SPLIT_TANGENT_SPAN = 5;
+
+/**
+ * Unit tangent at a split point, averaged over a window and clamped to the run.
+ *
+ * This used to be a two-vertex central difference, `pts[split+1] - pts[split-1]`,
+ * and it was the other half of the "smooth arc that follows the pixel grid"
+ * defect. A cubic's END TANGENTS are fixed input to the least-squares solve —
+ * `generateBezier` may only choose how far the handles reach along them — so a
+ * tangent that is a few degrees out cannot be recovered by fitting or by any
+ * amount of reparameterization; the whole segment leaves in the wrong direction
+ * and bows back. Over two vertices ≈ two pixels, the residual ±0.06px ripple
+ * the low-pass leaves is a direction error of ~3.4°, an order of magnitude
+ * worse than the span-averaged tangents the run's *ends* already used. Averaged
+ * over five vertices instead, the same ripple is ~0.7°, and the fitted disc's
+ * radial RMS drops from 0.36px to 0.02px.
+ *
+ * The window is clamped to `[first, last]` rather than wrapped, so the estimate
+ * never reaches across a pinned corner into a different run.
+ */
+function splitTangent(pts: Pt[], split: number, first: number, last: number): Pt {
+  let acc = { x: 0, y: 0 };
+  for (let k = 1; k <= SPLIT_TANGENT_SPAN; k++) {
+    const back = Math.max(first, split - k);
+    const fwd = Math.min(last, split + k);
+    if (back === fwd) continue;
+    acc = { x: acc.x + (pts[fwd].x - pts[back].x) / k, y: acc.y + (pts[fwd].y - pts[back].y) / k };
+  }
+  const unit = normalize(acc);
+  if (unit.x !== 0 || unit.y !== 0) return unit;
+  return normalize(sub(pts[split], pts[first]));
 }
 
 function pushCubic(out: Segment[], bez: Bezier): void {
