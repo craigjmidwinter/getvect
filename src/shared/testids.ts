@@ -36,6 +36,7 @@ export const TESTIDS = {
   paletteMergeButton: 'palette-merge-button',
   paletteMergeTarget: 'palette-merge-target',
   paletteRemoveButton: 'palette-remove-button',
+  paletteAutoButton: 'palette-auto-button', // discards palette edits (optional)
 
   // --- C. Preview -----------------------------------------------------------
   previewPane: 'preview-pane', // + data-mode original|vector|side-by-side
