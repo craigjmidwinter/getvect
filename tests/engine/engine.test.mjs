@@ -393,3 +393,71 @@ test('a single-colour palette override still paints every pixel', async () => {
   assert.deepEqual(r.palette.map(engine.hexOf), ['#0a141e']);
   assert.deepEqual([...fillsIn(r.svg)], ['#0a141e']);
 });
+
+// --- the pre-fit boundary low-pass -----------------------------------------
+
+const fit = require(join(root, 'dist/engine/fit.js'));
+
+test('the boundary low-pass removes a sawtooth without moving the boundary far', () => {
+  /**
+   * `lowPassClosed` is what takes the wobble out of a colour seam before the
+   * curve fitter is allowed to reproduce it (src/engine/fit.ts). Two properties
+   * make it safe to run on artwork rather than on a test pattern, and both are
+   * asserted here on a 200x40 bar whose long edges carry a ±2px sawtooth:
+   *   1. the sawtooth's amplitude collapses,
+   *   2. no vertex moves further than `maxShift`, whatever the kernel wants —
+   *      which is what lets callers scale the licence down by a thin shape's
+   *      own thickness instead of trusting the filter.
+   */
+  const ring = [];
+  for (let x = 0; x < 200; x++) ring.push({ x, y: (x % 4 < 2 ? 0 : 2) });
+  for (let y = 0; y <= 40; y++) ring.push({ x: 200, y });
+  for (let x = 200; x >= 0; x--) ring.push({ x, y: 40 + (x % 4 < 2 ? 0 : 2) });
+  for (let y = 40; y >= 0; y--) ring.push({ x: 0, y });
+
+  const smoothed = fit.lowPassClosed(ring, null, 6, 1.5);
+  const swing = (pts) => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 20; i < 180; i++) {
+      lo = Math.min(lo, pts[i].y);
+      hi = Math.max(hi, pts[i].y);
+    }
+    return hi - lo;
+  };
+  assert.ok(
+    swing(smoothed) < swing(ring) * 0.4,
+    `the sawtooth still swings ${swing(smoothed).toFixed(2)}px of the original ` +
+      `${swing(ring).toFixed(2)}px — the low-pass is tracking it, not removing it`,
+  );
+  let worst = 0;
+  for (let i = 0; i < ring.length; i++) {
+    worst = Math.max(worst, Math.hypot(smoothed[i].x - ring[i].x, smoothed[i].y - ring[i].y));
+  }
+  assert.ok(worst <= 1.5 + 1e-9, `a vertex moved ${worst.toFixed(3)}px against a 1.5px cap`);
+});
+
+test('the boundary low-pass leaves a pinned corner exactly where it was', () => {
+  // Corners are detected first and pinned, so the filter may never round one
+  // off — and its window is clipped at a pin, so the edges meeting there stay
+  // straight instead of being dragged across the corner.
+  const ring = [];
+  for (let x = 0; x < 60; x++) ring.push({ x, y: 0 });
+  for (let y = 0; y < 60; y++) ring.push({ x: 60, y });
+  for (let x = 60; x > 0; x--) ring.push({ x, y: 60 });
+  for (let y = 60; y > 0; y--) ring.push({ x: 0, y });
+  const pinned = new Uint8Array(ring.length);
+  for (let i = 0; i < ring.length; i++) {
+    if ((ring[i].x === 0 || ring[i].x === 60) && (ring[i].y === 0 || ring[i].y === 60)) pinned[i] = 1;
+  }
+  const smoothed = fit.lowPassClosed(ring, pinned, 8, 2);
+  for (let i = 0; i < ring.length; i++) {
+    if (pinned[i]) {
+      assert.deepEqual(smoothed[i], ring[i], 'a pinned corner moved');
+    }
+    assert.ok(
+      Math.hypot(smoothed[i].x - ring[i].x, smoothed[i].y - ring[i].y) < 1e-9,
+      `a straight edge of a square moved at vertex ${i} — the square is being rounded`,
+    );
+  }
+});
