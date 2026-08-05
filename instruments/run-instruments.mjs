@@ -32,6 +32,7 @@ import sharp from 'sharp';
 import { Resvg } from '@resvg/resvg-js';
 import { decodeImageFile, flattenOnWhite } from './lib/decode.mjs';
 import {
+  inkRecall,
   meanColorError,
   perColorCoverageDelta,
   pixelMismatchRatio,
@@ -114,6 +115,7 @@ async function writeDiff(a, b, file, amplify = 4) {
 const GATES = [
   ['meanColorError', 'meanColorError', 'max', (v) => v.toFixed(2)],
   ['ssim', 'ssim', 'min', (v) => v.toFixed(4)],
+  ['minInkRecall', 'inkRecall', 'min', (v) => v.toFixed(4)],
   ['maxPaths', 'pathCount', 'max', String],
   // pathCount is not a shape count — one compound path per colour layer hides
   // thousands of specks inside a single element, so the economy bar is only
@@ -162,6 +164,7 @@ function table(rows) {
     ['subpaths', (r) => (r.metrics ? String(r.metrics.subPathCount) : '—'), 9],
     ['tiny%', (r) => fmt(r.metrics ? r.metrics.tinySubPathRatio * 100 : null, 1), 6],
     ['curve', (r) => fmt(r.metrics?.curveCommandRatio, 3), 6],
+    ['ink', (r) => fmt(r.metrics?.inkRecall, 3), 6],
     ['SVG KB', (r) => fmt(r.metrics ? r.metrics.svgBytes / 1024 : null, 1), 8],
     ['ms', (r) => fmt(r.metrics?.wallClockMs, 0), 6],
   ];
@@ -316,6 +319,8 @@ async function main() {
       psnrDb: psnr(reference, traced),
       ssim: ssim(reference, traced),
       pixelMismatchRatio: pixelMismatchRatio(reference, traced),
+      // Area-weighted scores cannot see a deleted hairline; this can.
+      inkRecall: inkRecall(reference, traced),
       // How much each palette colour's area drifted between source and trace:
       // catches half-pixel erosion of hairlines that MAE/SSIM average away.
       perColorCoverageDelta: Array.isArray(result.palette)

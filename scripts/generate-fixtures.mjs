@@ -312,6 +312,9 @@ async function main() {
         thresholds: {
           meanColorError: 8,
           ssim: 0.9,
+          // Line art is a fraction of the pixels, so MAE/SSIM cannot see it
+          // vanish — inkRecall can (instruments/lib/metrics.mjs).
+          minInkRecall: 0.98,
           maxPaths: 200,
           maxSubPaths: 200,
           maxTinySubPathRatio: 0.02,
@@ -335,6 +338,7 @@ async function main() {
         thresholds: {
           meanColorError: 14,
           ssim: 0.7,
+          minInkRecall: 0.97,
           maxPaths: 1200,
           // The default despeckle must not leave every source speckle as its
           // own 1x1 vector shape (the reference product's Minimum Area 5px², B5).
@@ -359,6 +363,7 @@ async function main() {
         thresholds: {
           meanColorError: 8,
           ssim: 0.9,
+          minInkRecall: 0.98,
           maxPaths: 300,
           maxSubPaths: 300,
           maxTinySubPathRatio: 0.02,
@@ -382,6 +387,7 @@ async function main() {
         thresholds: {
           meanColorError: 28,
           ssim: 0.6,
+          minInkRecall: 0.9,
           maxPaths: 4000,
           maxSubPaths: 6000,
           maxTinySubPathRatio: 0.3,
@@ -402,6 +408,7 @@ async function main() {
         thresholds: {
           meanColorError: 8,
           ssim: 0.88,
+          minInkRecall: 0.97,
           maxPaths: 200,
           maxSubPaths: 200,
           maxTinySubPathRatio: 0.02,
@@ -430,8 +437,9 @@ async function main() {
         settings: { colorCount: 16, enhance: true },
         exemplar: 'reference/snorlax.svg',
         thresholds: {
-          meanColorError: 20,
-          ssim: 0.85,
+          meanColorError: 7,
+          ssim: 0.9,
+          minInkRecall: 0.94,
           maxPathRatio: 3,
           maxSubPathRatio: 3,
           maxBytesRatio: 5,
@@ -463,6 +471,7 @@ async function main() {
         exemplar: 'reference/snorlax-clipart-6colors-min90.svg',
         thresholds: {
           maxMeanColorErrorRatio: 1.5,
+          minInkRecall: 0.94,
           maxPathRatio: 3,
           maxSubPathRatio: 3,
           maxBytesRatio: 5,

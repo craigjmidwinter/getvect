@@ -461,6 +461,16 @@ export function App() {
   const zoom = zoomOverride ?? fitZoom;
 
   /**
+   * Is there anything to pan to?
+   *
+   * `fitZoom` is by definition the largest zoom at which the whole image is
+   * inside the view, so anything above it is the only case where dragging can
+   * reveal something. Advertising a grab cursor at Fit invites a drag that can
+   * only push the artwork away (REFERENCE C2).
+   */
+  const pannable = previewImage != null && zoom > fitZoom + 1e-6;
+
+  /**
    * Keep the artwork reachable: the pan is measured in image pixels, so the
    * bound is the pane size converted into image pixels. Without it one flick of
    * the mouse throws the picture off screen and "Fit" is the only way back
@@ -939,6 +949,7 @@ export function App() {
           svg={displaySvg}
           paneRef={paneRef}
           busy={busy}
+          pannable={pannable}
         />
 
         {/*

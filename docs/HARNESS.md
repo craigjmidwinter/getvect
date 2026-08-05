@@ -23,7 +23,7 @@ npm run screenshots   # flow screenshots -> artifacts/screenshots/
 | `npm run build:node` | Main process + engine only. What the instruments need. |
 | `npm run build:renderer` | Renderer bundle only. |
 | `npm run typecheck` | Type-checks both projects without emitting. |
-| `npm test` | Playwright acceptance suite (`pretest` builds first). |
+| `npm test` | Engine contract tests **then** the Playwright acceptance suite (`pretest` builds first). The engine tests run first because they are the fidelity contracts: if the picture regressed, the UI specs' green is not worth reading. |
 | `npm run test:engine` | Engine contract tests (`node --test`, pure Node). Three files: `engine.test.mjs` (determinism, setting semantics, palette overrides, SVG grouping, EPS/DXF/PDF structure — must stay green), `parity.test.mjs` (the B2-B6 settings, D1 fill notation, D3 DXF colour distinctness), `rendered.test.mjs` (rasterizes output: does the *picture* change, is it curve-fitted, is it economical in shapes, does it hold up against the exemplar). |
 | `npm run test:headed` | Same, with a visible window. |
 | `npm run fixtures` | Regenerates `fixtures/` deterministically. |
@@ -105,6 +105,7 @@ Reported per fixture (`artifacts/metrics.json`):
 | `rmsColorError`, `psnrDb` | context for the above | — |
 | `ssim` | mean windowed structural similarity (8×8 windows, stride 4, luma) | ≥ 0.90 on flat fixtures |
 | `pixelMismatchRatio` | fraction of pixels off by > 12 in any channel | — |
+| `inkRecall` | fraction of the source's *ink* pixels (luma < 60) still darker than 128 in the re-raster — line art is too few pixels for MAE/SSIM to notice when a cleanup pass deletes it | ≥ 0.94 (snorlax) / ≥ 0.97 flat |
 | `pathCount` / `shapeCount` | `<path>` count / all drawable elements | ≤ 200 on flat fixtures |
 | `subPathCount` | `M`/`m` starts across every `d` attribute — the **honest shape count** | ≤ 200 flat / ≤ 1200 noisy |
 | `tinySubPathRatio` | share of sub-paths whose bounding box is ≤ 1.5 px in both axes, i.e. single-pixel specks | < 0.02 flat / < 0.1 noisy |
