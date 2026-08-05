@@ -189,6 +189,8 @@
         "minRegionStrictInkRecallRatio": 0.98,
         "maxLayerCompactnessRatio": 1.1,
         "maxLayerWobbleRatio": 1.15,
+        "maxStrokeWidthCvRatio": 2,
+        "maxStrokeWidthOverExemplar": 1.25,
         "maxPaletteShortfall": 8,
         "minRegionInkRecall": 0.93,
         "maxMeanColorErrorRatio": 1,

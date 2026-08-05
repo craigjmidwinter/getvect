@@ -567,6 +567,30 @@ async function main() {
           // real product never had. Ours 55.4 against the exemplar's 37.2
           // (1.49x); 1.15 is "the same class of edge".
           maxLayerWobbleRatio: 1.15,
+          // Stroke-width UNIFORMITY against the real product's, in the crop
+          // where we are worst (metrics.mjs `strokeWidthProfile`). This is the
+          // thing REFERENCE's blind A/B is actually decided on and the thing
+          // every other ink metric in this repo reads BACKWARDS: a line that
+          // thickens, thins and breaks recalls more ink and joins more
+          // components than an even one, so `regionStrictInkRecall` scored us
+          // 0.967 against the exemplar's 0.755 and `inkComponentRatio` 0.43x
+          // for a mouth arc that tapered to a spindle and detached from both
+          // fangs.
+          //
+          // These two bars are RATCHETS, not parity — say so plainly. The real
+          // product's paw outline is nearly twice as even as ours (cv 0.176
+          // against our 0.340) and the number to aim at is 1.15x, which is the
+          // bar the lap-7 critique named. What these hold is that the numbers
+          // measured today (1.93x uniformity, 1.18x fattening, down from 1.22x
+          // before the ink layers were unified) cannot quietly get worse while
+          // every other gate stays green — which is exactly how the defect
+          // survived seven laps.
+          maxStrokeWidthCvRatio: 2,
+          // ...and how much fatter our line is than the real product's trace of
+          // the same line. Measured by hand on the lower jaw the lap-7 critique
+          // had us at 1.76x the source's width against the exemplar's 1.44x;
+          // it is 1.51x now.
+          maxStrokeWidthOverExemplar: 1.25,
           // B3: 16 requested, 16 found in the image, 8 delivered.
           //
           // The bar is 8, not 1, because the exemplar settles it: the SVG

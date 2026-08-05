@@ -60,6 +60,7 @@ import {
   rmsColorError,
   ssim,
   strictInkRecall,
+  strokeWidthProfile,
   svgStructure,
 } from './lib/metrics.mjs';
 
@@ -169,6 +170,15 @@ const GATES = [
   // the exemplar itself scores 0.859 globally because it drops antialiased
   // skirts, while inside the paw it scores 0.984 to our 0.943.
   ['minRegionStrictInkRecallRatio', 'regionStrictInkRecallRatio', 'min', (v) => `${v.toFixed(3)}x`],
+  // Stroke-width UNIFORMITY, the one thing that decided REFERENCE's blind A/B
+  // and that every other ink metric here read backwards (metrics.mjs
+  // `strokeWidthProfile`): a line that thickens, thins and breaks recalls MORE
+  // ink and joins MORE components than an even one, so `strictInkRecall` scored
+  // us 0.967 against the real product's 0.755 for a mouth arc that tapered to a
+  // spindle and detached from both fangs. Gated as a ratio to the exemplar's own
+  // cv on the same crop, and paired with how much fatter our line is than its.
+  ['maxStrokeWidthCvRatio', 'strokeWidthCvRatio', 'max', (v) => `${v.toFixed(2)}x`],
+  ['maxStrokeWidthOverExemplar', 'strokeWidthOverExemplar', 'max', (v) => `${v.toFixed(2)}x`],
   // Boundary raggedness of the colour layers (metrics.mjs `layerCompactness`):
   // the sawtooth-vs-sweep difference between clipart and a posterized photo.
   ['maxLayerCompactness', 'layerCompactness', 'max', (v) => v.toFixed(2)],
@@ -215,6 +225,7 @@ const REGION_GATES = [
   ['minStrictInkRecall', 'strictInkRecall', 'min', (v) => v.toFixed(4)],
   ['maxInkComponentRatio', 'inkComponentRatio', 'max', (v) => `${v.toFixed(2)}x`],
   ['maxForeignColorRatio', 'foreignColorRatio', 'max', (v) => `${(v * 100).toFixed(2)}%`],
+  ['maxStrokeWidthCvRatio', 'strokeWidthCvRatio', 'max', (v) => `${v.toFixed(2)}x`],
 ];
 
 function checkThresholds(m, t, gates = GATES) {
@@ -335,6 +346,7 @@ async function main() {
             strictInkRecall: strictInkRecall(a, b),
             meanColorError: meanColorError(a, b),
             foreignColorRatio: foreignColorRatio(a, b),
+            ...(strokeWidthProfile(a, b) ?? {}),
           };
         }),
       };
@@ -540,6 +552,8 @@ async function main() {
           // "Is there a colour in here that is not in the picture?" — see the
           // GATES note on maxRegionForeignColorRatio.
           foreignColorRatio: foreignColorRatio(refRegion, outRegion),
+          // "Is it still a STROKE?" — see metrics.mjs `strokeWidthProfile`.
+          ...(strokeWidthProfile(refRegion, outRegion) ?? {}),
         });
         const crop = join(
           artifactsDir,
@@ -567,6 +581,8 @@ async function main() {
       metrics.regionMeanColorError = worst('meanColorError', 'max');
       metrics.regionSsim = worst('ssim', 'min');
       metrics.regionForeignColorRatio = worst('foreignColorRatio', 'max');
+      metrics.regionStrokeWidthCv = worst('strokeWidthCv', 'max');
+      metrics.regionStrokeWidthRatio = worst('strokeWidthRatio', 'max');
     }
 
     /**
@@ -621,7 +637,28 @@ async function main() {
             r.exemplarForeignColorRatio = e.foreignColorRatio;
             r.inkRecallRatio = r.inkRecall / Math.max(0.01, e.inkRecall);
             r.strictInkRecallRatio = r.strictInkRecall / Math.max(0.01, e.strictInkRecall);
+            r.exemplarStrokeWidth = e.strokeWidth;
+            r.exemplarStrokeWidthCv = e.strokeWidthCv;
+            if (r.strokeWidthCv != null && e.strokeWidthCv) {
+              r.strokeWidthCvRatio = r.strokeWidthCv / e.strokeWidthCv;
+            }
+            if (r.strokeWidthRatio != null && e.strokeWidthRatio) {
+              r.strokeWidthOverExemplar = r.strokeWidthRatio / e.strokeWidthRatio;
+            }
           }
+          // The A/B on stroke geometry, in the region where we are worst: how
+          // much less even our line is than the real product's, and how much
+          // fatter. Both are ratios because the absolute numbers belong to the
+          // artwork — a drawn line genuinely varies — while "less even than the
+          // real product's trace of the same line" belongs to us.
+          const cvRatios = metrics.regions
+            .filter((r) => r.strokeWidthCvRatio != null)
+            .map((r) => r.strokeWidthCvRatio);
+          metrics.strokeWidthCvRatio = cvRatios.length ? Math.max(...cvRatios) : null;
+          const fatRatios = metrics.regions
+            .filter((r) => r.strokeWidthOverExemplar != null)
+            .map((r) => r.strokeWidthOverExemplar);
+          metrics.strokeWidthOverExemplar = fatRatios.length ? Math.max(...fatRatios) : null;
           // < 1 means the real product renders the salient region better than
           // we do — the blind A/B, as one number, in the region where we are
           // worst relative to it.
