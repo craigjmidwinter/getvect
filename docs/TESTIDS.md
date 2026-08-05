@@ -154,6 +154,54 @@ matching that exactly is optional, disabling the dead ones is not.)
 Enhance must never introduce a colour the source does not contain (asserted against
 the flat fixture's exactly six colours).
 
+### AI Enhance — bring your own key (B4b)
+
+Optional, off by default, and the only feature in GetVect that can send anything
+anywhere. It sits **upstream of the engine**: the provider returns a bitmap, that bitmap
+becomes the working image, and `vectorize()` is unchanged. `enhance-toggle` above is a
+different, local feature and keeps its name and behaviour; with both on the AI pass runs
+first and the classical bundle runs second.
+
+| testid | element | required attributes / behaviour |
+| --- | --- | --- |
+| `ai-enhance-group` | container | **Required:** `data-provider` (the selected `EnhanceProviderId`), `data-has-key` = `"true"`/`"false"`, `data-enabled` = `"true"`/`"false"` (the feature is *enabled* only when it is switched on **and** a key exists). Mounted with the settings panel. |
+| `ai-provider-select` | `<select>` | Option values are `EnhanceProviderId`s (`gemini` today). |
+| `ai-key-input` | `<input type="password">` | Never pre-filled and never re-displays a saved key: after a successful save its value is `""`. |
+| `ai-key-save` / `ai-key-clear` | buttons | Save stores the key **in the main process** (`aiEnhance:setKey`); Clear deletes it and switches the feature off. Clear is disabled with no key saved. |
+| `ai-key-status` | label | **Required:** `data-has-key` = `"true"`/`"false"`. Text says only whether a key is saved — it must never contain key material. |
+| `ai-enhance-toggle` | checkbox | **`disabled` until a key is saved.** Toggling re-traces (the working image changes). Turning it on again after a failure is the retry gesture. |
+| `ai-enhance-notice` | text | The privacy sentence, rendered as visible text next to the toggle — **not** a `title`/tooltip: "Sends this image to \<provider\> using your key. Everything else in GetVect stays on your machine." |
+| `ai-enhance-status` | label | **Required:** `data-ai-state` ∈ `off` \| `idle` \| `running` \| `done` \| `failed`, for the currently selected image. |
+
+**The key never reaches the renderer.** The preload surface is `setKey` / `clearKey` /
+`hasKey` / `available` / `run` — there is deliberately no `getKey`. The key is encrypted
+at rest with Electron `safeStorage` under `app.getPath('userData')`; if
+`safeStorage.isEncryptionAvailable()` is false the main process **refuses to store it**
+and returns the reason, which the UI shows. Nothing about the key goes into React state,
+`localStorage` or a log (`tests/e2e/ai-enhance.spec.ts`, "[AI] the key never comes back
+to the renderer").
+
+**Progress states are distinct.** While the provider call is in flight `status-text` stays
+`data-status="vectorizing"` (the documented enum is unchanged) but reads
+"Enhancing with AI…" rather than "Tracing…", and `ai-enhance-status` reports `running`.
+
+**A failure is never a hang and never silent.** Bad key, network down, 60s timeout or a
+reply with no image in it all end the same way: `ai-enhance-status` goes `failed`, an
+`error-toast` names the specific cause *and* says the original is being traced instead,
+and the un-enhanced bitmap goes to the engine so `status-text` still reaches `ready`.
+
+**AI Enhance under test.** The acceptance suite must run with no network at all, so under
+`GETVECT_E2E=1` `aiEnhance:run` routes to a deterministic local stub in
+`src/main/aiEnhance.ts` — a fixed **256×160 four-colour PNG**, a size and palette no
+fixture has, so "the enhanced bitmap became the working image" is an assertion about the
+traced document's own `viewBox`. Two hooks, both driven through the UI: a stored key of
+`fail-auth` / `fail-network` / `fail-timeout` / `fail-bad-response` produces that typed
+failure, and `GETVECT_AI_STUB_DELAY_MS` widens the in-flight window. The key store is
+redirected to `GETVECT_AI_DIR` (a temp dir per test) and `safeStorage` is not called, so a
+test run cannot read, overwrite or delete a developer's real key. **Only the provider and
+the store's location are swapped** — the IPC hop, the timeout, the PNG decode and the
+fallback are the production path, exactly as with `export:save`.
+
 ### Result styles (B6)
 
 | testid | element | required attributes / behaviour |
@@ -360,4 +408,15 @@ window.getvect.saveExport({
   encoding?,                         // 'utf8' (default) | 'base64'
 }): Promise<{ canceled, filePath }>  // native save dialog + write
 window.getvect.appInfo(): Promise<{ version, electron, e2e }>
+
+// AI Enhance (optional, bring your own key). Note the absence of a getKey.
+window.getvect.aiEnhance.setKey(provider, key): Promise<{ ok, error? }>
+window.getvect.aiEnhance.clearKey(provider): Promise<{ ok }>
+window.getvect.aiEnhance.hasKey(provider): Promise<boolean>
+window.getvect.aiEnhance.available(): Promise<boolean>   // can the OS encrypt at rest?
+window.getvect.aiEnhance.run({
+  provider,                          // 'gemini'
+  image,                             // PNG bytes of the working image
+  transparent,                       // source has real alpha -> transparent-background prompt
+}): Promise<{ ok: true, image } | { ok: false, code, message }>
 ```

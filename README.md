@@ -22,7 +22,9 @@ credit per conversion, a watermark until you pay, a queue when they're busy. Get
 the same job as a desktop app: a local Electron program with an offline tracing engine,
 a full control surface for palette / detail / smoothing / speck removal, and native
 save dialogs. Your artwork never leaves the machine, there is no per-image cost, and the
-renderer runs under a `default-src 'self'` CSP with **no network calls at runtime**. The
+renderer runs under a `default-src 'self'` CSP with **no network calls at runtime** — the
+one exception is [AI Enhance](#ai-enhance-optional-bring-your-own-key), which is off by
+default, needs your own API key, and says so on the switch. The
 quality bar is explicit and adversarial: [the reference product](https://the reference product)'s own
 output on the same source images is checked into `fixtures/reference/` and the test
 harness measures us against it on every run.
@@ -89,6 +91,35 @@ as editable colour groups. The DXF keeps its curves: every fitted cubic travels 
 degree-3 `SPLINE`, so a CAD or cutter file is a drawing rather than a point cloud — and
 the **Splines / Lines** picker beside the DXF button flattens it to R12 POLYLINE for the
 older CAD and cutter firmware that cannot read a spline at all.
+
+## AI Enhance (optional, bring your own key)
+
+Off by default, and the only thing in GetVect that can touch the network.
+
+The real the reference product's "Enhance with AI" turned out not to be a filter at all: it is a
+generative image-to-image **re-illustration** — background removed, soft shading flattened
+into bands, outlines regularized — after which the tracer is tracing already-flat art. That
+is most of its advantage on shaded artwork, and no amount of median filtering reproduces
+it. GetVect can now do the same step by asking an image model for it: paste your own
+Google Gemini API key, switch AI Enhance on, and the enhanced image becomes the working
+image the engine traces (at the model's own resolution, which is what the real product
+does too). One call, ~8s on a 1024px source in our measurements.
+
+**The trade, stated plainly.** With AI Enhance on, *that image is uploaded to Google* under
+your own API key and their terms — which is exactly the thing the rest of this app exists
+to avoid. Nothing else changes: no other image, no other feature, no telemetry, and the
+switch is off until you turn it on. The key is encrypted at rest with Electron's
+`safeStorage` (Keychain on macOS) inside the app's data directory, lives only in the main
+process, and is never returned to the UI — the interface can save one, clear one, and ask
+whether one exists. If the OS has no keystore available, GetVect refuses to store the key
+rather than writing it in the clear. If a run fails — bad key, no network, 60s timeout — the
+un-enhanced image is traced instead and the app says why.
+
+The fully-local version of this (background removal, then an on-device generative flatten,
+with nothing leaving the machine) is the plan of record:
+**[issue #1](https://github.com/craigjmidwinter/getvect/issues/1)**. The provider layer was
+written for it — a local backend is meant to arrive as one more `EnhanceProvider`, not as a
+second pipeline.
 
 **Not built** (REFERENCE section E, deliberately out of scope for now): isometric layer
 view, crop, pixel editing, gradient detection, drag-to-regroup colour circles, Android
