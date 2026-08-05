@@ -198,6 +198,44 @@ export function strictInkRecall(reference, traced, { inkLuma = 60 } = {}) {
 }
 
 /**
+ * Ink COVERAGE — how much of this crop is ink at all, ours over the source's.
+ *
+ * Every ink number above this one asks whether the source's ink came back, and
+ * all of them read a *fattened* stroke as a triumph: recall 1.0, strict recall
+ * 1.0, components 1.0. The mascot's nose is the case that needs the other
+ * question. Its outline is a thin curve with a notch cut into it, and the trace
+ * turns the right nostril into a solid black wedge — every source ink pixel is
+ * present and correct, and so is twice as much ink that the source does not
+ * have. `strokeWidth` sees fattening only where the source is drawing a stroke
+ * (a medial-axis point whose long run is 3x its short one), which is exactly
+ * what a filled-in blob stops being.
+ *
+ * So: the share of the crop darker than `inkLuma` in the source, the same share
+ * in the trace, and the ratio. 1.0 means we spend the same amount of ink on this
+ * crop as the source does; 2.0 means we doubled it. It is a ratio because the
+ * absolute share belongs to the artwork, and it is deliberately blind to WHERE
+ * the ink is — `inkRecall` already answers that, and the two together say "all
+ * of the source's ink, and no more".
+ */
+export function inkCoverageProfile(reference, traced, { inkLuma = 60 } = {}) {
+  assertSameSize(reference, traced);
+  const luma = (d, i) => 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+  const n = reference.width * reference.height;
+  let source = 0;
+  let ours = 0;
+  for (let i = 0; i < reference.data.length; i += 4) {
+    if (luma(reference.data, i) < inkLuma) source++;
+    if (luma(traced.data, i) < inkLuma) ours++;
+  }
+  return {
+    sourceInkCoverage: n === 0 ? 0 : source / n,
+    inkCoverage: n === 0 ? 0 : ours / n,
+    // No ink in the crop at all: the question does not apply.
+    inkCoverageRatio: source > 0 ? ours / source : null,
+  };
+}
+
+/**
  * Colour leak — what fraction of a crop is painted a colour the source never
  * had *anywhere in that crop*.
  *
