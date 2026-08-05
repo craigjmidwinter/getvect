@@ -28,7 +28,7 @@ import {
   expect,
   layerFills,
   loadViaPicker,
-  setCheckbox,
+  setEnhanceMode,
   setSlider,
   test,
   waitForReady,
@@ -148,7 +148,7 @@ test('[quality-bar] the gold-standard settings agree between app and instruments
   await waitForReady(page);
   await setSlider(page, TESTIDS.settingColorCount, 8);
   await waitForReady(page);
-  await setCheckbox(page, TESTIDS.enhanceToggle, true);
+  await setEnhanceMode(page, 'local');
   await waitForReady(page);
 
   const exported = await fs.readFile(await exportAs(page, 'svg', exportDir), 'utf8');

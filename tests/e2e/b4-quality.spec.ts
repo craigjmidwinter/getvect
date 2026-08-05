@@ -9,6 +9,7 @@ import {
   layerFills,
   loadViaPicker,
   previewSvg,
+  setEnhanceMode,
   setSelect,
   waitForReady,
 } from './helpers';
@@ -134,7 +135,7 @@ test('[B4] enhance never invents a colour the source does not contain', async ({
 
   await loadViaPicker(page, FIXTURE.flat512);
   await waitForReady(page);
-  await page.locator(tid(TESTIDS.enhanceToggle)).click();
+  await setEnhanceMode(page, 'local');
   await waitForReady(page);
 
   const fills = [...fillsIn(await previewSvg(page))];

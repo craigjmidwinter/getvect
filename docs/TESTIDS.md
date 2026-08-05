@@ -92,7 +92,8 @@ never saw.
 | `detail` | `<input type="range">` | min 0, max 100. |
 | `smoothing` | `<input type="range">` | min 0, max 100. |
 | `despeckle` | `<input type="range">` | min 0, max 100. |
-| `enhance-toggle` | checkbox/switch | Toggles `settings.enhance`. Clicking it must re-vectorize. |
+| `enhance-toggle` | `<select>` | **One control, three answers:** `off` \| `local` \| `ai`. `local` sets `settings.enhance` (the engine's on-machine denoise/simplify bundle); `ai` arms AI Enhance (B4b) **and leaves `settings.enhance` false** — the AI pass replaces the local cleanup, it does not run before it. The `ai` `<option>` carries `disabled` until a key is saved. Every change must re-vectorize. |
+| `enhance-mode-hint` | label under it | Says what the selected mode does. For `ai` it must state that the AI pass **replaces** the local cleanup — that is a real choice (`engineEnhanceFor` in App.tsx) and it is not guessable from the control. |
 | `revectorize-button` | button | Optional. If settings apply automatically (preferred), still provide it — the suite does not require it, but the screenshot harness will use it if present. |
 | `reset-settings-button` | button | Optional; restores `DEFAULT_SETTINGS`. |
 
@@ -158,9 +159,9 @@ the flat fixture's exactly six colours).
 
 Optional, off by default, and the only feature in GetVect that can send anything
 anywhere. It sits **upstream of the engine**: the provider returns a bitmap, that bitmap
-becomes the working image, and `vectorize()` is unchanged. `enhance-toggle` above is a
-different, local feature and keeps its name and behaviour; with both on the AI pass runs
-first and the classical bundle runs second.
+becomes the working image, and `vectorize()` is unchanged. It is the `ai` option of
+`enhance-toggle` above, not a second switch: choosing it turns the local cleanup **off**
+(the AI pass replaces it) — see "Why one control and not two" in B4.
 
 | testid | element | required attributes / behaviour |
 | --- | --- | --- |
@@ -170,8 +171,7 @@ first and the classical bundle runs second.
 | `ai-key-input` | `<input type="password">` | Never pre-filled and never re-displays a saved key: after a successful save its value is `""`. |
 | `ai-key-save` / `ai-key-clear` | buttons | Save stores the key **in the main process** (`aiEnhance:setKey`); Clear deletes it and switches the feature off. Clear is disabled with no key saved. |
 | `ai-key-status` | label | **Required:** `data-has-key` = `"true"`/`"false"`. Text says only whether a key is saved — it must never contain key material. |
-| `ai-enhance-toggle` | checkbox | **`disabled` until a key is saved.** Toggling re-traces (the working image changes). Turning it on again after a failure is the retry gesture. |
-| `ai-enhance-notice` | text | The privacy sentence, rendered as visible text next to the toggle — **not** a `title`/tooltip: "Sends this image to \<provider\> using your key. Everything else in GetVect stays on your machine." |
+| `ai-enhance-notice` | text | The privacy sentence, rendered as visible text in the group — present whenever the `ai` option is *offered*, not only once it is chosen (a notice that appears after the decision is a receipt, not a disclosure) — **not** a `title`/tooltip: "Sends this image to \<provider\> using your key. Everything else in GetVect stays on your machine." |
 | `ai-enhance-status` | label | **Required:** `data-ai-state` ∈ `off` \| `idle` \| `running` \| `done` \| `failed`, for the currently selected image. |
 
 **The key never reaches the renderer.** The preload surface is `setKey` / `clearKey` /
@@ -298,8 +298,20 @@ geometry untouched.
 
 ### Enhance (B4)
 
-Toggling `enhance-toggle` on the noisy fixture must change the SVG and must **not increase**
-the path count — denoising should simplify, not complicate.
+Setting `enhance-toggle` to `local` on the noisy fixture must change the SVG and must **not
+increase** the path count — denoising should simplify, not complicate.
+
+**Why one control and not two.** This was a pair of checkboxes stacked in the settings
+column: "Enhance image (Beta)" and, below it, "Enhance with AI before tracing". They are
+genuinely different features — one is a local pass inside `vectorize()`, the other sends
+the image to a third party — but two adjacent checkboxes both labelled *Enhance* read as
+the same switch written twice, and two independent booleans offer four states to a
+question that has three answers. The fourth state ("both on") composed AI-first,
+classical-second: the model returns deliberately flat art and the local bundle then
+denoises it again, softening the hard boundaries that were the entire point. Nobody chose
+that; it fell out of the wiring. **The AI option now replaces the local cleanup**, both
+of the old behaviours remain reachable as `local` and `ai`, and the hint says which is
+which.
 
 ---
 

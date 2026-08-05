@@ -225,7 +225,9 @@ async function main() {
   });
 
   await step(page, 'enhance-enabled', async () => {
-    await click(page, T.enhanceToggle);
+    // One control, three answers (off | local | ai). `local` is the classical
+    // on-machine cleanup this shot has always been of.
+    await page.locator(tid(T.enhanceToggle)).selectOption('local');
     await waitReady(page);
   });
 
