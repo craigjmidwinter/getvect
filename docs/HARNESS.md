@@ -208,26 +208,45 @@ A fixture entry may also carry:
   into numbers, so critics do not have to eyeball crops.
 
   **An exemplar has to be registered against the source before it can be ratioed
-  against.** `rasterizeExemplarContent` decides how, on the file's own declared size:
+  against**, and there are two ways it can sit:
 
-  - The real product writes the source's pixel dimensions into the capture when the
-    drawing is already in source coordinates —
-    `fox-sticker-clipart-8colors-smartAA.svg` says `width="1024" height="1024"` for a
-    1024×1024 source — and then the only correct thing is to rasterize it as declared.
-    It scores MAE 1.03 / SSIM 0.997 / ink recall 0.999 that way.
-  - A capture that declares *anything else* has drawn its artwork inside a padded
-    frame. The retired exemplar this was first measured on declared an 11520×9280
-    viewBox for a 1046×833 source and used the top-left quarter of it, so rasterizing
-    the declared box scored the real product MAE 63.55 and
-    `exemplarMeanColorErrorRatio` came out 0.08 for anything we emitted — the
-    fidelity half of the gate measured nothing. Those are rendered at 2×, trimmed to
+  - **`frame`** — the drawing is already in source coordinates, because the real
+    product wrote the upload's own dimensions into the capture.
+  - **`content`** — the artwork is drawn inside a padded frame. The retired exemplar
+    this was first measured on declared an 11520×9280 viewBox for a 1046×833 source
+    and used the top-left quarter of it. These have to be rendered at 2×, trimmed to
     the uniform border and resized to the source.
 
-  Getting the discriminator backwards is not a small error in either direction:
-  trimming the fox exemplar (a sticker with a 76.5 % transparent margin) crops it to
-  the ink and stretches that to the frame, which scores the real product MAE 77.1 and
-  puts its paw where our muzzle is. `meanColorErrorAsDeclared` keeps the straight
-  viewBox number for context, and the stdout line names the size it rasterized at.
+  Getting it backwards is catastrophic in either direction, and both directions have
+  happened: rasterizing the padded capture's declared box scored the real product MAE
+  63.55, and trimming the fox exemplar (a sticker with a 76.5 % transparent margin)
+  crops it to the ink, stretches that to the frame, scores MAE 77.1 and puts its paw
+  where our muzzle is.
+
+  **`rasterizeExemplarContent` therefore chooses by measuring, not by reading the
+  header.** The rule used to be "does the file declare the source's exact pixel
+  dimensions", and Frankie's capture broke it: it declares 1184×896 for an 1195×896
+  source, because the product trimmed 11 px of transparent margin. A file registered
+  to within 1 % failed the equality test and went down the `content` path — which on a
+  die-cut sticker also ate the **white border**, being indistinguishable from the page
+  once flattened — and scored MAE 37.8 with 0.34 ink recall. A tolerance does not fix
+  it either: the padded capture is within **1.2 % of the source's aspect ratio** while
+  its artwork sits in a corner. No property of the header separates the two cases.
+
+  So both candidates are built and scored against the source, and the lower mean colour
+  error wins. It is a choice between exactly two alignments, so it cannot flatter an
+  exemplar into looking like anything it is not, and it is what a critic does by hand.
+  Every run prints the winner, its error and what it rejected:
+
+  | fixture | chosen | rejected |
+  |---|---|---|
+  | `reference-fox` | `frame` at 1.03 | `content` at 77.11 |
+  | `reference-frankie` | `frame` at 4.28 | `content` at 37.83 |
+  | `local-snorlax` | `content` at 13.50 | `frame` at 63.55 |
+
+  `registration`, `registrationError` and `registrationRejected` are in
+  `metrics.json`; `meanColorErrorAsDeclared` keeps the straight viewBox number for
+  context.
 - `salientRegion` / `salientRegions` — `{ x, y, width, height }` in source pixels, or a list of
   `{ name, x, y, width, height }`. Every fidelity number
   is area-weighted, and REFERENCE's blind A/B is decided on the part of the picture a
@@ -393,6 +412,8 @@ exactly six colours and palette assertions can be exact.
 | `unsupported-notes.txt` | plain text | rejection (A2) |
 | `reference/fox-sticker.png` | real 1024×1024 artwork, **76.5 % transparent** (**not** generated) | REFERENCE's gold-standard A/B source; instrumented three times, as `reference-fox` (8 colours + Smart AA + min-area 5 + Enhance — the settings the checked-in exemplar was captured at — exemplar `reference/fox-sticker-clipart-8colors-smartAA.svg`, regions = the face, the **muzzle** and the paw), `reference-fox-16c-nomerge` (16 colours + Enhance with `mergeThreshold: 0` — a bigger request with the colour fold explicitly turned off, see below) and `reference-fox-default` (**no `settings` key at all**, regions = face / muzzle / paw, each with its own bar — whatever `DEFAULT_SETTINGS` says today, on real artwork. The other rows pin a configuration, which is how the default a user actually gets went unmeasured while its output painted a region the wrong hue). On this artwork the defaults are also the Enhance-off configuration, so `-default` carries the default-settings economy ratios rather than a separate `-noenhance` row measuring the identical run twice |
 | `reference/fox-sticker-white.png` | the same artwork, white-flattened (**not** generated) | the opaque counterpart, as `reference-fox-white`: same picture, same settings, no alpha, **absolute** bars only (there is no real-product capture of the flattened variant to ratio against). It is the control that attributes a difference to the ingest rather than the tracer — and it earns its keep, because the paw crop comes back with 0.46 % of its pixels painted a hue the source does not contain where the transparent source scores 0.000 % |
+| `reference/frankie-sticker.png` | **Frankie**, the current mascot — real 1195×896 artwork of the maintainer's cat, **53.0 % transparent** (**not** generated) | The primary demo fixture and the second real-product exemplar, instrumented twice. `reference-frankie` (8 colours + Smart AA + min-area 5 + Enhance — the settings the checked-in capture was taken at — exemplar `reference/frankie-clipart-8colors-smartAA.svg`) and `reference-frankie-default` (**no `settings` key**, so it tracks `DEFAULT_SETTINGS`). The two differ by exactly one tick, Enhance, and that tick is worth a palette slot. Regions = the **face**, the **chest** (necklace stripes: cream, two stripe-orange arcs and the body orange inside 300×140) and the **eyes**, which name a colour |
+| `reference/frankie-sticker-white.png` | the same artwork, white-flattened (**not** generated) | not instrumented today — it is the counterpart the recolour produced alongside the transparent one, kept so the opaque control can be added the way `reference-fox-white` was without needing another capture |
 | `manifest.json` | ids, dimensions, per-fixture settings, exemplars, thresholds | consumed by the instruments |
 
 `fixtures/reference/` is checked in, not generated: `npm run fixtures` lists those
