@@ -7,19 +7,19 @@ tags:
     - critique
     - instruments
 hashes:
-    - 89b5038
-    - 02dae5b
-    - 9419bfc
-    - f36ef43
-    - 9fd9c90
-    - "2026665"
-    - 3ca5d03
-    - "3159227"
-    - 0c754dd
-    - 0e6e925
-    - d2c0ad5
-    - 1e76bf6
-    - eea020d
+    - afb337e
+    - b0f7d04
+    - d06bdb0
+    - d10080f
+    - cc3e39b
+    - f2a5e16
+    - d64eb9d
+    - "6679031"
+    - c6dc04d
+    - 48fde9b
+    - c5f606a
+    - 3ce650f
+    - 4f6013d
 stat:
     f: 154
     a: 11450
