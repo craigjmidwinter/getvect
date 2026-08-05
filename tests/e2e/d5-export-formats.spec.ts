@@ -1,6 +1,15 @@
 import { promises as fs } from 'node:fs';
 import { basename } from 'node:path';
-import { test, expect, FIXTURE, exportAs, loadViaPicker, previewSvg, waitForReady } from './helpers';
+import {
+  test,
+  expect,
+  FIXTURE,
+  exportAs,
+  layerFills,
+  loadViaPicker,
+  previewSvg,
+  waitForReady,
+} from './helpers';
 
 /**
  * REFERENCE.md D5 — "PDF and PNG export options alongside SVG/EPS/DXF (real
@@ -62,7 +71,9 @@ test('[D1] the exported SVG groups paths into per-colour layers', async ({ page,
   await waitForReady(page);
   const svg = await fs.readFile(await exportAs(page, 'svg', exportDir), 'utf8');
 
-  const groups = [...svg.matchAll(/<g fill="(#[0-9a-f]{6})"/g)].map((m) => m[1]);
+  // Notation-agnostic (hex or the `rgb(r,g,b)` form REFERENCE D1 documents) —
+  // b-engine's [D1] notation test is the one that pins the spelling.
+  const groups = layerFills(svg);
   expect(groups.length).toBeGreaterThan(1);
   // One group per colour, and every path lives inside one of them.
   expect(new Set(groups).size).toBe(groups.length);
@@ -73,4 +84,21 @@ test('[D1] the exported SVG groups paths into per-colour layers', async ({ page,
   // `<path></path>`, so compare with empty elements collapsed.
   const collapse = (s: string) => s.replace(/><\/(path|rect)>/g, '/>').trim();
   expect(collapse(await previewSvg(page))).toBe(collapse(svg));
+});
+
+test('[D1] colour layers use the documented rgb(r,g,b) notation', async ({ page, exportDir }) => {
+  // REFERENCE D1: "per-color `<g fill="rgb(...)">` layers". The exemplar
+  // fixtures/reference/artwork.svg spells them that way; we should match, so
+  // that a diff against real product output is about geometry, not syntax.
+  await loadViaPicker(page, FIXTURE.flat512);
+  await waitForReady(page);
+  const svg = await fs.readFile(await exportAs(page, 'svg', exportDir), 'utf8');
+
+  const fills = [...svg.matchAll(/<g[^>]*\bfill="([^"]+)"/g)].map((m) => m[1]);
+  expect(fills.length).toBeGreaterThan(1);
+  for (const fill of fills) {
+    expect(fill, 'REFERENCE D1 documents rgb(r,g,b) layer fills').toMatch(
+      /^rgb\(\d{1,3}, ?\d{1,3}, ?\d{1,3}\)$/,
+    );
+  }
 });

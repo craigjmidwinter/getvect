@@ -23,12 +23,35 @@ export const TESTIDS = {
   statusText: 'status-text', // + data-status idle|loading|vectorizing|ready|error
   settingsPanel: 'settings-panel',
   settingColorCount: 'color-count',
+  settingColorCountHint: 'color-count-hint', // + data-requested, data-actual
   settingDetail: 'detail',
   settingSmoothing: 'smoothing',
   settingDespeckle: 'despeckle',
   enhanceToggle: 'enhance-toggle',
   revectorizeButton: 'revectorize-button',
   resetSettingsButton: 'reset-settings-button',
+
+  // --- B2. Model presets (REFERENCE B2 / OBSERVED-UI step ①) ---------------
+  presetClipart: 'preset-clipart',
+  presetPhoto: 'preset-photo',
+  presetSketch: 'preset-sketch',
+  presetDrawing: 'preset-drawing',
+  settingDetailLevel: 'detail-level', // <select> maximum|ultra|very-high|high|medium|low|minimum
+  settingBwThreshold: 'bw-threshold', // <input type="range"> 0..255, Drawing preset only
+
+  // --- B4. Quality enhancement (REFERENCE B4) ------------------------------
+  settingNoiseReduction: 'noise-reduction', // <select> off|low|high
+  settingAntiAliasing: 'anti-aliasing', // <select> off|smart|mid
+
+  // --- B5. Advanced vectorization (REFERENCE B5) ---------------------------
+  settingRoundness: 'roundness', // <select> 0|1|2 (three curve-fitting levels)
+  settingMinArea: 'min-area', // <select> 0|5|90 (px²)
+  settingOverlap: 'overlap', // <select> full|high
+  settingCircleDetection: 'circle-detection', // checkbox
+
+  // --- B6. Result styles (REFERENCE B6) ------------------------------------
+  resultStyleFilled: 'result-style-filled',
+  resultStyleStroked: 'result-style-stroked',
 
   paletteEditor: 'palette-editor',
   paletteSwatch: 'palette-swatch', // + data-color, data-index
@@ -37,6 +60,13 @@ export const TESTIDS = {
   paletteMergeTarget: 'palette-merge-target',
   paletteRemoveButton: 'palette-remove-button',
   paletteAutoButton: 'palette-auto-button', // discards palette edits (optional)
+  paletteSizeOption: 'palette-size-option', // + data-size, one per 1,2,3,4,5,6,8,12,15,16,18
+
+  // --- B3. Output colour groups (REFERENCE B3) -----------------------------
+  colorGroups: 'color-groups',
+  colorGroupToggle: 'color-group-toggle', // checkbox + data-index, data-color
+  colorMergeThreshold: 'merge-threshold', // <select>, percentages
+  colorSortOrder: 'color-sort', // <select>
 
   // --- C. Preview -----------------------------------------------------------
   previewPane: 'preview-pane', // + data-mode original|vector|side-by-side
@@ -49,6 +79,7 @@ export const TESTIDS = {
   zoomFit: 'zoom-fit',
   zoomLevel: 'zoom-level', // + data-zoom (1 === 100%)
   panState: 'pan-state', // + data-pan-x, data-pan-y
+  previewBusy: 'preview-busy', // busy overlay; must NOT live inside the zoom/pan stage
 
   // --- D. Export ------------------------------------------------------------
   exportSvg: 'export-svg',
@@ -56,7 +87,8 @@ export const TESTIDS = {
   exportDxf: 'export-dxf',
   exportPdf: 'export-pdf', // REFERENCE D5
   exportPng: 'export-png', // REFERENCE D5
-  exportStatus: 'export-status', // + data-last-export-path
+  exportStatus: 'export-status', // + data-last-export-path (cleared whenever it goes stale)
+  exportSize: 'export-size', // + data-bytes — live size of the SVG in the preview
 } as const;
 
 export type TestId = (typeof TESTIDS)[keyof typeof TESTIDS];

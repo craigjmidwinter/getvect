@@ -305,8 +305,22 @@ async function main() {
         height: 512,
         supported: true,
         distinctColors: distinct(logo512),
-        // REFERENCE "Quality bar" thresholds that apply to this fixture
-        thresholds: { meanColorError: 8, ssim: 0.9, maxPaths: 200, maxBytes: 100 * 1024, maxMs: 10000 },
+        // REFERENCE "Quality bar" thresholds that apply to this fixture.
+        // maxSubPaths/maxTinySubPathRatio close the compound-path loophole in
+        // maxPaths; minCurveCommandRatio is REFERENCE's "smooth curve-fitted
+        // outlines (no pixel staircase)" made countable (exemplar scores 0.64).
+        thresholds: {
+          meanColorError: 8,
+          ssim: 0.9,
+          maxPaths: 200,
+          maxSubPaths: 200,
+          maxTinySubPathRatio: 0.02,
+          minCurveCommandRatio: 0.5,
+          maxNearDuplicateFills: 0,
+          maxPerColorCoverageDelta: 0.01,
+          maxBytes: 100 * 1024,
+          maxMs: 10000,
+        },
         note: 'Primary flat-colour target: 6 colours, hard edges, no antialiasing.',
       },
       {
@@ -318,7 +332,19 @@ async function main() {
         height: 512,
         supported: true,
         distinctColors: distinct(noisy512),
-        thresholds: { meanColorError: 14, ssim: 0.7, maxPaths: 1200, maxBytes: 400 * 1024, maxMs: 10000 },
+        thresholds: {
+          meanColorError: 14,
+          ssim: 0.7,
+          maxPaths: 1200,
+          // The default despeckle must not leave every source speckle as its
+          // own 1x1 vector shape (the reference product's Minimum Area 5px², B5).
+          maxSubPaths: 1200,
+          maxTinySubPathRatio: 0.1,
+          minCurveCommandRatio: 0.4,
+          maxNearDuplicateFills: 2,
+          maxBytes: 400 * 1024,
+          maxMs: 10000,
+        },
         note: 'Same mark + seeded speckle. Exercises despeckle and the enhance toggle (B4).',
       },
       {
@@ -330,7 +356,18 @@ async function main() {
         height: 1024,
         supported: true,
         distinctColors: distinct(logo1024),
-        thresholds: { meanColorError: 8, ssim: 0.9, maxPaths: 300, maxBytes: 150 * 1024, maxMs: 10000 },
+        thresholds: {
+          meanColorError: 8,
+          ssim: 0.9,
+          maxPaths: 300,
+          maxSubPaths: 300,
+          maxTinySubPathRatio: 0.02,
+          minCurveCommandRatio: 0.5,
+          maxNearDuplicateFills: 0,
+          maxPerColorCoverageDelta: 0.01,
+          maxBytes: 150 * 1024,
+          maxMs: 10000,
+        },
         note: 'Responsiveness bar: must vectorize in under 10s.',
       },
       {
@@ -342,7 +379,15 @@ async function main() {
         height: 384,
         supported: true,
         distinctColors: null,
-        thresholds: { meanColorError: 28, ssim: 0.6, maxPaths: 4000, maxBytes: 1024 * 1024, maxMs: 10000 },
+        thresholds: {
+          meanColorError: 28,
+          ssim: 0.6,
+          maxPaths: 4000,
+          maxSubPaths: 6000,
+          maxTinySubPathRatio: 0.3,
+          maxBytes: 1024 * 1024,
+          maxMs: 10000,
+        },
         note: 'Continuous tone. Not the primary use case — thresholds are loose on purpose.',
       },
       {
@@ -354,8 +399,78 @@ async function main() {
         height: 256,
         supported: true,
         distinctColors: distinct(bmpShapes),
-        thresholds: { meanColorError: 8, ssim: 0.88, maxPaths: 200, maxBytes: 100 * 1024, maxMs: 10000 },
+        thresholds: {
+          meanColorError: 8,
+          ssim: 0.88,
+          maxPaths: 200,
+          maxSubPaths: 200,
+          maxTinySubPathRatio: 0.02,
+          minCurveCommandRatio: 0.5,
+          maxNearDuplicateFills: 0,
+          maxPerColorCoverageDelta: 0.01,
+          maxBytes: 100 * 1024,
+          maxMs: 10000,
+        },
         note: 'BMP ingest path (REFERENCE A1).',
+      },
+      {
+        // REFERENCE lines 73-83: the gold-standard blind A/B case. Not
+        // generated — it is real artwork plus the SVG the reference product actually
+        // produced for it, checked into fixtures/reference/. Thresholds are
+        // derived from the exemplar rather than invented: <= 3x its path and
+        // sub-path counts, <= 5x its bytes, comparable rasterized fidelity.
+        id: 'reference-artwork',
+        file: 'reference/artwork.png',
+        kind: 'clipart',
+        format: 'png',
+        width: 1046,
+        height: 833,
+        supported: true,
+        distinctColors: null,
+        settings: { colorCount: 16, enhance: true },
+        exemplar: 'reference/artwork.svg',
+        thresholds: {
+          meanColorError: 20,
+          ssim: 0.85,
+          maxPathRatio: 3,
+          maxSubPathRatio: 3,
+          maxBytesRatio: 5,
+          maxTinySubPathRatio: 0.02,
+          minCurveCommandRatio: 0.5,
+          maxNearDuplicateFills: 4,
+          maxMs: 10000,
+        },
+        note:
+          'Gold-standard exemplar (REFERENCE "blind A/B"). Judged at 16 colours + enhance, ' +
+          'the setting the captured output corresponds to. artwork.svg is a low-colour ' +
+          'capture, so it anchors ECONOMY (paths/sub-paths/bytes/curve ratio); fidelity is ' +
+          'gated absolutely here and relatively in reference-artwork-6c.',
+      },
+      {
+        // The DOM-extracted Clipart / 6-colour / Minimum Area 90px² output is
+        // the tightest fidelity comparison available: same source, same colour
+        // budget, and the real product scores MAE ~18 on it. Ours must be in
+        // the same class rather than losing the black outline into dark teal.
+        id: 'reference-artwork-6c',
+        file: 'reference/artwork.png',
+        kind: 'clipart',
+        format: 'png',
+        width: 1046,
+        height: 833,
+        supported: true,
+        distinctColors: null,
+        settings: { colorCount: 6, enhance: true },
+        exemplar: 'reference/artwork-clipart-6colors-min90.svg',
+        thresholds: {
+          maxMeanColorErrorRatio: 1.5,
+          maxPathRatio: 3,
+          maxSubPathRatio: 3,
+          maxBytesRatio: 5,
+          maxTinySubPathRatio: 0.02,
+          minCurveCommandRatio: 0.5,
+          maxMs: 10000,
+        },
+        note: 'Blind A/B against real Clipart 6-colour output (93 paths, 91KB, curve ratio 0.64).',
       },
       {
         id: 'unsupported-gif',
@@ -379,9 +494,12 @@ async function main() {
   await fs.writeFile(join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 
   for (const f of manifest.fixtures) {
-    const stat = await fs.stat(join(outDir, f.file));
+    // fixtures/reference/* are checked in, not generated — report them, don't
+    // recreate them, and say so loudly if one has gone missing.
+    const stat = await fs.stat(join(outDir, f.file)).catch(() => null);
     console.log(
-      `${f.id.padEnd(20)} ${f.file.padEnd(28)} ${String(stat.size).padStart(8)} bytes` +
+      `${f.id.padEnd(20)} ${f.file.padEnd(28)} ${String(stat ? stat.size : 'MISSING').padStart(8)}` +
+        (stat ? ' bytes' : '') +
         (f.distinctColors ? `  ${f.distinctColors} colours` : ''),
     );
   }

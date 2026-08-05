@@ -24,7 +24,7 @@ npm run screenshots   # flow screenshots -> artifacts/screenshots/
 | `npm run build:renderer` | Renderer bundle only. |
 | `npm run typecheck` | Type-checks both projects without emitting. |
 | `npm test` | Playwright acceptance suite (`pretest` builds first). |
-| `npm run test:engine` | Engine contract tests (`node --test`, pure Node). Determinism, setting semantics, palette-override behaviour, SVG layer grouping, EPS/DXF/PDF structure. |
+| `npm run test:engine` | Engine contract tests (`node --test`, pure Node). Three files: `engine.test.mjs` (determinism, setting semantics, palette overrides, SVG grouping, EPS/DXF/PDF structure — must stay green), `parity.test.mjs` (the B2-B6 settings, D1 fill notation, D3 DXF colour distinctness — red until those land), `rendered.test.mjs` (rasterizes output: does the *picture* change, is it curve-fitted, is it economical in shapes, does it hold up against the exemplar). |
 | `npm run test:headed` | Same, with a visible window. |
 | `npm run fixtures` | Regenerates `fixtures/` deterministically. |
 | `npm run instruments` | Measures the app engine on every fixture. |
@@ -53,14 +53,35 @@ title is prefixed with its REFERENCE.md checklist id:
 | `tests/e2e/b-engine.spec.ts` | **B1** auto-vectorize, progress, 10s/1024px + non-blocking UI · **B2** the four sliders each change output · **B3** palette shown / changed / merged / removed · **B4** enhance toggle |
 | `tests/e2e/c-preview.spec.ts` | **C1** toggle + side-by-side · **C2** zoom in/out/fit, pan, view sync · **C3** preview SVG == exported SVG |
 | `tests/e2e/d-export.spec.ts` | **D1** SVG validity + dimensions · **D2** EPS structure · **D3** DXF structure · **D4** default filenames, main-process save path, selected image |
-| `tests/e2e/d5-export-formats.spec.ts` | **D5** PDF structure (MediaBox, xref) · **D5** PNG bitstream + size · **D5** default filenames · **D1** per-colour `<g fill>` layers |
+| `tests/e2e/d5-export-formats.spec.ts` | **D5** PDF structure (MediaBox, xref) · **D5** PNG bitstream + size · **D5** default filenames · **D1** per-colour `<g fill>` layers + `rgb(r,g,b)` notation |
+| `tests/e2e/a-ingest-behaviour.spec.ts` | **A1** a second drop/pick selects the new image · **A1** drag-hover feedback (`data-dragging`) · **A2** toast lifetime (auto-dismiss, manual dismiss, not wiped by an unrelated success) |
+| `tests/e2e/b1-stability.spec.ts` | **B1** no layout jump while tracing: settings panel and preview pane stay put, palette editor stays mounted |
+| `tests/e2e/b2-presets.spec.ts` | **B2** the four model presets · Detail Level enum · Sketch grayscale · Drawing B/W + threshold · colour slider vs actual palette |
+| `tests/e2e/b3-palette.spec.ts` | **B3** the eleven candidate palette sizes · output colour groups · disable → transparent background · merge threshold · sort order · panel size cap |
+| `tests/e2e/b4-quality.spec.ts` | **B4** Noise Reduction / Anti-aliasing selects · halo suppression · enhance invents no colours |
+| `tests/e2e/b5-advanced.spec.ts` | **B5** Roundness / Minimum Area / Overlap / Circle Detection |
+| `tests/e2e/b6-result-style.spec.ts` | **B6** Filled vs Stroked layers, in the preview and in the export |
+| `tests/e2e/c-preview-interaction.spec.ts` | **C1** preview never blanks, busy overlay is centred · **C2** wheel zoom, pan clamping, controls inert when empty |
+| `tests/e2e/d4-export-status.spec.ts` | **D4** export row does not re-flow · `data-last-export-path` invalidation · live `export-size` |
 
 Selectors are `data-testid` only. The full DOM contract is
 [docs/TESTIDS.md](./TESTIDS.md) — read it before building UI, it is what makes the app and
 the tests converge.
 
+Everything from `a-ingest-behaviour.spec.ts` down is **expected to be red** until the
+matching REFERENCE feature lands — that is the point of a gauntlet lap. Green specs
+above the line are regressions if they turn red.
+
+REFERENCE section E (stretch features) is deliberately **not** instrumented: REFERENCE
+itself grades those as minor, and a check nobody intends to satisfy is noise. If one is
+picked up, add its spec here at the same time.
+
 Reports land in `artifacts/e2e-results.json` (machine-readable), `artifacts/e2e-report/`
 (HTML) and `artifacts/test-results/` (traces + failure screenshots).
+
+Playwright's `use.actionTimeout` only reaches pages created by the browser fixtures, so
+the `page` fixture in `tests/e2e/helpers.ts` calls `page.setDefaultTimeout(8_000)`
+itself. Without it a missing testid costs 30 s per test and a red lap takes minutes.
 
 Run a slice:
 
@@ -85,13 +106,49 @@ Reported per fixture (`artifacts/metrics.json`):
 | `ssim` | mean windowed structural similarity (8×8 windows, stride 4, luma) | ≥ 0.90 on flat fixtures |
 | `pixelMismatchRatio` | fraction of pixels off by > 12 in any channel | — |
 | `pathCount` / `shapeCount` | `<path>` count / all drawable elements | ≤ 200 on flat fixtures |
+| `subPathCount` | `M`/`m` starts across every `d` attribute — the **honest shape count** | ≤ 200 flat / ≤ 1200 noisy |
+| `tinySubPathRatio` | share of sub-paths whose bounding box is ≤ 1.5 px in both axes, i.e. single-pixel specks | < 0.02 flat / < 0.1 noisy |
+| `curveCommandRatio` | `[CcSsQqTtAa] / ([CcSsQqTtAa] + [LlHhVv])` — "smooth curve-fitted outlines (no pixel staircase)" made countable | ≥ 0.5 (the exemplar scores 0.639) |
+| `cubicCount` | cubic Bézier segments | — |
+| `layerCount` | `<g fill>` colour layers | — |
+| `nearDuplicateFillPairs` | pairs of colour layers within RGB distance 24 — the anti-aliasing halo signature | 0 on flat fixtures |
+| `perColorCoverageDelta` | max change in a palette colour's area fraction between source and re-raster; catches hairline erosion that MAE/SSIM average away | ≤ 0.01 on flat fixtures |
 | `svgBytes` | exported SVG size | < 100 KB on flat fixtures |
 | `wallClockMs` | measured around `vectorize()` | < 10 000 |
 | `paletteSize` | length of the returned palette | — |
+| `exemplar*Ratio` | our bytes / sub-paths / paths / MAE divided by the exemplar's | REFERENCE lines 80-83 |
 
-Per-fixture thresholds live in `fixtures/manifest.json` (generated, derived from
-REFERENCE.md "Quality bar"); the photo fixture is deliberately loose because continuous-tone
-images are not the target use case.
+**Why sub-paths.** `pathCount` is not a shape count: `src/engine/svg.ts` emits one
+compound `<path>` per colour layer, so a thousand specks can hide inside a single
+element and pass a "≤ 200 paths" bar by definition. `subPathCount` and
+`tinySubPathRatio` are what REFERENCE's "not thousands of specks" actually means.
+
+Per-fixture thresholds live in `fixtures/manifest.json` (generated by
+`npm run fixtures`, derived from REFERENCE.md "Quality bar"); the photo fixture is
+deliberately loose because continuous-tone images are not the target use case.
+
+A fixture entry may also carry:
+
+- `settings` — an override merged over `DEFAULT_SETTINGS` for that fixture only. The
+  reference exemplar was produced at roughly 16 colours, so judging it at the 8-colour
+  default would compare two different pictures.
+- `exemplar` — a path (relative to `fixtures/`) to real the reference product output for the
+  same source. The runner measures it through the identical pipeline and reports
+  `exemplarBytesRatio` / `exemplarSubPathRatio` / `exemplarPathRatio` /
+  `exemplarMeanColorErrorRatio`, gated by `maxBytesRatio` / `maxSubPathRatio` /
+  `maxPathRatio` / `maxMeanColorErrorRatio`. This is REFERENCE's "blind A/B" turned
+  into numbers, so critics do not have to eyeball crops.
+
+### The D1 viewBox question
+
+REFERENCE D1 describes the real product's SVG as "per-color `<g fill="rgb(...)">`
+layers, 10× scaled viewBox", while this document requires `viewBox="0 0 w h"` in source
+pixels because the instruments rasterize against it. Both cannot hold. The decision:
+**adopt the `rgb(r,g,b)` fill notation, keep the 1× viewBox.** The 10× coordinate space
+is a potrace-era artifact of the captured exemplar and carries no user-visible
+behaviour, whereas the fill notation is what a diff against real output trips over.
+`tests/engine/parity.test.mjs` and `tests/e2e/d5-export-formats.spec.ts` enforce the
+notation; `tests/engine/engine.test.mjs` enforces the viewBox.
 
 Side outputs for eyeballing: `artifacts/vector/<id>.svg`, `artifacts/raster/<id>.png`
 (the re-rasterized SVG), `artifacts/diff/<id>.png` (absolute difference, ×4 amplified).
@@ -102,18 +159,23 @@ engine is still a stub · `3` the harness itself blew up.
 **Sanity-check the instrument, not just the engine:** `npm run instruments:selftest` runs
 the same pipeline against `instruments/reference-engine.mjs`, a deliberately naive
 run-length tracer. It scores `meanColorError 0.00 / ssim 1.0000` on the flat fixtures
-(pixel-exact geometry) and blows the economy budget with megabyte SVGs — which is exactly
-the tradeoff a real tracer has to beat. If the selftest stops scoring ~0 error, the
+(pixel-exact geometry) and blows the economy budget with megabyte SVGs, 949× the
+exemplar's sub-path count and a curve-command ratio of exactly 0 — which is precisely
+the tradeoff a real tracer has to beat, and a useful sanity check that the new
+structural metrics point the right way. If the selftest stops scoring ~0 error, the
 measurement chain is broken, not the engine.
 
 ## `npm run screenshots`
 
 Launches the app with Playwright and walks: launch → load three fixtures → auto-vectorize
-→ lower colour count → lower detail → open palette editor → switch image → enable enhance
-→ toggle preview → side-by-side → zoom in → zoom fit → export SVG. One labelled PNG per
-step in `artifacts/screenshots/`, plus `manifest.json` recording `ok`/`skipped` and the
-reason. It never fails the run — steps that aren't built yet are recorded as skipped and
-still screenshotted, so each lap produces a comparable contact sheet.
+→ lower colour count → lower detail → open palette editor → candidate palette sizes →
+Sketch → Drawing → Clipart detail level → noise reduction / anti-aliasing → advanced
+vectorization (roundness, minimum area, overlap, circle detection) → stroked layers →
+transparent background → switch image → enable enhance → toggle preview → side-by-side →
+zoom in → zoom fit → export SVG. One labelled PNG per step in `artifacts/screenshots/`,
+plus `manifest.json` recording `ok`/`skipped` and the reason. It never fails the run —
+steps that aren't built yet are recorded as skipped and still screenshotted, so each lap
+produces a comparable contact sheet and the `skipped` count is itself a progress metric.
 
 ## Fixtures
 
@@ -130,7 +192,11 @@ exactly six colours and palette assertions can be exact.
 | `shapes-256.bmp` | 24-bit uncompressed BMP | BMP ingest (A1) |
 | `unsupported-animation.gif` | valid 4×4 GIF89a | rejection (A2) — a real image the app must still refuse |
 | `unsupported-notes.txt` | plain text | rejection (A2) |
-| `manifest.json` | ids, dimensions, thresholds | consumed by the instruments |
+| `reference/artwork.png` | real 1046×833 artwork (**not** generated) | REFERENCE's gold-standard A/B source; instrumented twice, as `reference-artwork` (16 colours, exemplar `reference/artwork.svg`) and `reference-artwork-6c` (6 colours, exemplar `reference/artwork-clipart-6colors-min90.svg`) |
+| `manifest.json` | ids, dimensions, per-fixture settings, exemplars, thresholds | consumed by the instruments |
+
+`fixtures/reference/` is checked in, not generated: `npm run fixtures` lists those
+entries and reports `MISSING` rather than trying to recreate them.
 
 libvips has no BMP loader, so `instruments/lib/decode.mjs` carries a small 24/32-bit BMP
 decoder. The app itself doesn't need it — Chromium decodes BMP natively.
@@ -159,6 +225,23 @@ interface VectorizeSettings {
   despeckle: number;         // 0..100  (0 = keep every speck)
   enhance: boolean;          // denoise + colour simplification preprocessing
   palette?: RgbColor[] | null;  // explicit palette overrides the computed one
+
+  // --- REFERENCE B2-B6. Not implemented yet; the checks below are red until
+  // they are. Names and value domains are fixed by docs/TESTIDS.md, because the
+  // e2e suite drives them through <select>/<input> values of the same spelling.
+  preset?: 'clipart' | 'photo' | 'sketch' | 'drawing';          // B2, default 'clipart'
+  detailLevel?: 'maximum'|'ultra'|'very-high'|'high'|'medium'|'low'|'minimum';  // B2
+  bwThreshold?: number;      // 0..255, Drawing preset luminance split          // B2
+  disabledColors?: number[]; // palette indices to omit entirely (transparency) // B3
+  mergeThreshold?: number;   // percent; collapse output colours closer than it // B3
+  sortOrder?: 'coverage' | 'brightness';                                        // B3
+  noiseReduction?: 'off' | 'low' | 'high';                                      // B4
+  antiAliasing?: 'off' | 'smart' | 'mid';                                       // B4
+  roundness?: 0 | 1 | 2;     // three curve-fitting levels                      // B5
+  minArea?: 0 | 5 | 90;      // px^2 speck removal                              // B5
+  overlap?: 'full' | 'high'; // whether lower layers are painted under upper    // B5
+  circleDetection?: boolean;                                                    // B5
+  resultStyle?: 'filled' | 'stroked';                                           // B6
 }
 
 type VectorizePhase = 'preprocess'|'quantize'|'trace'|'simplify'|'serialize'|'done';

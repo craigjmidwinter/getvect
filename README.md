@@ -3,11 +3,18 @@
 Local desktop raster → vector app (Electron + TypeScript + React). Target behaviour is
 specified in [REFERENCE.md](./REFERENCE.md).
 
-**Current state: engine + app shell landed.** `src/engine/` meets the REFERENCE.md quality
-bar on every fixture (`npm run instruments`: 5/5 pass) and the renderer implements the
-whole workflow — ingest, auto-vectorize in a worker, settings, palette editing,
+**Current state: engine + app shell landed; REFERENCE B2-B6 not started.** The renderer
+implements ingest, auto-vectorize in a worker, the four sliders, palette editing,
 original/vector/side-by-side preview with synchronised zoom & pan, and SVG/EPS/DXF/PDF/PNG
-export through the native save dialog. `npm test` is green (44/44).
+export through the native save dialog — all green (46 e2e tests).
+
+The harness now also measures the parts that are missing or unfinished, so they show up
+as failures instead of prose: model presets, candidate palettes and output colour groups,
+noise reduction / anti-aliasing, the advanced vectorization controls, filled-vs-stroked
+layers, and — on the quality side — curve fitting, honest shape counts, and a blind A/B
+against the real the reference product exemplars. Those checks are **red by design** until the
+features land: `npm test` 46 pass / 48 fail, `npm run test:engine` and
+`npm run instruments` likewise. See docs/HARNESS.md for which is which.
 
 ```bash
 npm install
@@ -31,7 +38,7 @@ src/renderer/    React UI (workspace, preview, settings) + vectorization worker
 src/engine/      pure vectorization engine (trace / palette / EPS / DXF)
 src/shared/      testid constants shared by app and tests
 tests/e2e/       Playwright acceptance suite, one spec per checklist section
-tests/engine/    engine contract tests (node --test)
+tests/engine/    engine contract tests (node --test): contract, parity, rendered
 instruments/     fidelity metrics + screenshot harness
 fixtures/        deterministic test images (npm run fixtures)
 scripts/         build/dev/fixture/postinstall tooling
