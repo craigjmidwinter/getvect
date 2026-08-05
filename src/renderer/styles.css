@@ -461,7 +461,12 @@ code {
   border-top: 1px solid var(--line);
   background: var(--panel);
   padding: 10px 12px;
-  height: 224px;
+  /* Tall enough for the whole third column — input palette, palette editor and
+     the output-colour controls — to be on screen at the app's default window
+     size. The column still scrolls if a huge palette overflows it, but the
+     controls a user reaches for after looking at the result are not the part
+     that goes below the fold. */
+  height: min(276px, 36vh);
   display: grid;
   grid-template-columns: minmax(230px, 1.25fr) minmax(170px, 0.9fr) minmax(210px, 1.1fr);
   gap: 14px;
@@ -547,6 +552,14 @@ button.toggle.is-on,
   gap: 4px;
 }
 
+.slider.is-disabled {
+  opacity: 0.45;
+}
+
+.slider.is-disabled input[type='range'] {
+  cursor: not-allowed;
+}
+
 .slider {
   display: flex;
   flex-direction: column;
@@ -569,6 +582,12 @@ button.toggle.is-on,
   font-size: 10px;
   letter-spacing: 0.02em;
   min-height: 12px;
+  /* A hint that is cut off mid-sentence is a hint nobody can act on: it wraps,
+     and it never gets squeezed by a flex parent that is short of room. */
+  flex: 0 0 auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
 }
 
 .settings-summary {
@@ -677,13 +696,17 @@ button.toggle.is-on,
   gap: 6px;
   border-top: 1px solid var(--line);
   padding-top: 8px;
+  /* Pinned: the output-colour controls are the ones a user reaches for after
+     looking at the result, so they stay on screen at the default window size
+     and the palette editor above them takes the scrolling instead. */
+  flex: 0 0 auto;
 }
 
 .group-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 84px;
+  max-height: 66px;
   overflow-y: auto;
 }
 
