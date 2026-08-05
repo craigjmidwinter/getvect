@@ -7,16 +7,16 @@ tags:
     - instruments
     - preview
 hashes:
-    - 6d62d49
-    - 8f6b340
-    - 9a92ba4
-    - 70fb172
-    - "6204730"
-    - c8ac717
-    - e817532
-    - b2b0498
-    - 0318aec
-    - 995b029
+    - 28cfc4e
+    - 686f77e
+    - 4b57b47
+    - d538a56
+    - "0c390ff"
+    - bfe1d88
+    - 1368ba8
+    - b2e5710
+    - 9c6d3b1
+    - 5fa6d1d
 stat:
     f: 40
     a: 1416

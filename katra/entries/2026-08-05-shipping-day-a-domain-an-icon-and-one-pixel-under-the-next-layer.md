@@ -7,23 +7,23 @@ tags:
     - site
     - quality
 hashes:
-    - d68fc59
-    - 29872a1
-    - "3525565"
-    - b70da57
-    - e618bc3
-    - 09ebf20
-    - 1bdc777
-    - "8671611"
-    - 85226f2
-    - 8a8af67
-    - 4ccc5e1
-    - "11951e1"
-    - c9a68dc
-    - e846336
-    - d273ae8
-    - 1295d9a
-    - 028116c
+    - 11fc418
+    - f61f312
+    - "b9f901c"
+    - 169de32
+    - c8ec968
+    - fef1b3f
+    - db273a4
+    - "3dc8fad"
+    - 7d4ed46
+    - 7cf8ce5
+    - db7e3c7
+    - "87ab9ed"
+    - ea3f9d9
+    - 6afb58a
+    - cdb9ea1
+    - 533fcb0
+    - 47ae115
 stat:
     f: 58
     a: 6638
