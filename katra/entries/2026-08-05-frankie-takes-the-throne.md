@@ -7,17 +7,17 @@ tags:
     - fixtures
     - copy
 hashes:
-    - 1e73c36
-    - 23444a2
-    - 5cf608e
-    - dd0eab6
-    - 25eca48
-    - f2db48c
-    - 811bcea
-    - 337f024
-    - b3c2be4
-    - 2b300e6
-    - 6e793f6
+    - 3b9ab0b
+    - aac651f
+    - fd98234
+    - 78f31e8
+    - 3eaad3d
+    - d385514
+    - d14fd48
+    - 5b689ea
+    - 9992830
+    - 0999ae8
+    - 488450d
 stat:
     f: 43
     a: 905
