@@ -510,14 +510,34 @@ async function main() {
         distinctColors: null,
         settings: { colorCount: 16, enhance: true },
         exemplar: 'reference/snorlax.svg',
-        // The face: both eyes, both fangs and the mouth curve. 8 % of the
-        // canvas and all of the meaning — the region a blind A/B is decided on
-        // and the one every whole-frame score averages away.
-        salientRegion: { x: 300, y: 200, width: 360, height: 200 },
+        // Two crops, because one was not enough. The FACE is where line art is
+        // lost (both eyes, both fangs, the mouth curve — 8 % of the canvas and
+        // all of the meaning). The PAW PAD is where a whole colour family is
+        // lost: its source colour is rgb(164,143,125), a warm brown, and the
+        // pre-trace ramp snapper collapses it onto its neighbours' extremes so
+        // it comes back a light teal. Region gates read the worst crop.
+        salientRegions: [
+          { name: 'face', x: 300, y: 200, width: 360, height: 200 },
+          { name: 'paw-pad', x: 60, y: 670, width: 110, height: 80 },
+        ],
         thresholds: {
           meanColorError: 7,
           ssim: 0.9,
           minInkRecall: 0.94,
+          // Continuity against the real product, in the crop where we are
+          // worst relative to it. Loosely (`inkRecall`, luma < 128 counts as
+          // kept) our paw outline scores 0.978 to the exemplar's 1.000 and
+          // `regionInkRecallRatio` reads 1.08x — the metric said we beat the
+          // real product on the picture where a critic could see the contour
+          // was dashed. Strictly (ink must come back as ink) the same crop
+          // reads 0.943x of the exemplar.
+          minRegionStrictInkRecallRatio: 0.98,
+          // Boundary raggedness: our mid-tone layers sawtooth through the
+          // shading where the exemplar sweeps. Ours 3.73 mean vs its 2.67.
+          maxLayerCompactnessRatio: 1.3,
+          // B3: 16 requested, 16 found in the image, 8 delivered. The image is
+          // not the reason, our colour folds are.
+          maxPaletteShortfall: 1,
           // Same image, Enhance off + Smart AA, scores 0.965 here, so this is
           // not a bar the tracer cannot reach — it is the bar the Enhance
           // bundle currently fails while every global gate passes.
@@ -573,7 +593,10 @@ async function main() {
         distinctColors: null,
         settings: { colorCount: 16, enhance: false },
         exemplar: 'reference/snorlax.svg',
-        salientRegion: { x: 300, y: 200, width: 360, height: 200 },
+        salientRegions: [
+          { name: 'face', x: 300, y: 200, width: 360, height: 200 },
+          { name: 'paw-pad', x: 60, y: 670, width: 110, height: 80 },
+        ],
         thresholds: {
           meanColorError: 7,
           ssim: 0.9,
@@ -609,9 +632,19 @@ async function main() {
         distinctColors: null,
         settings: { colorCount: 6, enhance: true },
         exemplar: 'reference/snorlax-clipart-6colors-min90.svg',
+        // The 6-colour run is where the missing colour family is most visible:
+        // the real product's 6 colours include a tan, rgb(141,128,114), and it
+        // paints the paw pad with it (region MAE 21.9). Ours paints the same
+        // pad in blue.
+        salientRegions: [{ name: 'paw-pad', x: 60, y: 670, width: 110, height: 80 }],
         thresholds: {
           maxMeanColorErrorRatio: 1.5,
           minInkRecall: 0.94,
+          // The exemplar itself scores 21.89 in this crop at six colours, so
+          // this is "no worse than the real product, plus a little", not an
+          // invented bar. Ours scores 34.18: a warm brown rendered light teal.
+          maxRegionMeanColorError: 24,
+          maxPaletteShortfall: 1,
           maxTransparentAreaColorError: 8,
           maxPathRatio: 3,
           maxSubPathRatio: 3,
@@ -620,7 +653,50 @@ async function main() {
           minCurveCommandRatio: 0.5,
           maxMs: 10000,
         },
-        note: 'Blind A/B against real Clipart 6-colour output (93 paths, 91KB, curve ratio 0.64).',
+        note:
+          'Blind A/B against real Clipart 6-colour output (93 paths, 91KB, curve ratio 0.64). ' +
+          'Carries the paw-pad crop because the 6-colour palette failure is most visible there.',
+      },
+      {
+        // The settings a user actually gets. Every other gold-standard row pins
+        // something: 16 colours + Enhance, 16 colours, 6 colours + Enhance — so
+        // DEFAULT_SETTINGS on real artwork was never measured, and that is
+        // exactly where the anti-aliasing ramp snapper destroys the paw pad's
+        // colour family (palette [cream, blue, grey-cream, blue, blue, near
+        // black]: three blues and no brown, pad MAE 33.5 with the pad rendered
+        // rgb(103,150,167) against a source rgb(164,143,125)). No `settings`
+        // key at all is the point of the row: whatever DEFAULT_SETTINGS says
+        // today is what gets measured.
+        id: 'reference-snorlax-default',
+        file: 'reference/snorlax.png',
+        kind: 'clipart',
+        format: 'png',
+        width: 1046,
+        height: 833,
+        supported: true,
+        distinctColors: null,
+        salientRegions: [{ name: 'paw-pad', x: 60, y: 670, width: 110, height: 80 }],
+        thresholds: {
+          // Both real exemplars paint this crop within ~22 of the source at
+          // colour budgets no larger than the default's; 12 is what a correct
+          // hue costs, and a hue inversion cannot reach it.
+          maxRegionMeanColorError: 12,
+          // Both real exemplars keep this crop's outlines at >= 0.983 strict
+          // ink recall. Ours is 0.904: the pad ellipse and the paw contour come
+          // back thinner than the pixel run they were traced from.
+          minRegionStrictInkRecall: 0.94,
+          // 8 requested, 8 found in the image, 6 delivered.
+          maxPaletteShortfall: 1,
+          minInkRecall: 0.94,
+          maxTransparentAreaColorError: 8,
+          maxTinySubPathRatio: 0.02,
+          minCurveCommandRatio: 0.5,
+          maxMs: 10000,
+        },
+        note:
+          'DEFAULT_SETTINGS on the gold-standard artwork — deliberately no `settings` override. ' +
+          'The other three reference rows all pin a configuration, which left the one a user ' +
+          'gets out of the box unmeasured while its default output had a hue-inverted region.',
       },
       {
         id: 'unsupported-gif',

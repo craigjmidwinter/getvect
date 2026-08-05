@@ -276,6 +276,99 @@ async function hitTest(page: import('@playwright/test').Page, selector: string) 
   });
 }
 
+test('[B3] the way back from a hand-edited palette looks clickable', async ({ page }) => {
+  /**
+   * `palette-auto-button` is the only route back to the computed palette after
+   * a user edits a swatch, and it renders as unstyled body text beside the
+   * PALETTE label: no border, no background, no padding — nothing that says
+   * "control". Merge and Remove sit inches away with full button chrome, so the
+   * one destructive-edit escape hatch is the one thing on the panel that does
+   * not read as pressable.
+   *
+   * The bar is deliberately relative: whatever chrome the app gives its
+   * buttons, this one gets the same. That way restyling the panel cannot make
+   * this check wrong, only the affordance gap can.
+   */
+  await loadViaPicker(page, FIXTURE.flat512);
+  await waitForReady(page);
+  // The button only exists once there is an edit to undo, so make one.
+  await page.locator(tid(TESTIDS.paletteSwatch)).first().click();
+  await page.locator(tid(TESTIDS.paletteColorInput)).evaluate((node) => {
+    const input = node as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    setter?.call(input, '#ff00ff');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await waitForReady(page);
+  await expect(page.locator(tid(TESTIDS.paletteAutoButton))).toHaveCount(1);
+
+  const chrome = (selector: string) =>
+    page.locator(selector).evaluate((el) => {
+      const s = getComputedStyle(el);
+      const alpha = (c: string) => {
+        const m = /rgba?\(([^)]+)\)/.exec(c);
+        return m ? Number(m[1].split(',')[3] ?? 1) : 1;
+      };
+      return {
+        cursor: s.cursor,
+        padded: parseFloat(s.paddingLeft) + parseFloat(s.paddingRight) > 4,
+        bordered: parseFloat(s.borderTopWidth) > 0 && alpha(s.borderTopColor) > 0,
+        filled: alpha(s.backgroundColor) > 0,
+      };
+    });
+
+  const reference = await chrome(tid(TESTIDS.paletteMergeButton));
+  const auto = await chrome(tid(TESTIDS.paletteAutoButton));
+  expect(
+    auto,
+    `palette-auto-button (${JSON.stringify(auto)}) does not carry the chrome the panel's own ` +
+      `buttons carry (${JSON.stringify(reference)}) — it reads as body text`,
+  ).toMatchObject({
+    cursor: 'pointer',
+    padded: reference.padded,
+  });
+  expect(
+    auto.bordered || auto.filled,
+    'palette-auto-button has neither a border nor a background: nothing marks it as a control',
+  ).toBe(true);
+});
+
+test('[B3] every output colour group is visible at the default palette size', async ({ page }) => {
+  /**
+   * The check above this one only requires the FIRST toggle to be on screen,
+   * and that is how an 8-colour output shipped with its last group (#7C6F63)
+   * half-hidden behind a scrollbar at the app's own default window size. The
+   * reference product shows the output colour groups as a row of circles you
+   * can see at a glance and drag between; a list you have to scroll to learn
+   * the length of is not the same control.
+   *
+   * Default settings on real artwork — i.e. what a user gets by opening the app
+   * and dropping a file — and every group has to be reachable where it is
+   * drawn.
+   */
+  await loadViaPicker(page, FIXTURE.snorlax);
+  await waitForReady(page);
+
+  const toggles = page.locator(tid(TESTIDS.colorGroupToggle));
+  const count = await toggles.count();
+  expect(count, 'no output colour groups at all').toBeGreaterThan(1);
+
+  const hidden: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const hit = await hitTest(page, `${tid(TESTIDS.colorGroupToggle)} >> nth=${i}`);
+    if (!hit.reachable) {
+      const color = await toggles.nth(i).getAttribute('data-color');
+      hidden.push(`${color ?? `#${i}`}: ${hit.why}`);
+    }
+  }
+  expect(
+    hidden,
+    `${hidden.length} of ${count} output colour groups cannot be seen at the default window ` +
+      `size: ${hidden.join(' · ')}`,
+  ).toEqual([]);
+});
+
 test('[B3] the colour-count hint is readable, not clipped mid-sentence', async ({ page }) => {
   // "6 colours in the result — the image has no more to give" cut off at the
   // panel edge is a hint nobody can act on.
