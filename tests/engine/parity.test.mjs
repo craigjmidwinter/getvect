@@ -49,14 +49,22 @@ const RAW = { ...S, antiAliasing: 'off' };
 
 const flat = await load('logo-flat-512.png');
 const noisy = await load('logo-noisy-512.png');
-const snorlax = await load('reference/snorlax.png');
+const fox = await load('reference/fox-sticker.png');
 /**
  * The gold standard as the *app* hands it over — `(0,0,0,0)` for every
  * transparent pixel, the one decode contract in docs/HARNESS.md. Colour-budget
  * questions have to be asked on these pixels: the flattened version donates a
- * palette slot to a white background the user never asked for.
+ * palette slot to a white background the user never asked for, and on this
+ * artwork three quarters of the canvas is that background.
  */
-const snorlaxIn = canvasIngest(await decodeImageFile(fixture('reference/snorlax.png')));
+const foxIn = canvasIngest(await decodeImageFile(fixture('reference/fox-sticker.png')));
+/**
+ * The settings the checked-in exemplar was captured at
+ * (fixtures/reference/OBSERVED-UI.md): Clipart, 8 colours, Smart anti-aliasing,
+ * Enhance on. Colour-budget questions are asked here rather than at 16, because
+ * 8 is the budget there is a real-product capture to argue with.
+ */
+const EXEMPLAR_COLORS = 8;
 
 /** The six colours scripts/generate-fixtures.mjs draws the flat fixture from. */
 const FLAT_SOURCE_COLORS = ['#f2efe6', '#1b3a5c', '#2b2b2b', '#e4572e', '#2e9e5b', '#f2c14e'];
@@ -175,8 +183,8 @@ test('[B3] a palette fed back unchanged repaints nothing — it must not re-segm
    */
   const cases = [
     ['logo-flat-512 at the defaults', flat, {}],
-    ['the gold standard at the defaults', snorlaxIn, {}],
-    ['the gold standard at 16 colours + Enhance', snorlaxIn, { colorCount: 16, enhance: true }],
+    ['the gold standard at the defaults', foxIn, {}],
+    ['the gold standard at the exemplar settings', foxIn, { colorCount: EXEMPLAR_COLORS, enhance: true }],
   ];
   for (const [label, image, overrides] of cases) {
     const base = await run(image, overrides);
@@ -213,11 +221,11 @@ test('[B3] a merge survives the next setting change', async () => {
    * So: merge, then re-vectorize with what the engine handed back, and the
    * document must be byte-identical.
    */
-  const base = await run(snorlaxIn, { colorCount: 16, enhance: true });
+  const base = await run(foxIn, { colorCount: EXEMPLAR_COLORS, enhance: true });
   assert.equal(base.slots.length, base.palette.length, 'an unedited result has one slot per colour');
 
   const mergeInto0 = base.slots.map((c, i) => (i === 3 ? { ...base.slots[0] } : c));
-  const merged = await run(snorlaxIn, { colorCount: 16, enhance: true, palette: mergeInto0 });
+  const merged = await run(foxIn, { colorCount: EXEMPLAR_COLORS, enhance: true, palette: mergeInto0 });
   assert.equal(
     merged.palette.length,
     base.palette.length - 1,
@@ -229,7 +237,7 @@ test('[B3] a merge survives the next setting change', async () => {
     'a merge repaints slots; it must not remove one',
   );
 
-  const again = await run(snorlaxIn, { colorCount: 16, enhance: true, palette: merged.slots });
+  const again = await run(foxIn, { colorCount: EXEMPLAR_COLORS, enhance: true, palette: merged.slots });
   assert.equal(
     again.svg,
     merged.svg,
@@ -246,7 +254,7 @@ test('[B3] recolouring one swatch repaints that slot and leaves the drawing alon
    */
   for (const [label, image, overrides] of [
     ['logo-flat-512', flat, {}],
-    ['the gold standard', snorlaxIn, { colorCount: 16, enhance: true }],
+    ['the gold standard', foxIn, { colorCount: EXEMPLAR_COLORS, enhance: true }],
   ]) {
     const base = await run(image, overrides);
     const target = base.palette.length - 1;
@@ -290,35 +298,42 @@ test('[B3] the colour budget is spent on colours the user can tell apart', async
    * be *earned*. The bar this check enforces is the one the real product's own
    * output can be held to, because it is read off that output:
    *
-   *   - `fixtures/reference/snorlax-clipart-6colors-min90.svg` — real, 6-colour:
-   *     6 groups, closest pair 54 apart (Euclidean RGB).
-   *   - `fixtures/reference/snorlax.svg` — real, the gold standard the fixtures
-   *     compare against: 8 groups, closest pair 37 apart.
+   *   - `fixtures/reference/fox-sticker-clipart-8colors-smartAA.svg` — real,
+   *     captured at an 8-colour palette: SEVEN `<g fill>` groups, closest pair
+   *     8.0 apart (Euclidean RGB).
    *
-   * So on this artwork the real product delivers six distinguishable colours at
-   * a six-colour budget and eight at the budget the exemplar was captured at,
-   * and it never ships two layers inside the halo window (32) that
-   * `nearDuplicateFillPairs` calls a duplicate. We must do at least as well on
-   * both counts, and asking for more colours must never hand back fewer.
+   * Seven is not the bar, because two of those seven are inside the 32-unit
+   * halo window `nearDuplicateFillPairs` calls a duplicate — rgb(125,64,29)
+   * beside rgb(116,58,28) (10.9) and rgb(8,0,0) beside rgb(0,0,0) (8.0), two
+   * browns and a doubled black. Fold those the way `maxNearDuplicateFills: 0`
+   * makes us fold them and the real product's own capture is FIVE
+   * distinguishable colours: white, pink, orange, brown, black. That is the
+   * floor, and it is the number we deliver.
    *
    * An earlier revision of this check demanded `min(requested, found) - 1` at
-   * 6/8/12/16 — i.e. 15 output groups at a 16-colour budget. That bar is not
-   * reachable together with the repo's own `maxNearDuplicateFills: 0` gate on
-   * the same fixture: the 16 clusters this image yields contain nine pairs
-   * inside the halo window, so any palette of 15 of them ships duplicates. The
-   * real product resolves the same tension by shipping the duplicates (its
-   * 18-colour capture has 14 pairs inside the window, the closest 10.7 apart);
-   * we resolve it by folding them, which is what every other check in this repo
-   * asks for. Only one of the two bars can stand, and this is the one with the
-   * exemplars behind it.
+   * every budget. That bar is not reachable together with the repo's own
+   * `maxNearDuplicateFills: 0` gate: the clusters this image yields at a large
+   * budget contain pairs inside the halo window, so a palette of all-but-one of
+   * them ships duplicates. The real product resolves the tension by shipping
+   * the duplicates; we resolve it by folding them, which is what every other
+   * check in this repo asks for. Only one of the two bars can stand, and this
+   * is the one with an exemplar behind it.
    */
   const euclid = (a, b) => Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
   const HALO = 32;
-  const floors = { 6: 6, 16: 8 }; // real-product group counts, see above
+  // Real-product group count at the captured budget, deduped at HALO — see above.
+  const floors = { [EXEMPLAR_COLORS]: 5 };
+  /**
+   * What the quantizer itself finds before any fold, measured on this artwork.
+   * Pinned per budget rather than as `min(colorCount, 16)`: this is flat
+   * clipart with a handful of colour families, so demanding sixteen clusters
+   * from it would be demanding the quantizer invent them.
+   */
+  const clusterFloors = { 6: 5, 8: 6, 12: 10, 16: 12 };
 
   const delivered = [];
   for (const colorCount of [6, 8, 12, 16]) {
-    const r = await engine.vectorize(snorlaxIn, { ...S, colorCount });
+    const r = await engine.vectorize(foxIn, { ...S, colorCount });
     delivered.push({ colorCount, n: r.palette.length, source: r.sourceColors });
 
     let closest = Infinity;
@@ -340,17 +355,17 @@ test('[B3] the colour budget is spent on colours the user can tell apart', async
         'apart — a fold is only allowed to cost a colour when it removes a duplicate',
     );
     assert.ok(
-      r.sourceColors >= Math.min(colorCount, 16),
-      `the quantizer only found ${r.sourceColors} clusters for a ${colorCount}-colour request — ` +
-        'the shortfall starts before the folds, which is a different bug from the one this ' +
-        'check is about',
+      r.sourceColors >= clusterFloors[colorCount],
+      `the quantizer only found ${r.sourceColors} clusters for a ${colorCount}-colour request ` +
+        `where it found ${clusterFloors[colorCount]} when this bar was measured — the shortfall ` +
+        'starts before the folds, which is a different bug from the one this check is about',
     );
     const floor = floors[colorCount];
     if (floor !== undefined) {
       assert.ok(
         r.palette.length >= floor,
         `at ${colorCount} colours we deliver ${r.palette.length} output groups where the real ` +
-          `product's own capture of this image delivers ${floor}`,
+          `product's own capture of this image delivers ${floor} distinguishable ones`,
       );
     }
   }
@@ -368,28 +383,28 @@ test('[B3] the fold that costs the colours is one the user can turn off', async 
    * The check above settles how MANY colours a budget has to buy. This one
    * settles whether the customer has a say.
    *
-   * Ask for 16 with Enhance on and 8 come back: the panel's own hint says so
-   * ("8 colours in the result — 16 were found and the cleanup settings merged
-   * the rest") and `data-shortfall` blames the settings rather than the image,
-   * which is honest. The problem is the next click. The only cleanup control
-   * that speaks about colour groups is MERGE THRESHOLD, and
-   * `src/engine/index.ts` computes
+   * Ask for a budget with Enhance on and fewer come back: the panel's own hint
+   * says so ("5 colours in the result — 6 were found and the cleanup settings
+   * merged the rest") and `data-shortfall` blames the settings rather than the
+   * image, which is honest. The problem is the next click. The only cleanup
+   * control that speaks about colour groups is MERGE THRESHOLD, and
+   * `src/engine/index.ts` used to compute
    *
    *     groupThreshold = max(opts.mergeThreshold, opts.enhance ? 1 : 0)
    *
-   * so with Enhance on, dragging that control to 0 changes nothing at all —
-   * the sub-1 % fold is unreachable from the panel and the shortfall the hint
-   * attributes to "the cleanup settings" is not, in fact, a setting. Two
-   * configurations of the same request deliver 8 and 10, and no surface in the
-   * product explains why.
+   * so with Enhance on, dragging that control to 0 changed nothing at all —
+   * the sub-1 % fold was unreachable from the panel and the shortfall the hint
+   * attributes to "the cleanup settings" was not, in fact, a setting. Two
+   * configurations of the same request delivered different counts, and no
+   * surface in the product explained why.
    *
-   * The bar is deliberately not "16 delivered": it is that turning the control
-   * off reaches at least what turning ENHANCE off already reaches on this same
-   * image (10 groups, zero pairs inside the 32-unit halo window — measured, in
-   * `artifacts/metrics.json` under `reference-snorlax-noenhance`). Either fix
-   * satisfies it: let `mergeThreshold` override the Enhance floor, or expose
-   * the floor as its own control and make THAT one reversible. What is not
-   * allowed is a documented cleanup with no off switch.
+   * The bar is deliberately not "every colour requested": it is that turning
+   * the control off reaches at least what turning ENHANCE off already reaches
+   * on this same image (measured, in `artifacts/metrics.json` under
+   * `reference-fox-default`, which is the Enhance-off configuration here).
+   * Either fix satisfies it: let `mergeThreshold` override the Enhance floor,
+   * or expose the floor as its own control and make THAT one reversible. What
+   * is not allowed is a documented cleanup with no off switch.
    *
    * HOW IT WAS FIXED, and why this reads the way it does now. The `max(...)`
    * went away entirely: `groupThreshold` is `opts.mergeThreshold`, full stop,
@@ -408,14 +423,14 @@ test('[B3] the fold that costs the colours is one the user can turn off', async 
    *      "documented cleanup" now, and it has an off switch by construction);
    *   3. the colours that come back are colours, not near-duplicate creams.
    */
-  const dflt = await engine.vectorize(snorlaxIn, { ...S, colorCount: 16, enhance: true });
-  const merged = await engine.vectorize(snorlaxIn, {
+  const dflt = await engine.vectorize(foxIn, { ...S, colorCount: EXEMPLAR_COLORS, enhance: true });
+  const merged = await engine.vectorize(foxIn, {
     ...S,
-    colorCount: 16,
+    colorCount: EXEMPLAR_COLORS,
     enhance: true,
     mergeThreshold: 5,
   });
-  const enhanceOff = await engine.vectorize(snorlaxIn, { ...S, colorCount: 16, enhance: false });
+  const enhanceOff = await engine.vectorize(foxIn, { ...S, colorCount: EXEMPLAR_COLORS, enhance: false });
 
   assert.ok(
     dflt.palette.length >= enhanceOff.palette.length,
@@ -441,40 +456,43 @@ test('[B3] the fold that costs the colours is one the user can turn off', async 
 
 test('[B4] the default pipeline keeps every colour family the image has', async () => {
   /**
-   * The blocker Smart anti-aliasing (the DEFAULT) causes on real artwork: a
-   * whole *hue* disappears. At DEFAULT_SETTINGS on the gold standard the
-   * delivered palette is [241,230,219 | 103,151,168 | 196,184,178 |
-   * 45,116,143 | 65,95,103 | 17,16,13] — three blues and no brown — and the
-   * paw pads, source rgb(164,143,125), come back rgb(103,150,167): a warm
-   * brown rendered a light teal.
+   * The blocker Smart anti-aliasing (the DEFAULT) can cause on real artwork: a
+   * whole *hue* disappears. The failure this pins was measured on the retired
+   * exemplar, where a warm brown paw pad (source rgb(164,143,125)) came back
+   * rgb(103,150,167) — a light teal — because the delivered palette held three
+   * blues and no brown, while `computePalette` had found the brown perfectly
+   * well. The quantizer was not the culprit; the pre-trace ramp snapper was
+   * (`src/engine/preprocess.ts` treated a wide smooth gradient as if it were a
+   * 1px antialiasing ramp and collapsed its interior onto the extremes).
    *
-   * `computePalette(image, 8)` finds the brown (138,123,111), so the quantizer
-   * is not the culprit; the pre-trace ramp snapper is (`src/engine/preprocess.ts`
-   * treats a wide smooth gradient as if it were a 1px antialiasing ramp and
-   * collapses its interior onto the extremes). The real product's own 6-colour
-   * output for this image keeps a tan, rgb(141,128,114).
+   * The fox has the same shape of exposure: a DARK warm brown (the socks and
+   * the ear linings, rgb(120,60,28)) that sits between a large orange body and
+   * a black outline, and is exactly the family a ramp snapper collapses onto
+   * its neighbours. Note the window — the body orange is warm too but far
+   * lighter, so a bar written on "any warm colour" would be satisfied by the
+   * one colour that can never be lost.
    *
-   * A mid-luma warm colour is therefore something the delivered palette must
+   * A dark warm mid-tone is therefore something the delivered palette must
    * still contain, at the default settings and at a six-colour budget.
    */
   const luma = (c) => 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
-  const isMidWarm = (c) => c.r - c.b >= 20 && luma(c) >= 90 && luma(c) <= 200;
+  const isWarmMidtone = (c) => c.r - c.b >= 40 && luma(c) >= 55 && luma(c) <= 120;
   const show = (list) => list.map((c) => `rgb(${c.r},${c.g},${c.b})`).join(' ');
 
-  const candidates = await engine.computePalette(snorlaxIn, 8);
+  const candidates = await engine.computePalette(foxIn, 8);
   assert.ok(
-    candidates.some(isMidWarm),
-    `the quantizer itself found no mid-luma warm colour in [${show(candidates)}] — this check ` +
+    candidates.some(isWarmMidtone),
+    `the quantizer itself found no dark warm mid-tone in [${show(candidates)}] — this check ` +
       'assumes the brown is in the image; if the fixture changed, change the check',
   );
 
   for (const colorCount of [S.colorCount, 6]) {
-    const r = await engine.vectorize(snorlaxIn, { ...S, colorCount });
+    const r = await engine.vectorize(foxIn, { ...S, colorCount });
     assert.ok(
-      r.palette.some(isMidWarm),
-      `at ${colorCount} colours the delivered palette [${show(r.palette)}] has no mid-luma warm ` +
-        `entry, while computePalette finds [${show(candidates.filter(isMidWarm))}] — the paw pads ` +
-        'have nothing left to be painted with and come back teal',
+      r.palette.some(isWarmMidtone),
+      `at ${colorCount} colours the delivered palette [${show(r.palette)}] has no dark warm ` +
+        `mid-tone, while computePalette finds [${show(candidates.filter(isWarmMidtone))}] — the ` +
+        'paws and ear linings have nothing left to be painted with',
     );
   }
 });
@@ -493,9 +511,9 @@ test('[B4] noise reduction has three levels, each quieter than the last', async 
 });
 
 test('[B4] anti-aliasing suppresses near-duplicate halo layers', async () => {
-  const off = await run(snorlax, { colorCount: 16, antiAliasing: 'off' });
-  const smart = await run(snorlax, { colorCount: 16, antiAliasing: 'smart' });
-  const mid = await run(snorlax, { colorCount: 16, antiAliasing: 'mid' });
+  const off = await run(fox, { colorCount: EXEMPLAR_COLORS, antiAliasing: 'off' });
+  const smart = await run(fox, { colorCount: EXEMPLAR_COLORS, antiAliasing: 'smart' });
+  const mid = await run(fox, { colorCount: EXEMPLAR_COLORS, antiAliasing: 'mid' });
   assertDiffers(smart.svg, off.svg, 'antiAliasing smart === off');
   assertDiffers(mid.svg, smart.svg, 'antiAliasing mid === smart');
   assert.ok(
@@ -506,10 +524,9 @@ test('[B4] anti-aliasing suppresses near-duplicate halo layers', async () => {
 
 test('[B4] an explicit anti-aliasing choice survives the Enhance bundle', async () => {
   /**
-   * Enhance turns Smart anti-aliasing on internally, and it does it by
+   * Enhance turns Smart anti-aliasing on internally, and it used to do it by
    * *ignoring* `settings.antiAliasing`: with Enhance ticked, `off` and `smart`
-   * produce byte-identical documents (md5 941885e0, 71 KB each) and only `mid`
-   * differs. The UI still shows whatever the user chose, so "Anti-aliasing:
+   * produced byte-identical documents and only `mid` differed. The UI still shows whatever the user chose, so "Anti-aliasing:
    * Off" with Enhance on tells the reader the opposite of what the engine did —
    * and `fixtures/reference/OBSERVED-UI.md` step ③ records the real product
    * exposing Enhance and Anti-aliasing as independent controls.
@@ -517,8 +534,8 @@ test('[B4] an explicit anti-aliasing choice survives the Enhance bundle', async 
    * Either the explicit value wins, or the renderer must stop offering it while
    * Enhance is on. The engine half of that choice is this contract.
    */
-  const off = await run(snorlax, { colorCount: 16, enhance: true, antiAliasing: 'off' });
-  const smart = await run(snorlax, { colorCount: 16, enhance: true, antiAliasing: 'smart' });
+  const off = await run(fox, { colorCount: EXEMPLAR_COLORS, enhance: true, antiAliasing: 'off' });
+  const smart = await run(fox, { colorCount: EXEMPLAR_COLORS, enhance: true, antiAliasing: 'smart' });
   assertDiffers(
     off.svg,
     smart.svg,
@@ -833,12 +850,13 @@ test('[D3] curved outlines survive the DXF as curves, not as thousands of vertic
    * the curve fitting the SVG paid for is thrown away at the door, and the file
    * balloons. Measured on the gold-standard artwork the DXF was 1.49 MB of
    * POLYLINE/VERTEX against a 71 KB SVG — 21x — while the EPS of the same
-   * drawing kept real `curveto` geometry in 124 KB.
+   * drawing kept real `curveto` geometry in 124 KB. It is 55 KB of SPLINE
+   * against a 24 KB EPS today.
    *
    * The contract: a drawing whose SVG is mostly curves must carry SPLINE
    * entities, and the DXF must stay in the same order of magnitude as the EPS.
    */
-  const r = await run(snorlax, { colorCount: 16, enhance: true });
+  const r = await run(fox, { colorCount: EXEMPLAR_COLORS, enhance: true });
   const dxf = engine.toDxf(r);
   const eps = engine.toEps(r);
 

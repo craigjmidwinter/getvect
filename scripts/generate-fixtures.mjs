@@ -496,408 +496,371 @@ async function main() {
       },
       {
         // REFERENCE lines 73-83: the gold-standard blind A/B case. Not
-        // generated — it is real artwork plus the SVG the reference product actually
-        // produced for it, checked into fixtures/reference/. Thresholds are
-        // derived from the exemplar rather than invented: <= 3x its path and
-        // sub-path counts, <= 5x its bytes, comparable rasterized fidelity.
-        id: 'reference-snorlax',
-        file: 'reference/snorlax.png',
+        // generated — it is real, license-clean mascot artwork plus the SVG
+        // the reference product actually produced for it, checked into
+        // fixtures/reference/. Thresholds are derived from the exemplar rather
+        // than invented, and every ratio below is a RATCHET on a number that
+        // was measured, not a restatement of REFERENCE's 3x/5x headline (which
+        // is the product floor, not the bar the engine is held to today).
+        id: 'reference-fox',
+        file: 'reference/fox-sticker.png',
         kind: 'clipart',
         format: 'png',
-        width: 1046,
-        height: 833,
+        width: 1024,
+        height: 1024,
         supported: true,
         distinctColors: null,
-        settings: { colorCount: 16, enhance: true },
-        exemplar: 'reference/snorlax.svg',
-        // Two crops, because one was not enough. The FACE is where line art is
-        // lost (both eyes, both fangs, the mouth curve — 8 % of the canvas and
-        // all of the meaning). The PAW PAD is where a whole colour family is
-        // lost: its source colour is rgb(164,143,125), a warm brown, and the
-        // pre-trace ramp snapper collapses it onto its neighbours' extremes so
-        // it comes back a light teal. Region gates read the worst crop.
+        // The settings the exemplar was actually captured at, recorded live in
+        // fixtures/reference/OBSERVED-UI.md: Clipart, an auto-selected 8-colour
+        // palette, Smart anti-aliasing on, Enhance on, Minimum Area 5px².
+        settings: { colorCount: 8, antiAliasing: 'smart', minArea: 5, enhance: true },
+        exemplar: 'reference/fox-sticker-clipart-8colors-smartAA.svg',
+        // Three crops, because one is not enough. The FACE is where line art is
+        // lost (both eyes, the nose, the mouth curve, the whisker arcs — 7 % of
+        // the canvas and all of the meaning). The MUZZLE is the only crop that
+        // can ask the leak question: the head is orange and the muzzle is white,
+        // so orange inside the *face* box is a colour that box legitimately
+        // contains while inside the muzzle it is not. The PAW is a warm brown
+        // sock inside an orange leg inside a black outline — a whole colour
+        // family that a ramp snapper can collapse onto its neighbours. Region
+        // gates read the worst crop.
         salientRegions: [
-          { name: 'face', x: 300, y: 200, width: 360, height: 200 },
-          // The muzzle, with its own leak bar — this configuration is the one
-          // that gets it RIGHT (0.000 % foreign colour, same as the exemplar),
-          // while the default configuration paints teal into the fangs. Pinned
-          // here so the fix for `reference-snorlax-default` has to be a fix and
-          // not a redistribution.
+          { name: 'face', x: 340, y: 350, width: 380, height: 200 },
           {
             name: 'muzzle',
-            x: 420,
-            y: 290,
-            width: 220,
+            x: 455,
+            y: 455,
+            width: 140,
             height: 90,
             thresholds: { maxForeignColorRatio: 0.0005 },
           },
-          { name: 'paw-pad', x: 60, y: 670, width: 110, height: 80 },
+          { name: 'paw', x: 370, y: 720, width: 140, height: 100 },
         ],
         thresholds: {
-          meanColorError: 7,
-          ssim: 0.9,
-          minInkRecall: 0.94,
-          // Continuity against the real product, in the crop where we are
-          // worst relative to it. Loosely (`inkRecall`, luma < 128 counts as
-          // kept) our paw outline scores 0.978 to the exemplar's 1.000 and
-          // `regionInkRecallRatio` reads 1.08x — the metric said we beat the
-          // real product on the picture where a critic could see the contour
-          // was dashed. Strictly (ink must come back as ink) the same crop
-          // reads 0.943x of the exemplar.
-          minRegionStrictInkRecallRatio: 0.98,
-          // Boundary raggedness: our mid-tone layers sawtooth through the
-          // shading where the exemplar sweeps. Ours 3.35 mean vs its 2.67 —
-          // 1.25x, i.e. passing a 1.3 bar by four hundredths while a designer
-          // looking at artifacts/raster/reference-snorlax.png beside the
-          // exemplar still sees our belly seam wobble where theirs is one arc
-          // (and our paw pad split along a hard diagonal where theirs is a
-          // clean ellipse). A gate that a visible difference passes is a gate
-          // set in the wrong place: 1.1 is "the same class of edge", which is
-          // what REFERENCE's blind A/B actually asks for.
-          maxLayerCompactnessRatio: 1.1,
-          // The same defect, measured locally instead of globally. Compactness
-          // is perimeter over area for a whole layer, so an intricate-but-clean
-          // shape and a smooth-looking shape traced onto a noisy threshold can
-          // score alike; `layerWobble` (metrics.mjs `layerBoundaryWobble`) walks
-          // both boundaries at the same step and measures how much the heading
-          // changes per unit travelled. The lap-6 critique measured this by hand
-          // on the raster — "43 % more perimeter for the same region" over the
-          // paw box — while `curveCommandRatio` read 0.872 and reported health,
-          // because our commands ARE curves: they are fitted to a wobble the
-          // real product never had. Ours 55.4 against the exemplar's 37.2
-          // (1.49x); 1.15 is "the same class of edge".
-          maxLayerWobbleRatio: 1.15,
+          // Absolutes. 76.5 % of this canvas is transparent (white, once
+          // flattened) and both drawings get that part right, so the whole-frame
+          // MAE is small for everyone: ours 1.80, the real product's 1.03. It is
+          // gated anyway because it is the number that moves if the alpha path
+          // ever paints a backdrop again.
+          meanColorError: 3,
+          ssim: 0.95,
+          minInkRecall: 0.95,
+          // The salient half of the same question, aggregated to the worst crop
+          // (the muzzle, 0.909). The real product scores 0.995 there — this is a
+          // ratchet on ours, not parity with theirs.
+          minRegionInkRecall: 0.88,
+          // Continuity against the real product, in the crop where we are worst
+          // relative to it. Loosely (`inkRecall`, luma < 128 counts as kept) a
+          // thinned or dashed contour still scores ~1; strictly (source ink must
+          // come back as ink) the muzzle reads 0.903x of the exemplar's score.
+          // The number to aim at is 1.0 — the real product's mouth arcs and
+          // whiskers come back solid where ours taper.
+          minRegionStrictInkRecallRatio: 0.87,
+          // Worst-crop colour error. Ours 10.37 on the muzzle against the
+          // exemplar's 4.36 — the fatter our outline sits over an antialiased
+          // source, the more of this we pay, so it is a ratchet.
+          maxRegionMeanColorError: 12,
+          // Boundary raggedness against the real product's, globally
+          // (perimeter over area per colour layer). Ours 2.99 against its 4.55,
+          // i.e. 0.66x: on this artwork the real product spends its layers on
+          // two near-identical browns and a doubled black, and we do not. The
+          // bar is 0.8 because 1.1 ("the same class of edge", which is what it
+          // meant when we were the ragged one) is 1.7x reality here, and a gate
+          // that far above the measurement is a deleted gate.
+          maxLayerCompactnessRatio: 0.8,
+          // The same defect measured locally: turning per unit boundary length
+          // (metrics.mjs `layerBoundaryWobble`), which is what sees a cubic
+          // fitted to a noisy threshold. Compactness is global and cannot tell a
+          // genuinely intricate shape from a smooth one traced onto a noisy
+          // threshold. Ours 28.4 against the exemplar's 80.2 (0.35x).
+          maxLayerWobbleRatio: 0.45,
           // Stroke-width UNIFORMITY against the real product's, in the crop
           // where we are worst (metrics.mjs `strokeWidthProfile`). This is the
           // thing REFERENCE's blind A/B is actually decided on and the thing
           // every other ink metric in this repo reads BACKWARDS: a line that
           // thickens, thins and breaks recalls more ink and joins more
-          // components than an even one, so `regionStrictInkRecall` scored us
-          // 0.967 against the exemplar's 0.755 and `inkComponentRatio` 0.43x
-          // for a mouth arc that tapered to a spindle and detached from both
-          // fangs.
-          //
-          // These two bars are RATCHETS, not parity — say so plainly. The real
-          // product's paw outline is nearly twice as even as ours (cv 0.176
-          // against our 0.340) and the number to aim at is 1.15x, which is the
-          // bar the lap-7 critique named. What these hold is that the numbers
-          // measured today (1.93x uniformity, 1.18x fattening, down from 1.22x
-          // before the ink layers were unified) cannot quietly get worse while
-          // every other gate stays green — which is exactly how the defect
-          // survived seven laps.
-          maxStrokeWidthCvRatio: 2,
+          // components than an even one. Ours is 1.64x the exemplar's cv on the
+          // muzzle (0.455 against 0.277); 1.15x is the number to aim at.
+          maxStrokeWidthCvRatio: 1.8,
           // ...and how much fatter our line is than the real product's trace of
-          // the same line. Measured by hand on the lower jaw the lap-7 critique
-          // had us at 1.76x the source's width against the exemplar's 1.44x;
-          // it is 1.51x now.
+          // the same line. 1.11x on the face, worst crop.
           maxStrokeWidthOverExemplar: 1.25,
-          // B3: 16 requested, 16 found in the image, 8 delivered.
-          //
-          // The bar is 8, not 1, because the exemplar settles it: the SVG
-          // the reference product produced for this artwork at the same ~16-colour
-          // setting carries exactly EIGHT `<g fill>` layers. A shortfall of 8
-          // is therefore parity with the real product, and a bar of 1 demanded
-          // fifteen layers on a picture whose gold-standard rendering has
-          // eight — while `maxNearDuplicateFills: 0` below simultaneously
-          // forbids shipping the near-duplicate creams that a 15-layer palette
-          // would have to be made of. Anything ABOVE 8 is still a failure: that
-          // is our folds losing a colour family the real product kept.
-          maxPaletteShortfall: 8,
-          // Same image, Enhance off + Smart AA, scores 0.965 here, so this is
-          // not a bar the tracer cannot reach — it is the bar the Enhance
-          // bundle currently fails while every global gate passes.
-          minRegionInkRecall: 0.93,
-          // Now that an exemplar is rasterized from its content box instead of
-          // its declared viewBox (docs/HARNESS.md), the fidelity half of the
-          // A/B is a real number: the exemplar scores MAE 13.50 here, so "no
-          // worse than the real product" is a bar rather than a formality.
-          maxMeanColorErrorRatio: 1,
-          // D3: the DXF has to carry the curve fitting the SVG paid for.
-          minDxfSplines: 1,
+          // B3: 8 requested, 6 found in the image after Enhance, 5 delivered.
+          // The exemplar settles what "enough" is — the SVG the reference product
+          // produced for this artwork at this setting carries SEVEN `<g fill>`
+          // layers, two of which are near-duplicates (rgb(125,64,29) beside
+          // rgb(116,58,28), rgb(8,0,0) beside rgb(0,0,0)) that
+          // `maxNearDuplicateFills: 0` below forbids us from shipping. One fold
+          // is what that costs; two is our own folds losing a colour family.
+          maxPaletteShortfall: 1,
+          // D3: the DXF has to carry the curve fitting the SVG paid for (25
+          // SPLINE entities today) and must not balloon past the EPS of the same
+          // drawing by flattening them into vertex runs (2.23x today).
+          minDxfSplines: 10,
           maxDxfEpsBytesRatio: 3,
-          // 32.5% of this artwork is transparent. The real product's output for
-          // it has a white/transparent background; painting it opaque is the
-          // blocker this gate names.
+          // 76.5 % of this artwork is transparent, which makes it a STRONGER
+          // alpha guard than any other fixture: a trace that paints the alpha-0
+          // background opaque scores ~255 here while the whole-frame MAE can
+          // still look survivable. Categorical, not a ratchet — 0.05 today, and
+          // anything approaching 8 means a backdrop came back.
           maxTransparentAreaColorError: 8,
-          maxPathRatio: 3,
-          maxSubPathRatio: 3,
-          maxBytesRatio: 5,
+          // Economy against the real product. REFERENCE asks for "within ~3x
+          // paths, ~5x bytes"; we are at 0.08x, 0.22x and 0.42x, so the product
+          // floor would gate nothing. These are the measured numbers with
+          // headroom. (Path count is the weakest of the three — we emit one
+          // compound path per colour layer, so it is bounded by `colorCount` —
+          // which is why sub-paths and bytes carry the real bar.)
+          maxPathRatio: 0.3,
+          maxSubPathRatio: 0.5,
+          maxBytesRatio: 0.8,
           maxTinySubPathRatio: 0.02,
-          minCurveCommandRatio: 0.5,
-          // The exemplar's own eight layers are never closer than 37 RGB units
-          // apart. Ours emits pairs at 26.6 and 27.0 — the mottled two-cream
-          // patchwork across the belly — which the old 24-unit window could not
-          // see and a budget of 4 would have forgiven anyway.
+          // Anchored on the exemplar's own 0.671: runs of h/v/l are a staircase
+          // however few <path> elements they hide in. Ours is 1.000.
+          minCurveCommandRatio: 0.65,
+          // The real product ships two near-duplicate pairs on this artwork
+          // (10.9 and 8.0 RGB units apart). We ship none, and that is the bar:
+          // layers that close are one region split into a patchwork, not two
+          // colours a user asked for.
           maxNearDuplicateFills: 0,
           maxMs: 10000,
         },
         note:
-          'Gold-standard exemplar (REFERENCE "blind A/B"). Judged at 16 colours + enhance, ' +
-          'the settings the captured output corresponds to (fixtures/reference/OBSERVED-UI.md ' +
-          'records Smart anti-aliasing and Enhance on; our Enhance bundles that same cleanup). ' +
-          'It anchors ECONOMY (paths/sub-paths/bytes/curve ratio); fidelity is gated absolutely ' +
-          'here and relatively in reference-snorlax-6c.',
-      },
-      {
-        // The configuration a user actually gets. Every exemplar gate above
-        // runs at `enhance: true`, because that is the setting the captured
-        // output corresponds to — which left the DEFAULT (Enhance off) path
-        // completely ungated, and it is 13x the exemplar's bytes and 27x its
-        // sub-paths: 405 KB and 1747 shapes against 31 KB and 65. The limits
-        // here are deliberately looser than the enhance-on ones and still far
-        // inside what the engine has been measured doing: the same fixture with
-        // Smart anti-aliasing alone lands at 5.3x bytes / 9.3x sub-paths, so
-        // this is a bar an honest default reaches without the Enhance bundle.
-        id: 'reference-snorlax-noenhance',
-        file: 'reference/snorlax.png',
-        kind: 'clipart',
-        format: 'png',
-        width: 1046,
-        height: 833,
-        supported: true,
-        distinctColors: null,
-        settings: { colorCount: 16, enhance: false },
-        exemplar: 'reference/snorlax.svg',
-        salientRegions: [
-          { name: 'face', x: 300, y: 200, width: 360, height: 200 },
-          { name: 'paw-pad', x: 60, y: 670, width: 110, height: 80 },
-        ],
-        thresholds: {
-          meanColorError: 7,
-          ssim: 0.9,
-          minInkRecall: 0.92,
-          minRegionInkRecall: 0.9,
-          // The same 16-colour request delivers 10 here and 8 with Enhance on,
-          // and no UI surface explains the difference. Pinned at what this
-          // configuration reaches today so the two numbers cannot drift further
-          // apart unnoticed while `reference-snorlax-16c-nomerge` argues for
-          // closing the gap from the other side.
-          maxPaletteShortfall: 6,
-          maxMeanColorErrorRatio: 1,
-          maxTransparentAreaColorError: 8,
-          maxBytesRatio: 8,
-          maxSubPathRatio: 12,
-          maxPathRatio: 3,
-          maxTinySubPathRatio: 0.02,
-          minCurveCommandRatio: 0.5,
-          maxMs: 10000,
-        },
-        note:
-          'REFERENCE economy at the DEFAULT quality settings (Enhance off), which no other ' +
-          'exemplar gate covers. Looser ratios than reference-snorlax on purpose — the point ' +
-          'is that the out-of-the-box configuration is measured at all, not that it matches a ' +
-          'run with every cleanup on.',
+          'Gold-standard exemplar (REFERENCE "blind A/B"). Judged at the settings the captured ' +
+          'output was actually produced at — Clipart / 8 colours / Smart anti-aliasing / Enhance ' +
+          'on / Minimum Area 5px², recorded live in fixtures/reference/OBSERVED-UI.md. It anchors ' +
+          'ECONOMY (paths/sub-paths/bytes/curve ratio) and, because the source is 76.5% ' +
+          'transparent, it is also the strongest alpha guard in the suite. Fidelity is gated ' +
+          'absolutely here and relative to the exemplar in the region ratios.',
       },
       {
         /**
          * B3: is the colour fold something the user can undo?
          *
-         * `reference-snorlax` asks for 16 colours, the image has 16, and 8 come
-         * back — which the exemplar justifies (its own capture of this artwork
-         * has eight `<g fill>` layers) but the UI does not: the shortfall is
-         * attributed to "the cleanup settings" and no cleanup setting reverses
-         * it. `src/engine/index.ts` computes
+         * `reference-fox` asks for 8 colours and gets 5 back, which the exemplar
+         * mostly justifies (its own capture of this artwork has seven `<g fill>`
+         * layers, two pairs of which are near-duplicates). This row asks the
+         * question the panel cannot answer: ask for SIXTEEN and turn the
+         * output-groups merge threshold explicitly to 0.
+         * `src/engine/index.ts` computes
          * `groupThreshold = max(opts.mergeThreshold, opts.enhance ? 1 : 0)`, so
-         * with Enhance on the merge-threshold control cannot go below 1 % and
-         * the sub-1 % fold is unreachable from the panel. The customer who
-         * clicks the 16 radio, then drags MERGE THRESHOLD to 0 to get them
-         * back, gets the same eight colours and no explanation.
+         * with Enhance on the control cannot go below 1 % and the sub-1 % fold
+         * is unreachable from the panel. The customer who clicks the 16 radio,
+         * then drags MERGE THRESHOLD to 0 to get the colours back, gets the same
+         * five and no explanation.
          *
-         * Same source, same 16-colour request, Enhance on — and the fold
-         * explicitly turned off. The bar is not "16 delivered": it is that
-         * turning the control off reaches at least what turning ENHANCE off
-         * already reaches (10 delivered, `reference-snorlax-noenhance`, with
-         * `nearDuplicateFillPairs` still 0), which is evidence from this repo's
-         * own runs rather than an invented number. Today it delivers 8, exactly
-         * as if the control were not there.
+         * The bar is a RATCHET, not the fix. Today: 5 delivered with the fold
+         * explicitly off, against 6 that the same 16-colour request reaches by
+         * turning ENHANCE off instead — so the control still cannot be observed
+         * doing anything. `maxPaletteShortfall: 3` pins today's number so the
+         * gap cannot widen unnoticed; 2 is the number to aim at, and it is
+         * known-reachable because Enhance-off already reaches it with
+         * `nearDuplicateFillPairs` still 0.
          */
-        id: 'reference-snorlax-16c-nomerge',
-        file: 'reference/snorlax.png',
+        id: 'reference-fox-16c-nomerge',
+        file: 'reference/fox-sticker.png',
         kind: 'clipart',
         format: 'png',
-        width: 1046,
-        height: 833,
+        width: 1024,
+        height: 1024,
         supported: true,
         distinctColors: null,
         settings: { colorCount: 16, enhance: true, mergeThreshold: 0 },
-        exemplar: 'reference/snorlax.svg',
-        salientRegions: [{ name: 'muzzle', x: 420, y: 290, width: 220, height: 90 }],
+        // Declared for the side-by-side print only; this row carries no
+        // exemplar-relative gate, because more colour layers legitimately cost
+        // more sub-paths and that trade is what the user asked for.
+        exemplar: 'reference/fox-sticker-clipart-8colors-smartAA.svg',
+        salientRegions: [{ name: 'muzzle', x: 455, y: 455, width: 140, height: 90 }],
         thresholds: {
           // The point of the row.
-          maxPaletteShortfall: 6,
-          // ...and the guard that stops it being bought with near-identical
-          // creams: extra colours have to be extra COLOURS. Enhance off already
-          // ships 10 of them on this image with zero pairs inside the halo
-          // window, so both halves of this row are jointly reachable.
+          maxPaletteShortfall: 3,
+          // ...and the guard that stops it ever being bought with near-identical
+          // creams: extra colours have to be extra COLOURS.
           maxNearDuplicateFills: 0,
-          // Undoing a cleanup must not undo the picture: the fidelity and
-          // economy bars are the ones `reference-snorlax` holds, minus the
-          // exemplar-relative economy (more colour layers legitimately cost
-          // more sub-paths, and that trade is what the user asked for).
-          meanColorError: 7,
-          ssim: 0.9,
-          minInkRecall: 0.94,
+          // Undoing a cleanup must not undo the picture: the fidelity bars are
+          // the ones `reference-fox` holds.
+          meanColorError: 3,
+          ssim: 0.95,
+          minInkRecall: 0.95,
+          maxRegionMeanColorError: 11,
           maxTransparentAreaColorError: 8,
           maxTinySubPathRatio: 0.02,
-          minCurveCommandRatio: 0.5,
+          minCurveCommandRatio: 0.65,
           maxMs: 10000,
         },
         note:
           'B3 reversibility: 16 colours + Enhance with the output-groups merge threshold ' +
-          'explicitly at 0. The fold that costs eight colours must be reachable by the control ' +
+          'explicitly at 0. The fold that costs three colours must be reachable by the control ' +
           'the panel already shows (`merge-threshold`), or the shortfall the hint blames on ' +
           '"the cleanup settings" is not a setting.',
       },
       {
-        // The DOM-extracted Clipart / 6-colour / Minimum Area 90px² output is
-        // the tightest fidelity comparison available: same source, same colour
-        // budget, and the real product scores MAE ~18 on it. Ours must be in
-        // the same class rather than losing the black outline into dark teal.
-        id: 'reference-snorlax-6c',
-        file: 'reference/snorlax.png',
+        /**
+         * The opaque counterpart, and the only thing that can prove the alpha
+         * path is what changed.
+         *
+         * `fox-sticker-white.png` is the same artwork with the transparency
+         * flattened onto white — the picture a user gets by opening the sticker
+         * in any editor that cannot keep alpha. Everything the engine sees is
+         * identical except the alpha channel, so a divergence between this row
+         * and `reference-fox` is attributable: it is the ingest, not the tracer.
+         *
+         * There is no real-product capture of the flattened variant, so every
+         * bar here is ABSOLUTE and measured on this build rather than a ratio
+         * against something. The one that earns the row: the paw crop comes back
+         * with 0.46 % of its pixels painted a colour the source crop does not
+         * contain, where the transparent source scores 0.000 % — the flattened
+         * ingest hands the quantizer a white plateau that the alpha path never
+         * shows it, and a slot goes to the wrong family.
+         */
+        id: 'reference-fox-white',
+        file: 'reference/fox-sticker-white.png',
         kind: 'clipart',
         format: 'png',
-        width: 1046,
-        height: 833,
+        width: 1024,
+        height: 1024,
         supported: true,
         distinctColors: null,
-        settings: { colorCount: 6, enhance: true },
-        exemplar: 'reference/snorlax-clipart-6colors-min90.svg',
-        // The 6-colour run is where the missing colour family is most visible:
-        // the real product's 6 colours include a tan, rgb(141,128,114), and it
-        // paints the paw pad with it (region MAE 21.9). Ours paints the same
-        // pad in blue.
-        salientRegions: [{ name: 'paw-pad', x: 60, y: 670, width: 110, height: 80 }],
+        settings: { colorCount: 8, antiAliasing: 'smart', minArea: 5, enhance: true },
+        salientRegions: [
+          { name: 'face', x: 340, y: 350, width: 380, height: 200 },
+          { name: 'muzzle', x: 455, y: 455, width: 140, height: 90 },
+          { name: 'paw', x: 370, y: 720, width: 140, height: 100 },
+        ],
         thresholds: {
-          maxMeanColorErrorRatio: 1.5,
-          minInkRecall: 0.94,
-          // The exemplar itself scores 21.89 in this crop at six colours, so
-          // this is "no worse than the real product, plus a little", not an
-          // invented bar. Ours scores 34.18: a warm brown rendered light teal.
-          maxRegionMeanColorError: 24,
-          maxPaletteShortfall: 1,
-          maxTransparentAreaColorError: 8,
-          maxPathRatio: 3,
-          maxSubPathRatio: 3,
-          maxBytesRatio: 5,
+          meanColorError: 3,
+          ssim: 0.94,
+          minInkRecall: 0.95,
+          minStrictInkRecall: 0.89,
+          minRegionInkRecall: 0.87,
+          minRegionStrictInkRecall: 0.83,
+          maxRegionMeanColorError: 12,
+          // The number this row exists for: 0.46 % of the paw is a hue the
+          // source paw does not contain, against 0.000 % on the transparent
+          // source at the same settings. Pinned so it cannot grow while every
+          // other gate stays green; 0.0005 (the bar `reference-fox` holds) is
+          // the number to aim at.
+          maxRegionForeignColorRatio: 0.006,
+          // 8 requested, 7 found in the image, 5 delivered — one fold more than
+          // the transparent source loses, which is the same finding again.
+          maxPaletteShortfall: 2,
+          maxPaths: 16,
+          maxSubPaths: 70,
+          maxBytes: 32 * 1024,
           maxTinySubPathRatio: 0.02,
-          minCurveCommandRatio: 0.5,
+          minCurveCommandRatio: 0.65,
+          maxNearDuplicateFills: 0,
           maxMs: 10000,
         },
         note:
-          'Blind A/B against real Clipart 6-colour output (93 paths, 91KB, curve ratio 0.64). ' +
-          'Carries the paw-pad crop because the 6-colour palette failure is most visible there.',
+          'The white-flattened counterpart of reference-fox: same artwork, same settings, no ' +
+          'alpha. Absolute bars only — there is no real-product capture of the flattened variant ' +
+          'to ratio against. It earns its keep by being the control that attributes a difference ' +
+          'to the ingest rather than the tracer.',
       },
       {
-        // The settings a user actually gets. Every other gold-standard row pins
-        // something: 16 colours + Enhance, 16 colours, 6 colours + Enhance — so
-        // DEFAULT_SETTINGS on real artwork was never measured, and that is
-        // exactly where the anti-aliasing ramp snapper destroys the paw pad's
-        // colour family (palette [cream, blue, grey-cream, blue, blue, near
-        // black]: three blues and no brown, pad MAE 33.5 with the pad rendered
-        // rgb(103,150,167) against a source rgb(164,143,125)). No `settings`
-        // key at all is the point of the row: whatever DEFAULT_SETTINGS says
-        // today is what gets measured.
-        id: 'reference-snorlax-default',
-        file: 'reference/snorlax.png',
+        /**
+         * The settings a user actually gets.
+         *
+         * The rows above all pin a configuration — 8 colours + Enhance,
+         * 16 colours + Enhance with the fold off — which is how the 8-colour
+         * default a user opens the app with went unmeasured for seven laps while
+         * its output painted a region the wrong hue. No `settings` key at all is
+         * the point of the row: whatever `DEFAULT_SETTINGS` says today is what
+         * gets measured.
+         *
+         * On this fixture the defaults differ from `reference-fox` by exactly
+         * one tick — Enhance off — because the real product's own capture was
+         * taken at Clipart / 8 colours / Smart AA / min-area 5, which is what
+         * `DEFAULT_SETTINGS` already ships. So this row does double duty: it is
+         * both "the configuration a user gets" and "the ENHANCE-OFF economy
+         * measurement", and it carries the exemplar-relative economy bars for
+         * that reason. If `DEFAULT_SETTINGS` ever moves, this row moves with it
+         * and `reference-fox` does not — which is exactly the drift worth
+         * catching.
+         */
+        id: 'reference-fox-default',
+        file: 'reference/fox-sticker.png',
         kind: 'clipart',
         format: 'png',
-        width: 1046,
-        height: 833,
+        width: 1024,
+        height: 1024,
         supported: true,
         distinctColors: null,
-        // Report-only (no ratio gates on this row): it is what makes the stdout
-        // print the real product's own score for each crop beside ours at the
-        // default settings, which is where the face bar below comes from.
-        exemplar: 'reference/snorlax.svg',
+        exemplar: 'reference/fox-sticker-clipart-8colors-smartAA.svg',
         salientRegions: [
-          /**
-           * The face, at the settings a user gets.
-           *
-           * It was declared on all three *pinned* rows and on none of the
-           * default one, so the crop that decides REFERENCE's blind A/B was
-           * unmeasured at exactly the configuration the app opens with — and
-           * the default output paints 123 teal pixels inside the mouth/fang box
-           * (x 420..640, y 290..380) where the source has none, while the row
-           * still reported pass. Its own gates, because the paw-pad bar below
-           * is deliberately looser (see there) and the aggregate reads the
-           * worst crop.
-           */
           {
             name: 'face',
-            x: 300,
-            y: 200,
-            width: 360,
+            x: 340,
+            y: 350,
+            width: 380,
             height: 200,
-            thresholds: {
-              // The real product's own 16-colour output scores 19.13 here.
-              maxMeanColorError: 19.13,
-            },
+            // The real product's own capture scores 4.75 on this exact crop and
+            // ours scores 8.09. A ratchet, not parity — 4.75 is the number to
+            // aim at, and this bar only holds that the default configuration
+            // cannot quietly get worse at the crop that decides the blind A/B.
+            thresholds: { maxMeanColorError: 10 },
           },
-          /**
-           * The mouth and both fangs, on their own.
-           *
-           * The face box above cannot ask this question: the head's own outline
-           * is a dark teal, so teal is a colour the *face crop* legitimately
-           * contains and 123 stray teal pixels inside the cream muzzle are not
-           * foreign to it. Cropped to the muzzle the source has no teal at all,
-           * and the leak is unmissable — measured on this build: default 0.50 %
-           * of the crop painted rgb(38,90,108) (palette slot #265a6c) against
-           * 0.000 % for our own 16-colour + Enhance run and 0.000 % for the real
-           * the reference product exemplar. MAE is not gated here (the exemplar scores
-           * 25.13 to our 13.64 — it paints a fatter outline); the leak is.
-           */
           {
             name: 'muzzle',
-            x: 420,
-            y: 290,
-            width: 220,
+            x: 455,
+            y: 455,
+            width: 140,
             height: 90,
+            // The head is orange and the muzzle is white, so this is the only
+            // crop where "a hue the source does not contain" is a question with
+            // an answer. Both the real product and our default score 0.000 %.
             thresholds: { maxForeignColorRatio: 0.0005 },
           },
           {
-            name: 'paw-pad',
-            x: 60,
-            y: 670,
-            width: 110,
-            height: 80,
-            // The same slot leaking into the same place: 0.38 % of this crop is
-            // that dark teal, where both real exemplars score 0.000 %. Region
-            // MAE alone stopped seeing it once the pad's *average* colour came
-            // back close enough; a hue that is not in the picture is still a
-            // hue that is not in the picture.
+            name: 'paw',
+            x: 370,
+            y: 720,
+            width: 140,
+            height: 100,
             thresholds: { maxForeignColorRatio: 0.0005 },
           },
         ],
         thresholds: {
-          // Anchored on the exemplars, not invented. The real product's own
-          // 16-colour output scores 14.46 on this exact crop and its 6-colour
-          // output scores 21.89, so a bar of 12 asked our EIGHT-colour default
-          // to beat the gold standard's sixteen — on the one crop where the
-          // dominant error is the outline, which the real product deliberately
-          // paints FATTER than the source (2496 ink pixels in the paw box where
-          // the source has 1210). It was therefore in direct opposition to
-          // `minRegionStrictInkRecall` below: every pixel of solid outline this
-          // row demands is a pixel of mean colour error against an antialiased
-          // source. 22 keeps the honest statement — our default must not paint
-          // this crop worse than the real product's *six*-colour output does.
-          maxRegionMeanColorError: 22,
-          // Both real exemplars keep this crop's outlines at >= 0.983 strict
-          // ink recall. Ours is 0.904: the pad ellipse and the paw contour come
-          // back thinner than the pixel run they were traced from.
-          minRegionStrictInkRecall: 0.94,
-          // 8 requested, 8 found in the image, 6 delivered.
+          // Worst crop, which is the muzzle at 10.91 against the real product's
+          // 4.36 — the mouth arcs and the whisker curls are thin dark line art
+          // over white, and every pixel of outline we paint fatter than the
+          // source is mean colour error against an antialiased edge.
+          maxRegionMeanColorError: 12,
+          // The real product keeps this crop's outlines at 0.957 strict ink
+          // recall; ours is 0.848. Held as both an absolute floor and a ratio,
+          // because the absolute one alone would let the exemplar improve out
+          // from under us.
+          minRegionStrictInkRecall: 0.82,
+          minRegionStrictInkRecallRatio: 0.86,
+          // 8 requested, 6 found in the image, 5 delivered.
           maxPaletteShortfall: 1,
-          minInkRecall: 0.94,
+          meanColorError: 3,
+          ssim: 0.95,
+          minInkRecall: 0.95,
+          // Enhance off costs stroke evenness, which is the honest reading of
+          // what the bundle buys: 1.97x the exemplar's cv on the muzzle against
+          // 1.64x with Enhance on.
+          maxStrokeWidthCvRatio: 2.2,
+          maxStrokeWidthOverExemplar: 1.25,
+          // ECONOMY at the default quality settings, which no other row covers
+          // now: 0.50x the exemplar's bytes and 0.32x its sub-paths. Looser than
+          // `reference-fox` on purpose (Enhance is what buys the last of it) and
+          // still far tighter than REFERENCE's 3x/5x product floor.
+          maxBytesRatio: 0.9,
+          maxSubPathRatio: 0.7,
+          maxPathRatio: 0.3,
           maxTransparentAreaColorError: 8,
           maxTinySubPathRatio: 0.02,
-          minCurveCommandRatio: 0.5,
+          minCurveCommandRatio: 0.65,
+          maxNearDuplicateFills: 0,
           maxMs: 10000,
         },
         note:
           'DEFAULT_SETTINGS on the gold-standard artwork — deliberately no `settings` override. ' +
-          'The other three reference rows all pin a configuration, which left the one a user ' +
-          'gets out of the box unmeasured while its default output had a hue-inverted region.',
+          'The other reference rows all pin a configuration, which left the one a user gets out ' +
+          'of the box unmeasured while its default output had a hue-inverted region. On this ' +
+          'fixture the defaults are also the Enhance-off configuration, so this row carries the ' +
+          'default-settings economy bars as well.',
       },
       {
         id: 'unsupported-gif',

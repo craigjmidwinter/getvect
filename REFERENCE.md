@@ -72,21 +72,31 @@ E. **Stretch features** (real product has them; missing = minor severity, not bl
 
 ## Gold-standard exemplar (real the reference product output — use for blind A/B)
 
-`fixtures/reference/snorlax.png` is a raster source (1045×833 artwork, flat-color character
-on a busy background) and `fixtures/reference/snorlax.svg` is **the actual output
-the reference product produced for it** at roughly a 16-color setting. Measured properties of the
-real product's output: 34 paths, 31KB, paths grouped into per-color `<g fill="rgb(...)">`
-layers, smooth curve-fitted outlines (no pixel staircase), rendered at 1152×928 with a 10×
-scaled viewBox. Our engine, run on the same PNG at 16 colors, should be in the same class:
-comparable visual fidelity when both are rasterized, path count within ~3× of the
-exemplar's (not thousands of specks), file size within ~5×, and per-color layer grouping.
-Critics should do a blind A/B: rasterize both SVGs and judge which is closer to the source.
+`fixtures/reference/fox-sticker.png` is a raster source (1024×1024 original mascot artwork,
+flat-color character with a black outline on a **76.5% transparent** field) and
+`fixtures/reference/fox-sticker-clipart-8colors-smartAA.svg` is **the actual output
+the reference product produced for it**, captured signed-out at Clipart / 8-color palette / Smart
+anti-aliasing on / Enhance on / Minimum Area 5px². Measured properties of the real product's
+output: 63 paths in 7 per-color `<g fill="rgb(...)">` layers, 114 sub-paths, 35.5KB, curve
+command ratio 0.671, no background-covering path at all (the transparency survives), viewBox
+`0 0 10240 10240` at a declared 1024×1024. Our engine, run on the same PNG at those settings,
+should be in the same class: comparable visual fidelity when both are rasterized, path count
+within ~3× of the exemplar's (not thousands of specks), file size within ~5×, and per-color
+layer grouping. Critics should do a blind A/B: rasterize both SVGs and judge which is closer
+to the source.
 
-Two more DOM-captured real outputs with fully-known settings live alongside it — see
-`fixtures/reference/OBSERVED-UI.md` for their parameter table. Headline finding recorded
-there: the real product's **Smart anti-aliasing** collapses path count by ~81% at identical
-settings (354→67 paths). Matching that smoothness-per-path economy is a core engine goal,
-not a stretch feature.
+Those ~3×/~5× numbers are the product floor, not the bar the engine is held to. It currently
+lands at 0.08× the exemplar's paths, 0.22× its sub-paths and 0.42× its bytes, so
+`fixtures/manifest.json` gates the measured numbers with headroom instead — a limit an order
+of magnitude above reality is a limit that has been deleted. Where the real product is still
+ahead is line quality, and that is where the ratios in the manifest point: its outlines come
+back 5% more solid than ours in the crop where we are worst, and its strokes are 1.6× more
+even.
+
+`fixtures/reference/OBSERVED-UI.md` records the live parameter table the settings above come
+from. Headline finding: the real product's **Smart anti-aliasing** collapses path count by
+~81% at identical settings (354→67 on one subject, 637→63 on the fox). Matching that
+smoothness-per-path economy is a core engine goal, not a stretch feature.
 
 ## Quality bar (measurable — the pit crew turns these into instruments)
 
