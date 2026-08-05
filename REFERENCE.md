@@ -82,6 +82,12 @@ comparable visual fidelity when both are rasterized, path count within ~3× of t
 exemplar's (not thousands of specks), file size within ~5×, and per-color layer grouping.
 Critics should do a blind A/B: rasterize both SVGs and judge which is closer to the source.
 
+Two more DOM-captured real outputs with fully-known settings live alongside it — see
+`fixtures/reference/OBSERVED-UI.md` for their parameter table. Headline finding recorded
+there: the real product's **Smart anti-aliasing** collapses path count by ~81% at identical
+settings (354→67 paths). Matching that smoothness-per-path economy is a core engine goal,
+not a stretch feature.
+
 ## Quality bar (measurable — the pit crew turns these into instruments)
 
 - **Fidelity**: rasterizing the exported SVG back to the source dimensions and diffing
