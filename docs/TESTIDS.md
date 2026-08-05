@@ -368,6 +368,10 @@ preview and generate a different SVG at export time.
   gesture is in flight — a transient stretched texture during the gesture is fine, the
   resting state must be sharp. Anything measuring pixels should wait for
   `data-render-zoom === data-zoom` (`waitForSettledRender` in `tests/e2e/helpers.ts`).
+  It stops short of `data-zoom` only past the stage's layout ceiling (16384 px per axis,
+  i.e. beyond ~16x on a 1024px image), where the remainder goes back to being a transform:
+  that far in, the preview is a magnifier for one corner rather than a crispness
+  comparison.
 - **Above ~200% the original view shows its pixels.** `preview-original` carries
   `data-pixelated="true"` and its `<img>` computes `image-rendering: pixelated` once
   `data-zoom` exceeds 2; below that the browser default stands. The side-by-side is an
