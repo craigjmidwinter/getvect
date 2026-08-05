@@ -420,6 +420,133 @@
       "note": "DEFAULT_SETTINGS on the gold-standard artwork — deliberately no `settings` override. The other reference rows all pin a configuration, which left the one a user gets out of the box unmeasured while its default output had a hue-inverted region. On this fixture the defaults are also the Enhance-off configuration, so this row carries the default-settings economy bars as well."
     },
     {
+      "id": "reference-frankie",
+      "file": "reference/frankie-sticker.png",
+      "kind": "clipart",
+      "format": "png",
+      "width": 1195,
+      "height": 896,
+      "supported": true,
+      "distinctColors": null,
+      "settings": {
+        "colorCount": 8,
+        "antiAliasing": "smart",
+        "minArea": 5,
+        "enhance": true
+      },
+      "exemplar": "reference/frankie-clipart-8colors-smartAA.svg",
+      "salientRegions": [
+        {
+          "name": "face",
+          "x": 210,
+          "y": 295,
+          "width": 360,
+          "height": 200
+        },
+        {
+          "name": "chest",
+          "x": 240,
+          "y": 505,
+          "width": 300,
+          "height": 140
+        },
+        {
+          "name": "eyes",
+          "x": 244,
+          "y": 304,
+          "width": 258,
+          "height": 84,
+          "color": "rgb(187,161,80)",
+          "exemplarColor": "rgb(121,176,89)",
+          "aspirations": {
+            "minColorPresenceRatio": 0.9,
+            "minColorPresenceOverExemplar": 0.9
+          }
+        }
+      ],
+      "thresholds": {
+        "meanColorError": 3,
+        "ssim": 0.94,
+        "minInkRecall": 0.95,
+        "minRegionInkRecall": 0.95,
+        "minRegionStrictInkRecall": 0.9,
+        "minRegionStrictInkRecallRatio": 0.9,
+        "maxRegionMeanColorError": 14,
+        "maxRegionForeignColorRatio": 0.0005,
+        "maxPaletteShortfall": 2,
+        "maxPathRatio": 0.3,
+        "maxSubPathRatio": 1.35,
+        "maxBytesRatio": 0.95,
+        "maxLayerCompactnessRatio": 1.1,
+        "maxLayerWobbleRatio": 1.7,
+        "maxStrokeWidthCvRatio": 1.35,
+        "maxStrokeWidthOverExemplar": 1.15,
+        "maxTinySubPathRatio": 0.02,
+        "minCurveCommandRatio": 0.65,
+        "maxNearDuplicateFills": 0,
+        "maxTransparentAreaColorError": 8,
+        "maxMs": 10000
+      },
+      "note": "The mascot, and the second gold-standard exemplar. Judged at the settings the captured output was produced at — Clipart / 8 colours / Smart anti-aliasing / Enhance on / Minimum Area 5px², recorded live in fixtures/reference/OBSERVED-UI.md. It is the only fixture that can ask whether a small hue-distinct feature kept its palette slot (the eyes box names a colour); today it answers no, and that is an aspiration with an open issue rather than a gate, because the default settings already reach it."
+    },
+    {
+      "id": "reference-frankie-default",
+      "file": "reference/frankie-sticker.png",
+      "kind": "clipart",
+      "format": "png",
+      "width": 1195,
+      "height": 896,
+      "supported": true,
+      "distinctColors": null,
+      "salientRegions": [
+        {
+          "name": "face",
+          "x": 210,
+          "y": 295,
+          "width": 360,
+          "height": 200
+        },
+        {
+          "name": "chest",
+          "x": 240,
+          "y": 505,
+          "width": 300,
+          "height": 140
+        },
+        {
+          "name": "eyes",
+          "x": 244,
+          "y": 304,
+          "width": 258,
+          "height": 84,
+          "color": "rgb(187,161,80)",
+          "thresholds": {
+            "minColorPresenceRatio": 0.9
+          }
+        }
+      ],
+      "thresholds": {
+        "meanColorError": 3,
+        "ssim": 0.94,
+        "minInkRecall": 0.95,
+        "minStrictInkRecall": 0.97,
+        "minRegionInkRecall": 0.96,
+        "minRegionStrictInkRecall": 0.95,
+        "maxRegionMeanColorError": 8,
+        "maxRegionForeignColorRatio": 0.0005,
+        "maxPaletteShortfall": 1,
+        "maxPaths": 12,
+        "maxSubPaths": 300,
+        "maxBytes": 65536,
+        "maxTinySubPathRatio": 0.02,
+        "minCurveCommandRatio": 0.65,
+        "maxNearDuplicateFills": 0,
+        "maxTransparentAreaColorError": 8,
+        "maxMs": 10000
+      },
+      "note": "DEFAULT_SETTINGS on the mascot — deliberately no `settings` override, so this row moves if the defaults do. It differs from reference-frankie by one tick (Enhance off) and that tick is worth a palette slot: the eyes keep their olive here and lose it there, which is the whole shape of the small-hue-distinct-colour finding."
+    },
+    {
       "id": "unsupported-gif",
       "file": "unsupported-animation.gif",
       "kind": "unsupported",
