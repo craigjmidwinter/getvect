@@ -19,7 +19,21 @@
 import { computePaletteSync, indicesToRaster, mapToPalette } from './color';
 import type { NoiseReduction, RasterImage } from './types';
 
-/** Palette size used by the colour-simplification pass. */
+/**
+ * Palette size used by the colour-simplification pass.
+ *
+ * Note what this implies when the user's own budget is also 16: the cleanup
+ * hands the quantizer a histogram with exactly 16 distinct colours, so
+ * `computePaletteSync` takes its "the image has no more colours than the
+ * budget, so reproduce them exactly" branch and the delivered palette IS this
+ * pass's palette. That is the right answer — re-clustering colours the image
+ * literally contains can only move them — but it is why Enhance is what decides
+ * the colour table at high budgets, and why raising this number does not buy
+ * more delivered colours: measured on the gold standard, 32 here left the
+ * quantizer more colours to choose from and cost mean layer compactness
+ * 3.67 -> 6.38 (the seams it was flattening came back), while the near-
+ * duplicate fold still collapsed the result to the same 8 layers.
+ */
 const SIMPLIFY_COLORS = 16;
 /** Majority-filter repetitions. */
 const MAJORITY_PASSES = 2;
@@ -177,6 +191,172 @@ export function majorityFilter(
       // ...unless the centre is the middle of a run of its own colour.
       if (best !== self && continuesRun(indices, width, height, x, y, self)) best = self;
       out[y * width + x] = best;
+    }
+  }
+  return out;
+}
+
+/**
+ * One byte per pixel, 1 where the pixel's 4-connected same-index region holds
+ * fewer than `minArea` pixels. Iterative flood fill — no recursion, so a
+ * region the size of the image cannot blow the stack.
+ */
+function smallRegionMask(
+  indices: Uint8Array,
+  width: number,
+  height: number,
+  minArea: number,
+): Uint8Array {
+  const n = width * height;
+  const small = new Uint8Array(n);
+  const seen = new Uint8Array(n);
+  const stack = new Int32Array(n);
+  const region = new Int32Array(n);
+  for (let start = 0; start < n; start++) {
+    if (seen[start]) continue;
+    const color = indices[start];
+    let top = 0;
+    let size = 0;
+    stack[top++] = start;
+    seen[start] = 1;
+    while (top > 0) {
+      const p = stack[--top];
+      region[size++] = p;
+      const x = p % width;
+      if (x > 0 && !seen[p - 1] && indices[p - 1] === color) {
+        seen[p - 1] = 1;
+        stack[top++] = p - 1;
+      }
+      if (x + 1 < width && !seen[p + 1] && indices[p + 1] === color) {
+        seen[p + 1] = 1;
+        stack[top++] = p + 1;
+      }
+      if (p >= width && !seen[p - width] && indices[p - width] === color) {
+        seen[p - width] = 1;
+        stack[top++] = p - width;
+      }
+      if (p + width < n && !seen[p + width] && indices[p + width] === color) {
+        seen[p + width] = 1;
+        stack[top++] = p + width;
+      }
+    }
+    if (size < minArea) for (let k = 0; k < size; k++) small[region[k]] = 1;
+  }
+  return small;
+}
+
+/**
+ * Straighten the seams *between* colour regions (REFERENCE B4, the half of
+ * Smart anti-aliasing a 3×3 window cannot reach).
+ *
+ * `majorityFilter` votes over 3×3, which is enough to delete a lone stray pixel
+ * and nothing more: a sawtooth whose teeth are two pixels deep is a local
+ * majority in every 3×3 window it appears in, so it survives, gets traced, and
+ * comes back as the spiked seam that makes a 16-colour output read as a
+ * posterized photograph rather than as clipart. Measured on the gold standard,
+ * our mid-tone layers scored 5.65 and 5.36 on perimeter/(2·√(π·area)) against
+ * the real product's 4.35 and 2.87 for the equivalent cream and blue.
+ *
+ * So the seam gets a wider vote: a pixel that sits *on* a boundary (some
+ * 4-neighbour disagrees with it) is flipped to whatever index owns more than
+ * `share` of its (2·`radius`+1)² neighbourhood. Interior pixels are never
+ * looked at, so a region can only be reshaped at its edge, and the super-
+ * majority is what keeps the filter from redrawing the boundary itself: a
+ * straight edge splits its window ~50/50 and nothing moves, while a tooth or a
+ * notch is a small minority of a 5×5 and is filled in.
+ *
+ * Line art is exempt by the same rule that protects it from the 3×3 pass: a
+ * pixel with two opposite neighbours of its own colour is in the middle of a
+ * run, and a run is a stroke. Without that, this filter is a very effective
+ * eraser of exactly the outlines the picture is made of.
+ *
+ * That exemption is spent on the `protect`ed indices — the ink — and nowhere
+ * else, because the boundary between two shaded regions is *also* made of runs:
+ * a sawtooth tooth is a run along the seam, so protecting every colour by run
+ * continuation protects the defect and the filter does nothing (measured: mean
+ * layer compactness 3.73 -> 3.72 on the gold standard). Guarding only the
+ * strokes is the difference between an edge cleanup and a no-op.
+ *
+ * And a *small* region is never regularized at all, whatever colour it is.
+ * The whole premise above is that a boundary pixel's window is mostly the two
+ * regions the boundary separates, which stops being true once a region is
+ * smaller than the window: every pixel of a 50px² disc is a boundary pixel and
+ * a minority in its own 7×7, so the filter erodes it a ring per pass and a
+ * small circle disappears — the case REFERENCE B5's circle detection is
+ * measured on at radii down to 4. `minRegionArea` is that limit, expressed in
+ * window areas so it moves with `radius`.
+ */
+export function regularizeBoundaries(
+  indices: Uint8Array,
+  width: number,
+  height: number,
+  paletteSize: number,
+  transparentIndex = -1,
+  protect?: Uint8Array,
+  share = 0.55,
+  radius = 3,
+  /** Region area, in window areas, below which a region is left alone. */
+  minRegionWindows = 4,
+): Uint8Array {
+  const out = Uint8Array.from(indices);
+  if (width < 3 || height < 3 || paletteSize < 2) return out;
+  const small = smallRegionMask(
+    indices,
+    width,
+    height,
+    (2 * radius + 1) * (2 * radius + 1) * minRegionWindows,
+  );
+  const tally = new Int32Array(paletteSize);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const p = y * width + x;
+      const self = indices[p];
+      if (self === transparentIndex || self >= paletteSize) continue;
+      // Only seams move. An interior pixel has nothing to be regularized against
+      // and touching it would be a blur, not an edge cleanup.
+      const onBoundary =
+        (x > 0 && indices[p - 1] !== self) ||
+        (x + 1 < width && indices[p + 1] !== self) ||
+        (y > 0 && indices[p - width] !== self) ||
+        (y + 1 < height && indices[p + width] !== self);
+      if (!onBoundary) continue;
+      // A whole shape, not a seam (see `minRegionWindows`).
+      if (small[p]) continue;
+      // A stroke is thin by definition, so the wide vote that straightens a
+      // shading boundary reads the middle of a stroke as a minority and eats
+      // it — and unlike a seam, where both sides are nearly the right colour,
+      // every pixel it takes is a hole in the drawing. So the ink keeps the
+      // run-continuation exemption. Only the middle of a run, though: an ink
+      // pixel that is NOT in a run is a lobe on a ragged outline and is exactly
+      // what this filter should be tidying (blanket-exempting the ink measured
+      // worse — 0.981x -> 0.972x of the real product's paw strict ink recall,
+      // because the same vote also *adds* ink where a stroke had a notch).
+      if (protect?.[self] && continuesRun(indices, width, height, x, y, self)) continue;
+      const y0 = Math.max(0, y - radius);
+      const y2 = Math.min(height - 1, y + radius);
+      const x0 = Math.max(0, x - radius);
+      const x2 = Math.min(width - 1, x + radius);
+      tally.fill(0);
+      let counted = 0;
+      for (let yy = y0; yy <= y2; yy++) {
+        const row = yy * width;
+        for (let xx = x0; xx <= x2; xx++) {
+          const v = indices[row + xx];
+          if (v >= paletteSize || v === transparentIndex) continue;
+          tally[v]++;
+          counted++;
+        }
+      }
+      if (counted === 0) continue;
+      let best = self;
+      let bestN = tally[self];
+      for (let c = 0; c < paletteSize; c++) {
+        if (tally[c] > bestN) {
+          bestN = tally[c];
+          best = c;
+        }
+      }
+      if (best !== self && bestN > counted * share) out[p] = best;
     }
   }
   return out;
@@ -367,6 +547,29 @@ const RAMP_STEP_TOLERANCE = 30;
  * pads' brown.
  */
 const RAMP_INK_LUMA = 60;
+/**
+ * How far onto the paper side of an *ink* ramp the snap still resolves to ink.
+ *
+ * The nearest end is the right answer for a ramp between two ordinary colours:
+ * it is symmetric, and a boundary that lands half a pixel either way is a
+ * boundary either way. It is the wrong answer for a stroke. A drawn outline is
+ * ink at full strength plus a skirt of partial coverage on BOTH sides, so
+ * splitting each skirt down the middle hands back a line thinner than the one
+ * the artist drew — and once it is thinner than a pixel it renders as a grey
+ * smear and, wherever the skirt was asymmetric, as a break. Measured on the
+ * gold standard, the real product's paw crop carries 2496 ink pixels where the
+ * source has 1210 and ours had 1755: it resolves the whole skirt to ink, and
+ * that is why its outlines read as solid where ours read as dashed.
+ *
+ * 3 means "the centre goes to ink unless it is more than three times as far
+ * from the ink as from the paper". A luma-anchored rule ("a centre darker than
+ * 60 is ink") reads better on paper and measures worse — by the time this pass
+ * runs, Enhance's median has already lifted the skirt above 60, so the anchor
+ * has nothing left to catch and the gold standard's paw crop drops from 0.941
+ * to 0.908 of the real product's strict ink recall. The ratio does not care how
+ * dark the ends are, which is exactly why it survives the pass in front of it.
+ */
+const INK_RAMP_BIAS = 3;
 /** How many pixels of its own colour a 3×3 window needs to be a real region. */
 const SUPPORT_MIN = 3;
 
@@ -537,7 +740,10 @@ function deAntialiasPass(image: RasterImage): RasterImage {
       // Only genuine in-between pixels: a pixel that is a third colour (a real
       // detail) is farther from the segment than the segment is long.
       if (da + db > best * 1.35) continue;
-      const src = da <= db ? ai : bi;
+      // A ramp into ink resolves toward the ink (see `INK_RAMP_BIAS`): the
+      // skirt of a stroke belongs to the stroke, not half to the paper.
+      const inkRamp = lo < RAMP_INK_LUMA;
+      const src = (inkRamp ? da <= db * INK_RAMP_BIAS : da <= db) ? ai : bi;
       out[o] = data[src];
       out[o + 1] = data[src + 1];
       out[o + 2] = data[src + 2];
