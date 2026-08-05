@@ -38,10 +38,10 @@ harness measures us against it on every run — including where it wins.
 
 ## Before / after
 
-![Frankie the cat: 577 KB PNG at 200% zoom next to the 50 KB SVG GetVect traced from it](docs/assets/frankie-before-after.png)
+![Frankie the cat: 573 KB PNG at 200% zoom next to the 31 KB SVG GetVect traced from it](docs/assets/frankie-before-after.png)
 
 Frankie is our mascot and our demo fixture. Traced at 8 colours with Smart anti-aliasing,
-a 577 KB raster becomes a **50 KB SVG in 7 colour layers and 225 shapes** — curve-fitted
+a 573 KB raster becomes a **31 KB SVG in 7 colour layers and 158 shapes** — curve-fitted
 outlines, transparent background preserved, and infinitely re-scalable. The same source
 through the real the reference product comes back 21.7 KB in 40 paths: **smaller than ours on this
 drawing**, at settings where their Enhance is a generative flatten and ours is switched
