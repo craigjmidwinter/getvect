@@ -404,13 +404,19 @@ export function App() {
                       error: null,
                       // An edited palette is re-read from the result so the
                       // swatch the user clicks is exactly the slot the engine
-                      // painted — a merge collapses two slots into one, and the
-                      // colour count follows the palette it now describes.
+                      // painted — a merge collapses two slots into one.
+                      //
+                      // `colorCount` is NOT touched. It is the candidate
+                      // palette size the user chose, the radio row shows it,
+                      // and "Auto palette" recomputes from it: rewriting it to
+                      // the edited palette's length meant editing one swatch of
+                      // a 16-candidate palette silently moved the selection to
+                      // 10, and Auto then handed back a palette that had never
+                      // been on screen.
                       settings: image.settings.palette
                         ? {
                             ...image.settings,
                             palette: result.palette.map((c) => ({ ...c })),
-                            colorCount: Math.max(1, result.palette.length),
                           }
                         : image.settings,
                     }
@@ -577,6 +583,41 @@ export function App() {
     return activeSwatch === 0 ? 1 : 0;
   }, [palette.length, mergeTarget, activeSwatch]);
 
+  /**
+   * What the colour-count hint says, and why (docs/TESTIDS.md
+   * `color-count-hint`).
+   *
+   * `result.sourceColors` is the palette the image supplied before any of our
+   * folds, so the two shortfalls are distinguishable: fewer source colours than
+   * asked for is the image's limit, the same source colours but fewer output
+   * ones is a cleanup we turned on. Blaming the image for the second was
+   * telling the user to drag a slider that could not help them.
+   */
+  const colorHint = useMemo(() => {
+    const requested = clamp(settings.colorCount, 1, 64);
+    const actual = palette.length;
+    if (actual === 0) return { requested, actual, shortfall: 'none', text: 'computing colours…' };
+    const plural = `colour${actual === 1 ? '' : 's'}`;
+    if (actual >= requested) {
+      return { requested, actual, shortfall: 'none', text: `${actual} ${plural} in the result` };
+    }
+    const source = selected?.result?.sourceColors ?? actual;
+    if (source < requested) {
+      return {
+        requested,
+        actual,
+        shortfall: 'image',
+        text: `${actual} ${plural} in the result — the image has no more to give`,
+      };
+    }
+    return {
+      requested,
+      actual,
+      shortfall: 'settings',
+      text: `${actual} ${plural} in the result — ${source} were found and the cleanup settings merged the rest`,
+    };
+  }, [settings.colorCount, palette.length, selected?.result?.sourceColors]);
+
   const setSetting = useCallback(
     (patch: Partial<VectorizeSettings>, delay: number = DEBOUNCE_DISCRETE) => {
       if (!selected) return;
@@ -589,7 +630,20 @@ export function App() {
   const applyPalette = useCallback(
     (next: RgbColor[]) => {
       if (!selected || next.length === 0) return;
-      requestVectorize(selected.id, { palette: next, colorCount: Math.max(1, next.length) });
+      /**
+       * `colorCount` is deliberately left alone. It is the *candidate palette
+       * size* the user picked, and the engine does not need it changed — with
+       * an explicit palette it clusters at `palette.length` and ignores the
+       * slider (see `targetColors` in src/engine/index.ts).
+       *
+       * Rewriting it to the palette length is what broke "Auto palette":
+       * editing one swatch of a 10-entry palette that came from candidate size
+       * 16 moved the slider to 10, the 16 chip stopped being selected, and Auto
+       * — which only clears `settings.palette` — then recomputed at 10 and
+       * landed on a palette the user had never seen. The button advertises an
+       * undo; it has to be one.
+       */
+      requestVectorize(selected.id, { palette: next });
     },
     [selected, requestVectorize],
   );
@@ -921,7 +975,12 @@ export function App() {
               data-pan-x={fmt(pan.x)}
               data-pan-y={fmt(pan.y)}
             >
-              {Math.round(pan.x)}, {Math.round(pan.y)}
+              {/*
+                A bare "0, 0" in the header of an app with no image loaded is a
+                coordinate for a thing that does not exist — the data attributes
+                stay (the suite reads pan from them), the text does not.
+              */}
+              {selected ? `${Math.round(pan.x)}, ${Math.round(pan.y)}` : ''}
             </span>
           </div>
 
@@ -1093,20 +1152,20 @@ export function App() {
               {/*
                 The slider asks for a number the image often cannot supply — a
                 six-colour logo has six colours however far right you drag. The
-                control and the result must not silently disagree.
+                control and the result must not silently disagree, AND the hint
+                has to name the right culprit: the shortfall is sometimes the
+                image running out and sometimes our own cleanup folding colour
+                groups together, and those call for opposite reactions from the
+                user (drag the slider back vs. turn a cleanup off).
               */}
               <span
                 data-testid={TESTIDS.settingColorCountHint}
                 className="hint"
-                data-requested={String(clamp(settings.colorCount, 1, 64))}
-                data-actual={String(palette.length)}
+                data-requested={String(colorHint.requested)}
+                data-actual={String(colorHint.actual)}
+                data-shortfall={colorHint.shortfall}
               >
-                {palette.length > 0
-                  ? `${palette.length} colour${palette.length === 1 ? '' : 's'} in the result` +
-                    (palette.length < clamp(settings.colorCount, 1, 64)
-                      ? ` — the image has no more to give`
-                      : '')
-                  : 'computing colours…'}
+                {colorHint.text}
               </span>
             </div>
 
@@ -1142,7 +1201,7 @@ export function App() {
                 <select
                   data-testid={TESTIDS.settingAntiAliasing}
                   aria-label="Anti-aliasing"
-                  value={settings.antiAliasing ?? 'off'}
+                  value={settings.antiAliasing ?? DEFAULT_SETTINGS.antiAliasing}
                   onChange={(event) => setSetting({ antiAliasing: event.target.value as AntiAliasing })}
                 >
                   {AA_LEVELS.map(({ value, label }) => (

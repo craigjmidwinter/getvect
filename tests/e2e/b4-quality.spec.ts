@@ -45,6 +45,12 @@ test('[B4] noise reduction observably simplifies a noisy trace', async ({ page }
   await loadViaPicker(page, FIXTURE.noisy512);
   await waitForReady(page);
 
+  // Isolated from Smart anti-aliasing, which is on by default and removes the
+  // same impulse noise this control exists for — with it on there is nothing
+  // left for Noise Reduction to remove.
+  await setSelect(page, TESTIDS.settingAntiAliasing, 'off');
+  await waitForReady(page);
+
   await setSelect(page, TESTIDS.settingNoiseReduction, 'off');
   await waitForReady(page);
   const off = await previewSvg(page);

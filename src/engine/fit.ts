@@ -209,10 +209,30 @@ export interface FittedContour {
   circle: Circle | null;
 }
 
+/** Share of a ring's points that may sit outside `tolerance` and still pass. */
+const CIRCLE_OUTLIER_SHARE = 0.02;
+/** How far the worst single point may sit outside `tolerance`. */
+const CIRCLE_OUTLIER_SLACK = 2;
+/** Root-mean-square radial error allowed, as a fraction of `tolerance`. */
+const CIRCLE_RMS_SHARE = 0.6;
+
 /**
- * Least-squares (Kåsa) circle through a point ring, accepted only when every
- * point sits within `tolerance` pixels of it and the ring really does go all
- * the way round. Returns null otherwise.
+ * Least-squares (Kåsa) circle through a point ring, accepted when the ring is
+ * round *as a whole* and really does go all the way round. Returns null
+ * otherwise.
+ *
+ * Acceptance used to be "every single point within `tolerance`", which is a
+ * different and much weaker property than being a circle: one notch anywhere on
+ * the boundary rejects the whole contour. Real pipelines put notches there —
+ * turning Smart anti-aliasing on (now the default) moved four of the 1520
+ * points on the reference ring's boundary by 1.9px against a 1.8px tolerance,
+ * and circle detection silently stopped finding a mathematically exact circle
+ * it had found the day before. So the test is now the shape of the residual
+ * distribution: small RMS, at most a couple of percent of points outside
+ * tolerance, and none of them wildly outside. A truncated disc (the flat
+ * fixture's navy circle, which the green bar cuts the bottom off) scores an RMS
+ * of 4.8 against a 1.1 budget and is still rejected, which is the case that
+ * matters.
  */
 export function fitCircle(points: Pt[], tolerance: number): Circle | null {
   const n = points.length;
@@ -255,10 +275,17 @@ export function fitCircle(points: Pt[], tolerance: number): Circle | null {
   const r = Math.sqrt(uc * uc + vc * vc + (suu + svv) / n);
   if (!Number.isFinite(r) || r < 3) return null;
 
-  // Every point on the ring, not just on average.
+  // Round as a whole: RMS inside budget, few outliers, none of them extreme.
+  let sumSq = 0;
+  let outliers = 0;
   for (const p of points) {
-    if (Math.abs(Math.hypot(p.x - cx, p.y - cy) - r) > tolerance) return null;
+    const d = Math.abs(Math.hypot(p.x - cx, p.y - cy) - r);
+    if (d > tolerance * CIRCLE_OUTLIER_SLACK) return null;
+    if (d > tolerance) outliers++;
+    sumSq += d * d;
   }
+  if (outliers > n * CIRCLE_OUTLIER_SHARE) return null;
+  if (Math.sqrt(sumSq / n) > tolerance * CIRCLE_RMS_SHARE) return null;
   // ...and the ring must be a full turn, not an arc that happens to be round.
   const seen = new Uint8Array(16);
   for (const p of points) {

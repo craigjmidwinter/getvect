@@ -193,6 +193,19 @@ export interface VectorizeResult {
   height: number;
   /** Wall-clock milliseconds spent inside `vectorize()`. */
   durationMs: number;
+  /**
+   * How many distinct colours the *image* supplied at the requested budget —
+   * the palette as it stood after quantization and despeckling, before any of
+   * the merges that are our own doing (Smart anti-aliasing's near-duplicate
+   * fold, Enhance's small-group fold, the output merge threshold).
+   *
+   * Without this the UI cannot tell the two reasons a palette is short apart,
+   * and the colour-count hint blamed the image for both: "10 colours in the
+   * result — the image has no more to give" on artwork that hands over a full
+   * 16 the moment the cleanup is switched off (docs/TESTIDS.md
+   * `color-count-hint`).
+   */
+  sourceColors: number;
 }
 
 /** Thrown by the stub engine until a real implementation lands. */

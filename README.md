@@ -73,7 +73,8 @@ with a real message; multiple images in a sidebar you can switch between.
 - **Output colour groups**: per-colour disable — switch off the background colour and you
   get a transparent background — with a merge threshold and sort order.
 - **Quality**: Enhance (denoise + colour simplification), Noise Reduction off/low/high,
-  Anti-aliasing off/smart/mid.
+  Anti-aliasing off/smart/mid — Smart is the default, as it is in the real product, and it
+  is worth 1747 sub-paths → 551 and 396 KB → 140 KB on the gold-standard artwork.
 - **Advanced**: Roundness (3 curve-fitting levels), Minimum Area (0/5/90 px² speck
   removal), Overlap, Circle Detection.
 - **Result style**: filled layers or stroked layers.
@@ -84,7 +85,9 @@ re-render of it.
 
 **Export** — SVG, EPS, DXF, PDF and PNG through the native save dialog, with per-colour
 `<g fill="rgb(...)">` layers in the SVG so the result drops into Illustrator or Inkscape
-as editable colour groups.
+as editable colour groups. The DXF keeps its curves: every fitted cubic travels as a
+degree-3 `SPLINE`, so a CAD or cutter file is a drawing rather than a point cloud (a
+`{ curves: 'lines' }` variant flattens to R12 POLYLINE for readers that need it).
 
 **Not built** (REFERENCE section E, deliberately out of scope for now): isometric layer
 view, crop, pixel editing, gradient detection, drag-to-regroup colour circles, Android
