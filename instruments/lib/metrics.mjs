@@ -685,6 +685,143 @@ export function inkComponents(image, { inkLuma = 60, minPixels = 4 } = {}) {
 }
 
 /**
+ * Light pixels that are ENCLOSED — the interior of a small drawn feature.
+ *
+ * The count of these is what says a row of outlined spikes is still a row of
+ * outlined spikes. Weld two outlines together and their two interiors become one
+ * (or none), while every other instrument in this file reports health: all the
+ * ink is still ink (`inkRecall` ~1), the colours are right, the sub-path count
+ * moves by one. A person looking at the picture names it immediately.
+ *
+ * Components touching the border are dropped, because that is the paper the
+ * features sit ON, not a feature. `minPixels` drops antialiasing crumbs.
+ */
+export function enclosedLightComponents(image, { lightLuma = 200, minPixels = 6 } = {}) {
+  const { width, height, data } = image;
+  const mask = new Uint8Array(width * height);
+  for (let p = 0; p < mask.length; p++) {
+    const i = p * 4;
+    mask[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2] >= lightLuma ? 1 : 0;
+  }
+  const seen = new Uint8Array(width * height);
+  const stack = new Int32Array(width * height);
+  let components = 0;
+  for (let p = 0; p < mask.length; p++) {
+    if (!mask[p] || seen[p]) continue;
+    let top = 0;
+    stack[top++] = p;
+    seen[p] = 1;
+    let size = 0;
+    let touchesBorder = false;
+    while (top > 0) {
+      const q = stack[--top];
+      size++;
+      const qx = q % width;
+      const qy = (q - qx) / width;
+      if (qx === 0 || qy === 0 || qx === width - 1 || qy === height - 1) touchesBorder = true;
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = qy + dy;
+        if (ny < 0 || ny >= height) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = qx + dx;
+          if (nx < 0 || nx >= width || (dx === 0 && dy === 0)) continue;
+          const n = ny * width + nx;
+          if (mask[n] && !seen[n]) {
+            seen[n] = 1;
+            stack[top++] = n;
+          }
+        }
+      }
+    }
+    if (size >= minPixels && !touchesBorder) components++;
+  }
+  return components;
+}
+
+/**
+ * Did the small sharp features survive? Enclosed light components in the trace
+ * over the same count in the source.
+ *
+ * 1.0 means every one of them came back as its own region. Below 1 means
+ * features merged or vanished — the ink-fusion defect, in one number. Above 1
+ * means the trace invented one, which is also worth seeing.
+ */
+export function sharpFeatureSurvival(reference, traced, opts = {}) {
+  assertSameSize(reference, traced);
+  const source = enclosedLightComponents(reference, opts);
+  const ours = enclosedLightComponents(traced, opts);
+  return {
+    featureComponents: ours,
+    sourceFeatureComponents: source,
+    featureComponentRatio: source === 0 ? null : ours / source,
+  };
+}
+
+/**
+ * Invented seams: light pixels the source does not have, on a boundary between
+ * two traced layers.
+ *
+ * Where two layers abut, each is rasterized against whatever is *under* it, so a
+ * shared edge is composited twice and neither pass covers it fully — the backdrop
+ * shows through as a sliver a fraction of a pixel wide. Against ink it reads as a
+ * white hairline drawn along an outline, which is the single most visible defect
+ * a tracer can ship and the one every averaging metric ignores: 900 such pixels
+ * on a megapixel drawing move MAE by 0.1.
+ *
+ * The test is deliberately two-sided, so it cannot fire on a real light line the
+ * artwork has:
+ *
+ *   - the pixel is lighter than BOTH of its opposite neighbours, in every
+ *     channel, by more than `lighterBy` (a ridge, on either axis), and
+ *   - nothing that light exists anywhere in the source's own neighbourhood of
+ *     the same pixel (`window`), so the drawing never had it.
+ *
+ * A genuine highlight fails the second test; a ridge that is only one side of a
+ * gradient fails the first.
+ */
+export function seamSlivers(reference, traced, { lighterBy = 12, window = 1 } = {}) {
+  assertSameSize(reference, traced);
+  const { width, height, data } = traced;
+  const ref = reference.data;
+  const lighter = (i, j) =>
+    data[i] - data[j] > lighterBy &&
+    data[i + 1] - data[j + 1] > lighterBy &&
+    data[i + 2] - data[j + 2] > lighterBy;
+  let slivers = 0;
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const p = y * width + x;
+      const i = p * 4;
+      const ridge =
+        (lighter(i, (p - 1) * 4) && lighter(i, (p + 1) * 4)) ||
+        (lighter(i, (p - width) * 4) && lighter(i, (p + width) * 4));
+      if (!ridge) continue;
+      // ...and the source has nothing that light anywhere near it.
+      let present = false;
+      for (let dy = -window; dy <= window && !present; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= height) continue;
+        for (let dx = -window; dx <= window; dx++) {
+          const nx = x + dx;
+          if (nx < 0 || nx >= width) continue;
+          const r = (ny * width + nx) * 4;
+          if (
+            ref[r] >= data[i] - lighterBy &&
+            ref[r + 1] >= data[i + 1] - lighterBy &&
+            ref[r + 2] >= data[i + 2] - lighterBy
+          ) {
+            present = true;
+            break;
+          }
+        }
+      }
+      if (!present) slivers++;
+    }
+  }
+  return { sliverPixels: slivers, sliverRatio: slivers / (width * height) };
+}
+
+/**
  * Continuity, as one number: components in the trace's ink field over
  * components in the source's.
  *
@@ -1214,6 +1351,78 @@ export function resampleClosed(points, step) {
     carry += segLen - t;
   }
   return out;
+}
+
+/**
+ * The sharpest corner each small feature still has, in degrees, and the bluntest
+ * of those — read off the FITTED geometry, not off pixels.
+ *
+ * `enclosedLightComponents` says a spike is still there; this says it is still a
+ * spike. A 142° apex whose arms are eight pixels long is precisely the corner a
+ * fixed-window corner detector cannot see: the direction on each side is
+ * averaged over a window that is a large fraction of the whole contour, the turn
+ * measures small, no corner is pinned, the pre-fit low-pass is free to average
+ * across the tip and a triangle comes back as a lozenge. Nothing else here
+ * notices — the component survives, the area is nearly right, the ink is intact.
+ *
+ * Only contours no larger than `maxExtent` inside `box` are measured, because
+ * the question is about SMALL features; a big shape has arms long enough that no
+ * window can straddle its corners. The turn at a vertex is measured between
+ * headings taken `span` samples either side, at a fixed 1px resample step, so a
+ * corner written as two cubics and one written as forty `l` segments score the
+ * same.
+ */
+export function featureCornerAngles(
+  svg,
+  box,
+  { maxExtent = 80, curveSamples = 16, step = 1, span = 2, minSamples = 12 } = {},
+) {
+  const inside = (x, y) =>
+    x >= box.x && y >= box.y && x <= box.x + box.width && y <= box.y + box.height;
+  const angles = [];
+  for (const chunk of fillLayerChunks(svg)) {
+    for (const d of pathDataAttributes(chunk.body)) {
+      for (const poly of subPathPolylines(d, curveSamples)) {
+        let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity];
+        for (const [x, y] of poly) {
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
+        if (!inside(minX, minY) || !inside(maxX, maxY)) continue;
+        if (Math.max(maxX - minX, maxY - minY) > maxExtent) continue;
+        const walk = resampleClosed(poly, step);
+        if (walk.length < minSamples) continue;
+        const n = walk.length;
+        let sharpest = 0;
+        for (let i = 0; i < n; i++) {
+          const a = walk[(i - span + n) % n];
+          const b = walk[i];
+          const c = walk[(i + span) % n];
+          const v1x = b[0] - a[0];
+          const v1y = b[1] - a[1];
+          const v2x = c[0] - b[0];
+          const v2y = c[1] - b[1];
+          const l1 = Math.hypot(v1x, v1y);
+          const l2 = Math.hypot(v2x, v2y);
+          if (l1 < 1e-9 || l2 < 1e-9) continue;
+          const dot = Math.max(-1, Math.min(1, (v1x * v2x + v1y * v2y) / (l1 * l2)));
+          const turn = (Math.acos(dot) * 180) / Math.PI;
+          if (turn > sharpest) sharpest = turn;
+        }
+        angles.push(sharpest);
+      }
+    }
+  }
+  if (!angles.length) return { featureCount: 0, minCornerAngle: null, meanCornerAngle: null };
+  return {
+    featureCount: angles.length,
+    // The BLUNTEST feature is the gate: one rounded-off spike in a row of eight
+    // is the defect, and a mean would bury it under the seven that survived.
+    minCornerAngle: Math.min(...angles),
+    meanCornerAngle: angles.reduce((s, v) => s + v, 0) / angles.length,
+  };
 }
 
 /**
