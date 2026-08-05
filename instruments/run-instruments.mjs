@@ -3,7 +3,11 @@
  * `npm run instruments` — the fidelity light meter.
  *
  * For every supported fixture it:
- *   1. decodes the source raster (sharp; BMP via instruments/lib/decode.mjs),
+ *   1. decodes the source raster (sharp; BMP via instruments/lib/decode.mjs)
+ *      and passes it through `canvasIngest()` so the engine sees exactly the
+ *      pixels the renderer's canvas ingest produces — including `(0,0,0,0)` for
+ *      transparent ones. Fidelity is still judged against the source flattened
+ *      on white (docs/HARNESS.md "One decode contract"),
  *   2. calls the engine's pure `vectorize()` headlessly (dist/engine/index.js),
  *   3. rasterizes the produced SVG back to the SOURCE dimensions with resvg,
  *   4. measures mean/RMS colour error, SSIM, mismatch ratio, per-colour area
@@ -30,9 +34,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
 import sharp from 'sharp';
 import { Resvg } from '@resvg/resvg-js';
-import { decodeImageFile, flattenOnWhite } from './lib/decode.mjs';
+import { canvasIngest, decodeImageFile, flattenOnWhite, transparentRatio } from './lib/decode.mjs';
 import {
+  alphaMask,
   inkRecall,
+  maskedMeanColorError,
   meanColorError,
   perColorCoverageDelta,
   pixelMismatchRatio,
@@ -125,6 +131,10 @@ const GATES = [
   ['minCurveCommandRatio', 'curveCommandRatio', 'min', (v) => v.toFixed(3)],
   ['maxNearDuplicateFills', 'nearDuplicateFillPairs', 'max', String],
   ['maxPerColorCoverageDelta', 'perColorCoverageDelta', 'max', (v) => v.toFixed(4)],
+  // What the user sees through a transparent source pixel. A trace that paints
+  // the alpha-0 background opaque (the black-rectangle blocker) scores ~255
+  // here while MAE/SSIM over the whole frame can still look survivable.
+  ['maxTransparentAreaColorError', 'transparentAreaColorError', 'max', (v) => v.toFixed(2)],
   ['maxBytes', 'svgBytes', 'max', String],
   ['maxMs', 'wallClockMs', 'max', (v) => v.toFixed(0)],
   // Relative to the gold-standard exemplar (REFERENCE lines 80-83).
@@ -228,7 +238,20 @@ async function main() {
     }
 
     const filePath = join(fixturesDir, fixture.file);
-    const source = flattenOnWhite(await decodeImageFile(filePath));
+    const decoded = await decodeImageFile(filePath);
+    /**
+     * ONE DECODE CONTRACT. `source` is what fidelity is judged against (opaque,
+     * flattened on white); `ingested` is what the engine is handed — the same
+     * pixels `src/renderer/lib/decode.ts` produces from a canvas, so a number
+     * measured here is a number a user can reproduce from the UI. Feeding
+     * vectorize() the flattened image instead hid a blocker for a whole lap:
+     * every transparent PNG traced with an opaque black backdrop in the app
+     * while the instruments reported a clean white one.
+     */
+    const source = flattenOnWhite(decoded);
+    const ingested = canvasIngest(decoded);
+    const sourceTransparentRatio = transparentRatio(decoded);
+    const transparentPixels = sourceTransparentRatio > 0 ? alphaMask(decoded) : null;
     /**
      * What fidelity is judged against.
      *
@@ -255,7 +278,7 @@ async function main() {
     let result;
     const t0 = performance.now();
     try {
-      result = await engine.vectorize(source, settings, () => {});
+      result = await engine.vectorize(ingested, settings, () => {});
     } catch (err) {
       const status = err?.name === 'EngineNotImplementedError' ? 'not-implemented' : 'engine-error';
       if (status === 'not-implemented') notImplemented++;
@@ -326,6 +349,13 @@ async function main() {
       perColorCoverageDelta: Array.isArray(result.palette)
         ? perColorCoverageDelta(reference, traced, result.palette)
         : null,
+      // Transparency contract: what the trace paints where the source is
+      // transparent (white = left alone, because resvg composites on white).
+      sourceTransparentRatio,
+      transparentAreaColorError: transparentPixels
+        ? maskedMeanColorError(source, traced, transparentPixels)
+        : null,
+      backdropFill: structure.backdropFill,
       pathCount: structure.pathCount,
       shapeCount: structure.shapeCount,
       subPathCount: structure.subPathCount,
@@ -398,6 +428,13 @@ async function main() {
           `paths ${fmt(r.metrics.exemplarPathRatio)}x (${r.metrics.pathCount} vs ${e.pathCount}), ` +
           `curve ratio ${fmt(r.metrics.curveCommandRatio, 3)} vs ${fmt(e.curveCommandRatio, 3)}, ` +
           `MAE ${fmt(r.metrics.meanColorError)} vs ${fmt(e.meanColorError)}`,
+      );
+    }
+    if (r.metrics?.sourceTransparentRatio > 0) {
+      console.log(
+        `  ${r.id}: source is ${(r.metrics.sourceTransparentRatio * 100).toFixed(1)}% transparent — ` +
+          `backdrop ${r.metrics.backdropFill ?? 'none'}, ` +
+          `colour painted over the transparent area ${fmt(r.metrics.transparentAreaColorError)}/255`,
       );
     }
     if (r.exemplar?.error) console.log(`  ${r.id}: exemplar unreadable — ${r.exemplar.error}`);

@@ -228,6 +228,24 @@ test('[B5] circle detection changes round geometry', async () => {
   );
 });
 
+test('[B5] circle detection finds every circular contour, not just the outermost', async () => {
+  /**
+   * The generated artwork is built from three exactly-circular boundaries: the
+   * ink ring's outer edge, its inner edge, and the navy disc underneath. A
+   * detector that only accepts the first is a demo, not a feature — the two it
+   * misses are the concentric and the filled case, which is most of what a logo
+   * is made of. Snapping them is also what keeps a circle from being paid for
+   * as a few dozen Béziers.
+   */
+  const on = await run(flat, { circleDetection: true });
+  const circles = (on.svg.match(/<(circle|ellipse)\b/g) ?? []).length;
+  assert.ok(
+    circles >= 3,
+    `${circles} circular element(s) for three circular contours (ring outer edge, ring inner ` +
+      'edge, navy disc) — concentric and filled circles are not being recognised',
+  );
+});
+
 // --- B6: result styles ------------------------------------------------------
 
 test('[B6] the stroked result style outlines every layer instead of filling it', async () => {
@@ -293,4 +311,34 @@ test('[D3] every palette colour gets its own DXF layer colour', async () => {
       );
     }
   }
+});
+
+test('[D3] curved outlines survive the DXF as curves, not as thousands of vertices', async () => {
+  /**
+   * REFERENCE E lists "DXF lines-vs-splines variants" as a stretch feature, but
+   * the *default* being a flattened polyline soup is a D3 problem on its own:
+   * the curve fitting the SVG paid for is thrown away at the door, and the file
+   * balloons. Measured on the gold-standard artwork the DXF was 1.49 MB of
+   * POLYLINE/VERTEX against a 71 KB SVG — 21x — while the EPS of the same
+   * drawing kept real `curveto` geometry in 124 KB.
+   *
+   * The contract: a drawing whose SVG is mostly curves must carry SPLINE
+   * entities, and the DXF must stay in the same order of magnitude as the EPS.
+   */
+  const r = await run(snorlax, { colorCount: 16, enhance: true });
+  const dxf = engine.toDxf(r);
+  const eps = engine.toEps(r);
+
+  const splines = (dxf.match(/\n\s*0\nSPLINE\b/g) ?? []).length;
+  const vertices = (dxf.match(/\n\s*0\nVERTEX\b/g) ?? []).length;
+  assert.ok(
+    splines > 0,
+    `${vertices} VERTEX entities and no SPLINE: the SVG is ${(curveCommandRatio(r.svg) * 100).toFixed(0)}% ` +
+      'curve commands and every one of them was flattened to line segments',
+  );
+  assert.ok(
+    dxf.length <= eps.length * 3,
+    `DXF ${(dxf.length / 1024).toFixed(0)} KB vs EPS ${(eps.length / 1024).toFixed(0)} KB for the ` +
+      'same drawing — the DXF is paying per vertex for geometry the EPS stores as curves',
+  );
 });

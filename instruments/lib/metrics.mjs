@@ -22,6 +22,37 @@ export function meanColorError(a, b) {
   return sum / (n * 3);
 }
 
+/**
+ * Mean absolute colour error over a subset of pixels.
+ *
+ * `mask` is one byte per pixel (1 = count it). Returns `null` when the mask is
+ * empty, so a fixture with no masked pixels reports "not applicable" rather
+ * than a flattering zero.
+ */
+export function maskedMeanColorError(a, b, mask) {
+  assertSameSize(a, b);
+  let sum = 0;
+  let n = 0;
+  for (let p = 0, i = 0; i < a.data.length; i += 4, p++) {
+    if (!mask[p]) continue;
+    sum +=
+      Math.abs(a.data[i] - b.data[i]) +
+      Math.abs(a.data[i + 1] - b.data[i + 1]) +
+      Math.abs(a.data[i + 2] - b.data[i + 2]);
+    n++;
+  }
+  return n === 0 ? null : sum / (n * 3);
+}
+
+/** One byte per pixel, 1 where the source alpha is below `threshold`. */
+export function alphaMask(image, threshold = 128) {
+  const mask = new Uint8Array(image.width * image.height);
+  for (let p = 0, i = 3; i < image.data.length; i += 4, p++) {
+    mask[p] = image.data[i] < threshold ? 1 : 0;
+  }
+  return mask;
+}
+
 /** Root-mean-square colour error (0..255), reported alongside MAE for context. */
 export function rmsColorError(a, b) {
   assertSameSize(a, b);
@@ -426,9 +457,38 @@ export function perColorCoverageDelta(a, b, palette) {
   return max;
 }
 
+/**
+ * The fill of a full-bleed backdrop `<rect>`, or null when there is none.
+ *
+ * `src/engine/svg.ts` paints the dominant colour as a rect covering the whole
+ * canvas. That is correct for an opaque source and a lie for a transparent one:
+ * a sticker PNG traced with a black backdrop is the REFERENCE blocker this
+ * metric exists to name (docs/HARNESS.md "One decode contract").
+ */
+export function backdropFill(svg) {
+  const box = /\bviewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)"/.exec(svg);
+  if (!box) return null;
+  const [w, h] = [Number(box[1]), Number(box[2])];
+  const re = /<g\b[^>]*\bfill="([^"]+)"[^>]*>\s*<rect\b([^>]*)>/g;
+  for (const m of svg.matchAll(re)) {
+    const attrs = m[2];
+    const rw = Number(/\bwidth="([\d.]+)"/.exec(attrs)?.[1] ?? NaN);
+    const rh = Number(/\bheight="([\d.]+)"/.exec(attrs)?.[1] ?? NaN);
+    const rx = Number(/\bx="([\d.]+)"/.exec(attrs)?.[1] ?? 0);
+    const ry = Number(/\by="([\d.]+)"/.exec(attrs)?.[1] ?? 0);
+    if (rx <= 0 && ry <= 0 && rw >= w && rh >= h) {
+      return { fill: m[1], color: parseColor(m[1]) };
+    }
+  }
+  return null;
+}
+
 /** Everything structural we can read straight out of an SVG string. */
 export function svgStructure(svg) {
+  const backdrop = backdropFill(svg);
   return {
+    backdropFill: backdrop?.fill ?? null,
+    hasFullBleedBackdrop: backdrop !== null,
     pathCount: countPaths(svg),
     shapeCount: countShapes(svg),
     subPathCount: countSubPaths(svg),

@@ -10,6 +10,11 @@
  * Unlike `npm test` this NEVER fails the run: steps that are not implemented
  * yet are recorded as `skipped` with the reason, and the screenshot is still
  * taken. The point is a before/after contact sheet for each lap, not a gate.
+ *
+ * Shots are captured at 1x device scale (~1280px wide), not at the retina 2x
+ * this machine would default to. The contact sheet is read by agents that pay
+ * per pixel for an image, and a 2560px screenshot costs ~4x the tokens of the
+ * 1280px one while showing exactly the same UI.
  */
 import { promises as fs } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
@@ -17,6 +22,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron } from '@playwright/test';
+import sharp from 'sharp';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const shotDir = join(root, 'artifacts', 'screenshots');
@@ -58,10 +64,27 @@ const T = {
 const log = [];
 let index = 0;
 
+/**
+ * Widest a shot may be. `--force-device-scale-factor=1` already asks Chromium
+ * for 1x, but a HiDPI display can still hand back a 2x buffer, so the capture
+ * is downscaled as a backstop. 1280 is the app's default window width.
+ */
+const MAX_SHOT_WIDTH = 1280;
+let shotScale = null;
+
 async function shot(page, label) {
   index += 1;
   const name = `${String(index).padStart(2, '0')}-${label}.png`;
-  await page.screenshot({ path: join(shotDir, name), fullPage: false });
+  const file = join(shotDir, name);
+  const buffer = await page.screenshot({ fullPage: false });
+  const meta = await sharp(buffer).metadata();
+  if (meta.width > MAX_SHOT_WIDTH) {
+    await sharp(buffer).resize({ width: MAX_SHOT_WIDTH }).png({ compressionLevel: 9 }).toFile(file);
+    shotScale = { captured: meta.width, written: MAX_SHOT_WIDTH, downscaled: true };
+  } else {
+    await fs.writeFile(file, buffer);
+    shotScale = { captured: meta.width, written: meta.width, downscaled: false };
+  }
   return name;
 }
 
@@ -107,7 +130,9 @@ async function main() {
   const exportDir = mkdtempSync(join(tmpdir(), 'getvect-shots-'));
 
   const app = await electron.launch({
-    args: [root],
+    // 1x capture: a retina 2560px contact sheet costs an agent ~4x the tokens
+    // of the 1280px one and shows nothing extra (docs/HARNESS.md "Token-lean").
+    args: [root, '--force-device-scale-factor=1'],
     cwd: root,
     env: { ...process.env, GETVECT_E2E: '1', GETVECT_EXPORT_DIR: exportDir },
   });
@@ -227,13 +252,19 @@ async function main() {
   const manifest = {
     generatedAt: new Date().toISOString(),
     platform: `${process.platform}-${process.arch}`,
+    shotWidth: shotScale?.written ?? null,
+    capturedWidth: shotScale?.captured ?? null,
+    downscaledTo1x: shotScale?.downscaled ?? false,
     ok: log.filter((l) => l.status === 'ok').length,
     skipped: log.filter((l) => l.status !== 'ok').length,
     steps: log,
   };
   await fs.writeFile(join(shotDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
   console.log(`\n${manifest.ok} ok · ${manifest.skipped} skipped`);
-  console.log(`screenshots in ${shotDir}`);
+  console.log(
+    `screenshots in ${shotDir} (${manifest.shotWidth}px wide` +
+      `${manifest.downscaledTo1x ? `, downscaled from ${manifest.capturedWidth}px` : ''})`,
+  );
 }
 
 main().catch((err) => {
