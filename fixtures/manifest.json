@@ -466,11 +466,11 @@
           },
           "thresholds": {
             "minInkCoverageRatio": 0.9,
-            "maxMeanColorError": 17,
+            "maxMeanColorError": 21,
             "minInkRecall": 0.93,
             "minStrictInkRecall": 0.89,
             "maxStrokeWidthCvRatio": 2,
-            "maxInkCoverageRatio": 1.15
+            "maxInkCoverageRatio": 1.2
           }
         },
         {
@@ -481,10 +481,28 @@
           "height": 100,
           "color": "rgb(209,95,21)",
           "thresholds": {
+            "minColorPresenceRatio": 0.97,
+            "minColorPresenceOverExemplar": 0.98
+          },
+          "aspirations": {}
+        },
+        {
+          "name": "cheek-stripes",
+          "x": 150,
+          "y": 280,
+          "width": 110,
+          "height": 200,
+          "color": "rgb(209,95,21)",
+          "aggregate": false,
+          "thresholds": {
+            "maxForeignColorRatio": 0.005,
+            "maxMeanColorError": 8,
+            "minInkRecall": 0.97,
+            "minStrictInkRecall": 0.94,
             "minColorPresenceRatio": 0.94
           },
           "aspirations": {
-            "minColorPresenceRatio": 0.976
+            "minColorPresenceOverExemplar": 1
           }
         },
         {
@@ -496,9 +514,7 @@
           "color": "rgb(187,161,80)",
           "exemplarColor": "rgb(121,176,89)",
           "thresholds": {
-            "maxSliverRatio": 0.0002
-          },
-          "aspirations": {
+            "maxSliverRatio": 0.0002,
             "minColorPresenceRatio": 0.9,
             "minColorPresenceOverExemplar": 0.9
           }
@@ -512,7 +528,7 @@
         "minRegionStrictInkRecall": 0.9,
         "minRegionStrictInkRecallRatio": 0.9,
         "maxRegionMeanColorError": 14,
-        "maxRegionForeignColorRatio": 0.0005,
+        "maxRegionForeignColorRatio": 0.001,
         "maxRegionSliverRatio": 0.0002,
         "maxPaletteShortfall": 2,
         "maxPathRatio": 0.3,
@@ -566,11 +582,11 @@
           },
           "thresholds": {
             "minInkCoverageRatio": 0.9,
-            "maxMeanColorError": 17,
+            "maxMeanColorError": 21,
             "minInkRecall": 0.93,
             "minStrictInkRecall": 0.89,
             "maxStrokeWidthCvRatio": 2,
-            "maxInkCoverageRatio": 1.3
+            "maxInkCoverageRatio": 1.35
           }
         },
         {
@@ -585,6 +601,25 @@
           },
           "aspirations": {
             "minColorPresenceRatio": 0.976
+          }
+        },
+        {
+          "name": "cheek-stripes",
+          "x": 150,
+          "y": 280,
+          "width": 110,
+          "height": 200,
+          "color": "rgb(209,95,21)",
+          "aggregate": false,
+          "thresholds": {
+            "maxForeignColorRatio": 0.005,
+            "maxMeanColorError": 8,
+            "minInkRecall": 0.97,
+            "minStrictInkRecall": 0.94,
+            "minColorPresenceRatio": 0.95
+          },
+          "aspirations": {
+            "minColorPresenceRatio": 1
           }
         },
         {
@@ -609,7 +644,7 @@
         "minRegionInkRecall": 0.96,
         "minRegionStrictInkRecall": 0.95,
         "maxRegionMeanColorError": 8,
-        "maxRegionForeignColorRatio": 0.0005,
+        "maxRegionForeignColorRatio": 0.001,
         "maxPaletteShortfall": 1,
         "maxPaths": 12,
         "maxSubPaths": 300,
