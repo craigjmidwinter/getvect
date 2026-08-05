@@ -425,12 +425,18 @@ code {
   height: 0;
 }
 
+/*
+ * The stage is LAID OUT at zoom x image size (Preview.tsx) rather than scaled,
+ * so `will-change` must not name `transform` alone: hinting a transform-only
+ * change is what invites the compositor to keep the old texture and stretch it,
+ * which is the blurry-vector bug this file used to have. Panning still moves it
+ * with a transform; that path is fast without the hint.
+ */
 .view-stage {
   position: absolute;
   left: 0;
   top: 0;
   transform-origin: 0 0;
-  will-change: transform;
 }
 
 .view-stage .raster,
@@ -442,10 +448,26 @@ code {
   -webkit-user-drag: none;
 }
 
+/*
+ * The SVG fills the stage, and the stage's size IS the zoom, so this is the
+ * line that makes the vector re-rasterize at device resolution on every zoom
+ * instead of being stretched from one fit-sized texture.
+ */
 .view-stage .svg-host > svg {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/*
+ * Past PIXELATE_ABOVE_ZOOM (Preview.tsx) the ORIGINAL view stops smoothing.
+ * The side-by-side is an argument about pixels vs curves; bilinear upscaling
+ * makes the pixels look like something they are not, and hides exactly what the
+ * vector is being compared against. Below the threshold the browser default
+ * stands — nearest-neighbour at 100% is not more honest, just noisier.
+ */
+.preview-view[data-pixelated='true'] .view-stage .raster {
+  image-rendering: pixelated;
 }
 
 /*
