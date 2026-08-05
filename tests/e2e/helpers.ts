@@ -32,16 +32,43 @@ type Fixtures = {
   page: Page;
   /** Directory the app writes exports into while GETVECT_E2E=1 (bypasses the native dialog). */
   exportDir: string;
+  /**
+   * Directory the AI Enhance key store uses while GETVECT_E2E=1.
+   *
+   * Test-scoped on purpose: a suite that wrote to `app.getPath('userData')`
+   * would read, overwrite and delete the developer's own saved key, and on
+   * macOS `safeStorage` would reach into their login keychain to do it. Under
+   * e2e the store is this temp directory and safeStorage is never called
+   * (src/main/aiEnhance.ts, `keyStoreDir`).
+   */
+  aiDir: string;
 };
 
-export const test = base.extend<Fixtures>({
+type Options = {
+  /**
+   * Extra environment for the Electron launch, for specs that need to steer a
+   * main-process branch — e.g. `GETVECT_AI_STUB_DELAY_MS` to widen the window
+   * in which an in-flight state is observable. Use with `test.use({...})`.
+   */
+  extraEnv: Record<string, string>;
+};
+
+export const test = base.extend<Fixtures & Options>({
+  extraEnv: [{}, { option: true }],
+
   exportDir: async ({}, use) => {
     const dir = mkdtempSync(join(tmpdir(), 'getvect-export-'));
     await use(dir);
     await fs.rm(dir, { recursive: true, force: true });
   },
 
-  app: async ({ exportDir }, use) => {
+  aiDir: async ({}, use) => {
+    const dir = mkdtempSync(join(tmpdir(), 'getvect-ai-'));
+    await use(dir);
+    await fs.rm(dir, { recursive: true, force: true });
+  },
+
+  app: async ({ exportDir, aiDir, extraEnv }, use) => {
     const app = await electron.launch({
       args: [REPO_ROOT],
       cwd: REPO_ROOT,
@@ -49,7 +76,9 @@ export const test = base.extend<Fixtures>({
         ...process.env,
         GETVECT_E2E: '1',
         GETVECT_EXPORT_DIR: exportDir,
+        GETVECT_AI_DIR: aiDir,
         NODE_ENV: 'test',
+        ...extraEnv,
       },
     });
     await use(app);
@@ -121,6 +150,28 @@ function mimeFor(file: string): string {
   if (f.endsWith('.bmp')) return 'image/bmp';
   if (f.endsWith('.gif')) return 'image/gif';
   return 'text/plain';
+}
+
+/**
+ * Save an AI Enhance key through the UI.
+ *
+ * Under e2e the stored value also steers the offline stub: `fail-auth`,
+ * `fail-network`, `fail-timeout` and `fail-bad-response` make the run come back
+ * with that typed error, which is how the fallback path is exercised without a
+ * network (src/main/aiEnhance.ts, `stub`).
+ */
+export async function saveAiKey(page: Page, key: string) {
+  await page.locator(tid(TESTIDS.aiKeyInput)).fill(key);
+  await page.locator(tid(TESTIDS.aiKeySaveButton)).click();
+  await expect(page.locator(tid(TESTIDS.aiKeyStatus))).toHaveAttribute('data-has-key', 'true');
+}
+
+/** The `viewBox` of the SVG currently in the preview, as `[w, h]`. */
+export async function previewViewBox(page: Page): Promise<[number, number]> {
+  const svg = await previewSvg(page);
+  const match = /viewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)"/.exec(svg);
+  if (!match) throw new Error(`no viewBox in the preview SVG: ${svg.slice(0, 120)}`);
+  return [Number(match[1]), Number(match[2])];
 }
 
 /** Wait until the workspace reports a finished vectorization (data-status="ready"). */
