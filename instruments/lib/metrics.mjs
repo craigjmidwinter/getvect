@@ -272,6 +272,118 @@ export function inkMask(image, inkLuma = 60) {
 }
 
 /**
+ * Stroke-width uniformity: is our line of even weight where the source's line is?
+ *
+ * The one thing that decided REFERENCE's blind A/B and that no other instrument
+ * here could see. Measured on the gold standard's lower jaw, the source stroke
+ * is 3.94px mean (cv 0.33), the real product's is 5.69px (cv 0.20) and ours was
+ * 6.93px (cv 0.28) — a 1.76x fattening against the exemplar's 1.44x, with an
+ * upper mouth arc that tapered to a spindle and detached from both fangs. Every
+ * ink metric in this file read that as *better* than the real product:
+ * `strictInkRecall` scored us 0.967 against its 0.755 and `inkComponentRatio`
+ * 0.43x, because a fatter line recalls more ink and joins more components.
+ * Recall answers "is the stroke still there"; this answers "is it still a
+ * stroke".
+ *
+ * Method — local width on the source's own medial axis:
+ *
+ *  1. Take every source pixel that is ink and sits at the CENTRE of its own
+ *     shorter run (horizontal or vertical, within a pixel). That is a cheap
+ *     medial axis, and it puts one sample on each stroke rather than one per
+ *     ink pixel, so a thick blob cannot outvote a hairline.
+ *  2. At each of those points measure the traced image's own local width — the
+ *     shorter of its horizontal and vertical runs through that point, and 0
+ *     where the trace has no ink there at all, because a line that vanishes for
+ *     a stretch is not of even weight.
+ *  3. Report mean, its ratio to the source's, and the coefficient of variation.
+ *
+ * Both sides are measured the same way, so the number that gates is the RATIO
+ * of our cv to the exemplar's: the absolute cv belongs to the artwork (a drawn
+ * line genuinely varies), the ratio belongs to the tracer.
+ *
+ * `inkLuma` is 100 rather than the 60 the recall metrics use on purpose — this
+ * is a question about geometry, not about darkness, and the edge of a black
+ * stroke on cream paper crosses 100 about where a person would say the stroke
+ * ends.
+ */
+const STROKE_ELONGATION = 3;
+
+export function strokeWidthProfile(reference, traced, { inkLuma = 100 } = {}) {
+  assertSameSize(reference, traced);
+  const { width: w, height: h } = reference;
+  const field = (img) => {
+    const m = new Uint8Array(w * h);
+    for (let p = 0, i = 0; p < m.length; p++, i += 4) {
+      const d = img.data;
+      // A transparent pixel is not ink, however dark its RGB bytes read.
+      if (d[i + 3] < 128) continue;
+      m[p] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] < inkLuma ? 1 : 0;
+    }
+    return m;
+  };
+  const refInk = field(reference);
+  const outInk = field(traced);
+
+  /** Maximal run of ink through (x,y) along ±(dx,dy): its length, and how much of it lies before the point. */
+  const run = (mask, x, y, dx, dy) => {
+    if (!mask[y * w + x]) return { len: 0, before: 0 };
+    let before = 0;
+    for (let i = 1; ; i++) {
+      const nx = x - dx * i;
+      const ny = y - dy * i;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h || !mask[ny * w + nx]) break;
+      before++;
+    }
+    let after = 0;
+    for (let i = 1; ; i++) {
+      const nx = x + dx * i;
+      const ny = y + dy * i;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h || !mask[ny * w + nx]) break;
+      after++;
+    }
+    return { len: before + after + 1, before };
+  };
+
+  const samples = [];
+  let sourceTotal = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!refInk[y * w + x]) continue;
+      const hr = run(refInk, x, y, 1, 0);
+      const vr = run(refInk, x, y, 0, 1);
+      const across = hr.len <= vr.len ? hr : vr;
+      const along = hr.len <= vr.len ? vr : hr;
+      // Centre of the shorter run, within a pixel: the medial axis.
+      if (Math.abs(across.before - (across.len - 1 - across.before)) > 1) continue;
+      // ...and only where the source is drawing a STROKE. Inside a filled
+      // region every interior pixel is on some medial axis and its "width" is
+      // the region, so a crop containing one eye outvotes every line in it: the
+      // gold standard's face box scored a 12.95px mean width and a cv of 1.0
+      // for both products, which is a measurement of the eye. A stroke is
+      // longer than it is wide; `STROKE_ELONGATION` is where that starts.
+      if (along.len < across.len * STROKE_ELONGATION) continue;
+      const ow = outInk[y * w + x]
+        ? Math.min(run(outInk, x, y, 1, 0).len, run(outInk, x, y, 0, 1).len)
+        : 0;
+      samples.push(ow);
+      sourceTotal += across.len;
+    }
+  }
+  if (samples.length < 8) return null;
+  const n = samples.length;
+  const mean = samples.reduce((a, b) => a + b, 0) / n;
+  const variance = samples.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
+  const sourceMean = sourceTotal / n;
+  return {
+    samples: n,
+    strokeWidth: mean,
+    sourceStrokeWidth: sourceMean,
+    strokeWidthRatio: sourceMean > 0 ? mean / sourceMean : null,
+    strokeWidthCv: mean > 0 ? Math.sqrt(variance) / mean : null,
+  };
+}
+
+/**
  * Number of 8-connected components in an image's ink field, ignoring
  * components smaller than `minPixels` (isolated antialiasing crumbs are not
  * strokes and neither product should be judged on them).
