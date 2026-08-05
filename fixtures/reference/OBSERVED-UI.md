@@ -115,3 +115,21 @@ roundness / minimum area / overlap / circle detection, zoom/fit both panes,
 downloads: SVG, EPS, PDF, DXF, PNG. Stretch (minor if missing): isometric view,
 crop, edit pixels, gradients tab, STL/GCODE/VectorDrawable, ZIP variants,
 ≤15KB GT, output size tab, drag-to-regroup color circles.
+
+## Fox exemplar (license-clean replacement art, captured 2026-08-04)
+
+`fox-sticker.png` is an original generated mascot (Gemini image gen, chroma-keyed to
+real alpha; 1024×1024, 76.5% transparent pixels) with `fox-sticker-white.png` as the
+white-flattened variant. Run through the real product signed-out:
+
+- **Transparency is preserved**: both panes render on a checkerboard; the output SVG
+  has NO background-covering path (first path starts mid-canvas at M4460 8480). The
+  site auto-selected an 8-color palette; output = 7 color groups.
+- `fox-sticker-clipart-8colors-smartAA.svg` — real output at Clipart defaults for
+  this image (Smart AA was ON by default here, Enhance ON, min-area 5px²):
+  63 paths, 7 groups, 35.5KB, viewBox 0 0 10240 10240.
+- Same settings with AA Off: 637 paths, 189KB — replicates the artwork Smart-AA
+  finding (~90% path reduction) on a second subject.
+
+These fox files are the go-forward public exemplars; the artwork set is Nintendo
+artwork and must be purged (including git history) before the repo goes public.
