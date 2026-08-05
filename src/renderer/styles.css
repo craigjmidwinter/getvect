@@ -357,7 +357,17 @@ code {
   display: flex;
   gap: 10px; /* keep in sync with VIEW_GAP in App.tsx */
   min-height: 0;
-  background: repeating-conic-gradient(#1b1e26 0% 25%, #171a21 0% 50%) 50% / 22px 22px;
+  /*
+   * Flat, not checkered. The transparency checkerboard belongs to each VIEW
+   * (see `.preview-view::before`), not to the pane: a single tiling stretched
+   * across the pane is interrupted by the 10px gap and the divider between the
+   * two views, so the pattern visibly jumped half a cell down the middle of the
+   * side-by-side — the "the chessboard breaks about half way through" report.
+   *
+   * What is left of the pane's own background is the 10px gap between the two
+   * views, which is the divider.
+   */
+  background: var(--line);
   overflow: hidden;
   cursor: default;
 }
@@ -381,6 +391,35 @@ code {
   flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
+}
+
+/*
+ * The transparency checkerboard, as a per-view UNDERLAY.
+ *
+ * Three properties this has to have, all of which the old pane-wide background
+ * failed in one way or another:
+ *
+ *   1. It fills the whole view at every zoom and pan. It is the answer to
+ *      "what is behind the artwork", so it cannot end where the artwork ends.
+ *   2. It is drawn in UI space: 22px cells whatever the zoom. The checker is
+ *      not part of the picture — it does not represent image pixels, and every
+ *      editor that shows one keeps it fixed while the artwork scales.
+ *   3. ORIGINAL and VECTOR get the identical pattern. It is anchored at each
+ *      view's own top-left (`0 0`, not `50%`), so both views start the tiling
+ *      at the same phase regardless of their width and the eye can compare the
+ *      two halves without a step in the background between them.
+ *
+ * It is a ::before so it is painted before every child of the view, i.e. under
+ * the stage: the SVG's transparent regions show it through, its opaque regions
+ * cover it, and nothing the SVG contains can reorder it.
+ */
+.preview-view::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: repeating-conic-gradient(#1b1e26 0% 25%, #171a21 0% 50%) 0 0 / 22px 22px;
+  pointer-events: none;
 }
 
 .preview-view.is-hidden {
@@ -413,9 +452,13 @@ code {
   pointer-events: none;
 }
 
-.mode-side-by-side .preview-view + .preview-view {
-  border-left: 1px solid var(--line);
-}
+/*
+ * The divider between the two views is the pane's own background showing
+ * through the 10px gap, NOT a border on the second view. A border is 1px of
+ * layout: it shifted the second view's padding box by a pixel, and with it the
+ * checkerboard underlay's phase, so the two halves of the comparison had
+ * backgrounds that were a pixel out of step with each other.
+ */
 
 .view-anchor {
   position: absolute;
@@ -423,6 +466,8 @@ code {
   top: 50%;
   width: 0;
   height: 0;
+  /* Above the checkerboard underlay (`.preview-view::before`). */
+  z-index: 1;
 }
 
 /*
