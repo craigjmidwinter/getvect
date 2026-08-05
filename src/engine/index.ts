@@ -601,32 +601,20 @@ export async function vectorize(
   // 2. Quantize -------------------------------------------------------------
   //
   // A palette override is an *output colour table*, not a set of cluster
-  // centres. Clustering always comes from the image (with k = the override's
-  // length); slot i of the result is then painted with override[i].
+  // centres, and it is applied at the very END of the colour pipeline (see
+  // "6. Repaint" below). The segmentation — clustering, every cleanup pass,
+  // every fold — is computed from the image alone and is byte-for-byte the same
+  // whether or not `settings.palette` is set. That is the whole contract: a
+  // palette edit repaints, it never re-segments.
   //
-  // This is what makes all three palette-editor operations (REFERENCE B3) fall
-  // out of the single `settings.palette` knob:
-  //   change — slot i keeps its pixels and is repainted. Re-clustering on the
-  //            new colour instead would strand it: recolour the dominant paper
-  //            tone to magenta and nearest-colour matching hands every paper
-  //            pixel to some other entry, so the colour the user just picked
-  //            never appears in the output.
-  //   remove — k drops by one, the orphaned region is absorbed by whichever
-  //            cluster now covers it, and the removed colour cannot appear.
-  //   merge  — two slots are given the *same* colour. k is unchanged, so the
-  //            clustering (and therefore every contour) is exactly what it was
-  //            before the merge; the two slots then collapse into one layer
-  //            painted with the target colour, and the palette shrinks by one.
-  //            That is what distinguishes merge from remove: merging keeps the
-  //            surviving colour's geometry identical and hands it the merged
-  //            region, where removing re-quantizes the whole image.
-  //
-  // Slots are paired with clusters by coverage rank, which is the order the
-  // palette editor displays them in, so slot i is the swatch the user clicked.
+  // It used to cluster at `override.length` instead, which quietly made every
+  // palette-editor operation a re-quantization: an un-overridden 16-colour run
+  // clusters at 16 and folds down to 8, while the override run clustered from
+  // scratch at k=8, so slot i was paired with a cluster from a *different*
+  // segmentation. Feeding a palette straight back unchanged moved the drawing.
   report(onProgress, 'quantize', 0.15);
   const override = normalizePalette(opts.palette);
-  const targetColors = override ? override.length : presetColorCount(opts);
-  const clusters = computePaletteSync(source, Math.max(1, targetColors), opaque);
+  const clusters = computePaletteSync(source, Math.max(1, presetColorCount(opts)), opaque);
   let indices = mapToPalette(source, clusters, opaque);
   /**
    * Anti-aliasing, the half that works on regions rather than pixels.
@@ -762,66 +750,83 @@ export async function vectorize(
   report(onProgress, 'simplify', 0.4);
   await tick();
 
-  let palette: RgbColor[];
-  if (override) {
-    // Keep the caller's order — the editor's swatch indices must survive a
-    // re-vectorize — while collapsing slots that name the same colour into a
-    // single layer. Slot i keeps its pixels; it just may share an output entry
-    // with an earlier slot (that shared entry is a merge).
-    palette = [];
-    const entryOf = new Map<number, number>();
-    const slotToEntry = new Int32Array(Math.max(clusters.length, override.length));
-    for (let i = 0; i < override.length; i++) {
-      const key = packRgb(override[i].r, override[i].g, override[i].b);
-      let entry = entryOf.get(key);
-      if (entry === undefined) {
-        entry = palette.length;
-        entryOf.set(key, entry);
-        palette.push({ ...override[i] });
-      }
-      slotToEntry[i] = entry;
-    }
-    // Quantization never drops below two clusters, so a one-colour override can
-    // come back with a cluster index no slot answers to. Fold the surplus onto
-    // the last slot rather than leaving those pixels unpainted.
-    for (let i = override.length; i < slotToEntry.length; i++) {
-      slotToEntry[i] = slotToEntry[override.length - 1];
-    }
-    remapIndices(indices, slotToEntry);
-  } else {
-    // Re-rank by what actually survived quantization + despeckle, and drop
-    // entries no pixel ended up using.
+  // Re-rank by what actually survived quantization + despeckle, and drop
+  // entries no pixel ended up using. This runs whether or not the caller
+  // supplied a palette: the rank it produces IS the slot numbering the override
+  // is matched against, and it is the order the palette editor displays.
+  let computed: RgbColor[];
+  {
     const coverage = coverageOf(indices, clusters.length);
     const kept = clusters
       .map((color, i) => ({ color, i, n: coverage[i] }))
       .filter((e) => e.n > 0)
       .sort((a, b) => b.n - a.n || a.i - b.i);
-    palette = kept.map((e) => ({ ...e.color }));
+    computed = kept.map((e) => ({ ...e.color }));
     const indexMap = new Uint8Array(clusters.length);
     kept.forEach((e, rank) => {
       indexMap[e.i] = rank;
     });
     remapIndices(indices, indexMap);
   }
-  if (palette.length === 0) palette = [{ r: 0, g: 0, b: 0 }];
+  if (computed.length === 0) computed = [{ r: 0, g: 0, b: 0 }];
   /**
    * What the image had to give, measured before the folds below. Everything
    * after this point is a choice we made, not a limit of the artwork, and the
    * UI has to be able to say which is which.
    */
-  const sourceColors = palette.length;
+  const sourceColors = computed.length;
 
-  // Two different collapses, both skipped when the user has hand-picked the
-  // palette (their table is authoritative):
+  // Two different collapses. Both are part of the *segmentation*, so they run
+  // identically with and without a palette override — an override that arrives
+  // one slot short of the folded table is a remove, not a licence to fold
+  // differently:
   //   - Smart anti-aliasing folds away halo layers, which ARE near-duplicates
   //     of the colour they hug, so it merges by colour distance
   //     (`HALO_FOLD_PERCENT`).
   //   - The output-groups merge threshold folds away colours that barely appear
   //     (REFERENCE B3), which is a coverage question.
-  if (!override) {
-    if (smartAa) palette = mergeSimilarColors(indices, palette, HALO_FOLD_PERCENT).palette;
-    const groupThreshold = Math.max(opts.mergeThreshold, opts.enhance ? 1 : 0);
-    if (groupThreshold > 0) palette = mergeSmallGroups(indices, palette, groupThreshold);
+  if (smartAa) computed = mergeSimilarColors(indices, computed, HALO_FOLD_PERCENT).palette;
+  const groupThreshold = Math.max(opts.mergeThreshold, opts.enhance ? 1 : 0);
+  if (groupThreshold > 0) computed = mergeSmallGroups(indices, computed, groupThreshold);
+
+  // 6. Repaint --------------------------------------------------------------
+  //
+  // `slots` is the colour each surviving slot is painted with; `palette` is
+  // that list with duplicates collapsed, which is what the SVG groups by. With
+  // no override the two are the same array.
+  //
+  // All three palette-editor operations (REFERENCE B3) fall out of the one
+  // `settings.palette` knob, and none of them touches a contour:
+  //   change — slot i is repainted with override[i]. Re-clustering on the new
+  //            colour instead would strand it: recolour the dominant paper tone
+  //            to magenta and nearest-colour matching hands every paper pixel to
+  //            some other entry, so the colour the user just picked never
+  //            appears in the output.
+  //   merge  — two slots are given the *same* colour, so they collapse into one
+  //            layer and the palette shrinks by one. The segmentation is
+  //            untouched, so the surviving colour keeps exactly the geometry it
+  //            had and simply gains the merged region.
+  //   remove — the override is one entry short of the slot table. The orphaned
+  //            slots are painted with the nearest surviving colour, so the
+  //            removed colour cannot appear anywhere; the picture is not
+  //            re-segmented behind the user's back.
+  const slots = override ? repaintSlots(computed, override) : computed.map((c) => ({ ...c }));
+  /** Slot -> output entry, and the distinct output colours in slot order. */
+  const palette: RgbColor[] = [];
+  const slotToEntry = new Uint8Array(slots.length);
+  {
+    const entryOf = new Map<number, number>();
+    for (let i = 0; i < slots.length; i++) {
+      const key = packRgb(slots[i].r, slots[i].g, slots[i].b);
+      let entry = entryOf.get(key);
+      if (entry === undefined) {
+        entry = palette.length;
+        entryOf.set(key, entry);
+        palette.push({ ...slots[i] });
+      }
+      slotToEntry[i] = entry;
+    }
+    if (override) remapIndices(indices, slotToEntry);
   }
 
   const finalCoverage = coverageOf(indices, palette.length);
@@ -864,7 +869,20 @@ export async function vectorize(
    * hole. Minimum Area (B5) still applies — that promise is about the document,
    * full stop.
    */
-  const inkLayers = darkInkSlots(palette);
+  /**
+   * Ink is a property of the *artwork*, not of the colour the user painted a
+   * slot with, so the exemption is decided on the segmentation's own colours
+   * (`computed`) and then carried onto whichever output entry those slots
+   * ended up in. Reading it off `palette` instead would mean recolouring the
+   * outline swatch to magenta re-traced the outline — a repaint that moves the
+   * drawing is the bug this whole section exists to prevent.
+   */
+  const inkSlotFlags = darkInkSlots(computed);
+  let inkLayers: Uint8Array | undefined;
+  if (inkSlotFlags) {
+    inkLayers = new Uint8Array(palette.length);
+    for (let i = 0; i < slots.length; i++) if (inkSlotFlags[i]) inkLayers[slotToEntry[i]] = 1;
+  }
   const inkTraceOptions: TraceOptions = { ...traceOptions, minArea };
 
   const disabled = new Set(opts.disabledColors);
@@ -999,7 +1017,42 @@ export async function vectorize(
     height,
     durationMs: Math.max(0, now() - started),
     sourceColors,
+    slots,
   };
+}
+
+/**
+ * Paint the engine's colour slots with the caller's table (REFERENCE B3).
+ *
+ * Positional: slot i is the swatch at rank i in the palette editor, so it is
+ * painted `override[i]`. A *shorter* override is a remove — the slots it does
+ * not reach are painted with the nearest colour that survived, which is what
+ * makes the removed colour disappear from the document without re-quantizing
+ * the image. A *longer* one names colours no slot answers to; those entries
+ * simply have no pixels, so they are dropped rather than inventing a layer.
+ */
+function repaintSlots(computed: RgbColor[], override: RgbColor[]): RgbColor[] {
+  const out: RgbColor[] = [];
+  for (let i = 0; i < computed.length; i++) {
+    if (i < override.length) {
+      out.push({ ...override[i] });
+      continue;
+    }
+    let best = 0;
+    let bestD = Infinity;
+    for (let j = 0; j < override.length; j++) {
+      const d =
+        Math.abs(computed[i].r - override[j].r) +
+        Math.abs(computed[i].g - override[j].g) +
+        Math.abs(computed[i].b - override[j].b);
+      if (d < bestD) {
+        bestD = d;
+        best = j;
+      }
+    }
+    out.push({ ...override[best] });
+  }
+  return out;
 }
 
 function now(): number {
