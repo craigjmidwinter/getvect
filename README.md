@@ -137,7 +137,12 @@ git clone https://github.com/craigjmidwinter/getvect.git
 cd getvect
 npm install     # postinstall also de-quarantines + ad-hoc-signs the Electron binary
 npm start       # build + launch
+npm run dist    # package the app -> release/mac-arm64/GetVect.app (+ dmg, zip)
 ```
+
+`npm run dist` builds **unsigned** — see [PUBLISH-CHECKLIST.md](./PUBLISH-CHECKLIST.md)
+for the signing and notarization notes; the packaging config itself is
+[`electron-builder.yml`](./electron-builder.yml).
 
 > **macOS note.** On recent macOS, Gatekeeper/XProtect deletes the freshly-extracted,
 > unsigned `node_modules/electron/dist/Electron.app` the first time you exec it — the
