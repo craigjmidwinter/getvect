@@ -1111,6 +1111,247 @@ async function main() {
           'default-settings economy bars as well.',
       },
       {
+        /**
+         * FRANKIE — the mascot, and the second real-product exemplar.
+         *
+         * Same construction as `reference-fox` (original artwork, MIT, plus the
+         * SVG the reference product actually produced for it, captured live and recorded
+         * in fixtures/reference/OBSERVED-UI.md) and kept alongside it rather
+         * than instead of it: the fox stays a valid license-clean fixture and a
+         * second subject is the only way to tell a finding from a coincidence.
+         *
+         * What this row adds that the fox cannot: an EYES box with a named
+         * colour. The artwork's eyes are olive, rgb(187,161,80), and they are
+         * 22.7 % of that crop and ~0.3 % of the canvas — small enough that
+         * losing them entirely moves no other number in the harness. The fox
+         * showed the same defect (blue eyes coming back grey) and nothing could
+         * gate it, because there was no metric that could ask.
+         *
+         * The answer here, measured: at these settings **our engine loses the
+         * eye colour completely** — 0.6 % of the source's olive survives, and
+         * the palette comes back 6 of 8 with the eye pixels repainted in the
+         * nose/ear PINK slot, rgb(227,139,105). The real product keeps a
+         * distinct eye colour on the same upload (its generative Enhance
+         * repaints the olive as rgb(121,176,89) and spends a whole output layer
+         * on it, 20.4 % of the crop). So the eye bar here is an ASPIRATION, not
+         * a gate — it is a known engine gap with an open issue, and
+         * `reference-frankie-default` below proves it is reachable, because the
+         * DEFAULT settings keep 99.2 % of the same colour.
+         */
+        id: 'reference-frankie',
+        file: 'reference/frankie-sticker.png',
+        kind: 'clipart',
+        format: 'png',
+        width: 1195,
+        height: 896,
+        supported: true,
+        distinctColors: null,
+        // The settings the exemplar was captured at, recorded live in
+        // fixtures/reference/OBSERVED-UI.md: Clipart, an auto-selected 8-colour
+        // palette, Smart anti-aliasing on by default for this upload, Enhance
+        // on, Minimum Area 5px².
+        settings: { colorCount: 8, antiAliasing: 'smart', minArea: 5, enhance: true },
+        exemplar: 'reference/frankie-clipart-8colors-smartAA.svg',
+        /**
+         * Three crops. The FACE is the blind-A/B crop — both eyes, the nose, the
+         * muzzle and the mouth arcs, which is all of the meaning and a fifth of
+         * the drawing. The CHEST is the necklace-stripe area: cream chest, two
+         * curved stripe-orange arcs and the body orange, three tones of one
+         * colour family stacked inside 300x140 px and exactly what a ramp
+         * snapper collapses. The EYES are the colour question.
+         */
+        salientRegions: [
+          { name: 'face', x: 210, y: 295, width: 360, height: 200 },
+          { name: 'chest', x: 240, y: 505, width: 300, height: 140 },
+          {
+            name: 'eyes',
+            x: 244,
+            y: 304,
+            width: 258,
+            height: 84,
+            // The source's own eye colour, and — separately — the colour the
+            // real product's generative Enhance repaints it as. Measuring the
+            // exemplar against the olive would score it 1.9 % against our 0.6 %
+            // and read as a photo finish, when in fact its eyes are green and
+            // ours are gone.
+            color: 'rgb(187,161,80)',
+            exemplarColor: 'rgb(121,176,89)',
+            aspirations: {
+              // 0.9 is the number to aim at and it is KNOWN-REACHABLE: the
+              // DEFAULT configuration on this same artwork scores 0.992,
+              // because it delivers 7 palette slots and one of them is the
+              // olive. Turning Enhance on costs that slot. Today: 0.006.
+              minColorPresenceRatio: 0.9,
+              // ...and the same question against the real product, which spends
+              // a whole layer on its eye green. Today: 0.006x.
+              minColorPresenceOverExemplar: 0.9,
+            },
+          },
+        ],
+        thresholds: {
+          // Absolutes. 53 % of this canvas is transparent (white once
+          // flattened) — less than the fox's 76.5 %, so these are a little
+          // tighter than the fox's equivalents on the same reasoning: they are
+          // what moves if the alpha path ever paints a backdrop again.
+          // Measured: 2.20 and 0.9597.
+          meanColorError: 3,
+          ssim: 0.94,
+          minInkRecall: 0.95,
+          // Worst crop, which is the face at 0.966 loose / 0.935 strict against
+          // the real product's 0.997 / 0.983.
+          minRegionInkRecall: 0.95,
+          minRegionStrictInkRecall: 0.9,
+          // ...and the same question as a ratio to the real product's trace of
+          // the same pixels, in the crop where we are worst relative to it:
+          // 0.951 today.
+          minRegionStrictInkRecallRatio: 0.9,
+          // Worst crop's colour error, which is the eyes at 12.17 — and the eyes
+          // are worst precisely BECAUSE the olive is gone, so this bar and the
+          // aspiration above are the same finding measured two ways. The real
+          // product scores 13.66 on the same crop, having repainted the eyes a
+          // colour the source does not have.
+          maxRegionMeanColorError: 14,
+          // A colour the crop does not contain, anywhere: 0.03 % today, and the
+          // real product scores 22.96 % in the eyes box because its generative
+          // Enhance repaints them. Ours is a trace, so ours has no excuse.
+          maxRegionForeignColorRatio: 0.0005,
+          // 8 requested, 8 found in the image, 6 delivered. Two folds, and one
+          // of them is the eyes — pinned so it cannot become three.
+          maxPaletteShortfall: 2,
+          // Economy against the real product, which ships 40 paths / 55
+          // sub-paths / 21.7 KB here. We are at 0.15x paths and 0.87x bytes but
+          // 1.20x SUB-PATHS — the one economy number on which the real product
+          // beats us, and it is not a surprise: its Enhance is a generative
+          // flatten, so its tracer is tracing already-simplified art. Recorded
+          // at 1.35 rather than argued away.
+          maxPathRatio: 0.3,
+          maxSubPathRatio: 1.35,
+          maxBytesRatio: 0.95,
+          // Boundary quality against the real product's: compactness 0.96x,
+          // local wobble 1.49x. The wobble ratio is the honest one — on this
+          // artwork the real product's Enhance hands its tracer flat bands,
+          // so its boundaries are smoother than ours and this is the number
+          // that says so.
+          maxLayerCompactnessRatio: 1.1,
+          maxLayerWobbleRatio: 1.7,
+          // Stroke geometry against the real product's, worst crop: our line is
+          // 1.20x less even (cv) and 0.96x its width, i.e. not fatter.
+          maxStrokeWidthCvRatio: 1.35,
+          maxStrokeWidthOverExemplar: 1.15,
+          maxTinySubPathRatio: 0.02,
+          // Anchored on the exemplar's own 0.647, the same way the fox's is.
+          // Ours is 0.977.
+          minCurveCommandRatio: 0.65,
+          maxNearDuplicateFills: 0,
+          // 53 % transparent, so this is a real alpha guard: a trace that paints
+          // the alpha-0 background opaque scores ~255 here. 0.14 today.
+          maxTransparentAreaColorError: 8,
+          maxMs: 10000,
+        },
+        note:
+          'The mascot, and the second gold-standard exemplar. Judged at the settings the ' +
+          'captured output was produced at — Clipart / 8 colours / Smart anti-aliasing / Enhance ' +
+          'on / Minimum Area 5px², recorded live in fixtures/reference/OBSERVED-UI.md. It is the ' +
+          'only fixture that can ask whether a small hue-distinct feature kept its palette slot ' +
+          "(the eyes box names a colour); today it answers no, and that is an aspiration with an " +
+          'open issue rather than a gate, because the default settings already reach it.',
+      },
+      {
+        /**
+         * The settings a user actually gets, on the mascot — and the row that
+         * turns the eyes finding from an observation into a bar.
+         *
+         * These two rows differ by exactly one tick: `reference-frankie` pins
+         * Enhance ON (because that is what the real product's capture was taken
+         * at) and this one takes `DEFAULT_SETTINGS`, which ships Enhance OFF and
+         * is otherwise the same Clipart / 8 colours / Smart AA / min-area 5.
+         *
+         * The eye colour survives here — 99.2 % of the source's olive comes
+         * back, in a palette of 7 rather than 6 — so this bar is a REAL gate and
+         * not an aspiration. That is the useful shape of the finding: the
+         * default configuration keeps a small hue-distinct feature, our own
+         * Enhance is what spends its slot on a second orange, and now neither
+         * half can move without a number moving with it.
+         *
+         * No `settings` key at all, on purpose: whatever `DEFAULT_SETTINGS` says
+         * today is what gets measured, so if the defaults ever move, this row
+         * moves and `reference-frankie` does not.
+         */
+        id: 'reference-frankie-default',
+        file: 'reference/frankie-sticker.png',
+        kind: 'clipart',
+        format: 'png',
+        width: 1195,
+        height: 896,
+        supported: true,
+        distinctColors: null,
+        /**
+         * No exemplar. The real product's capture of this artwork was taken with
+         * Enhance ON, and its Enhance is a generative re-illustration — it is
+         * not a trace of these pixels at all. `reference-frankie` carries the
+         * exemplar-relative economy bars for that reason; this row is gated
+         * absolutely, on numbers measured on this build.
+         */
+        salientRegions: [
+          { name: 'face', x: 210, y: 295, width: 360, height: 200 },
+          { name: 'chest', x: 240, y: 505, width: 300, height: 140 },
+          {
+            name: 'eyes',
+            x: 244,
+            y: 304,
+            width: 258,
+            height: 84,
+            color: 'rgb(187,161,80)',
+            thresholds: {
+              // The point of the row. Measured 0.992 — the default settings keep
+              // the eye colour. A ratchet on behaviour that is CORRECT today,
+              // which is the cheapest kind to hold and the easiest to lose: the
+              // fox's blue eyes went grey without a single number moving.
+              minColorPresenceRatio: 0.9,
+            },
+          },
+        ],
+        thresholds: {
+          // Measured 1.92 / 0.9670 / 0.996 / 0.991. Every bar here is absolute
+          // and taken off this build — there is no exemplar to ratio against.
+          meanColorError: 3,
+          ssim: 0.94,
+          minInkRecall: 0.95,
+          minStrictInkRecall: 0.97,
+          // Worst crop: the face at 0.986 loose, 0.975 strict. Both better than
+          // the Enhance-on row, which is worth saying out loud — the bundle
+          // costs line art here as well as a palette slot.
+          minRegionInkRecall: 0.96,
+          minRegionStrictInkRecall: 0.95,
+          // Worst crop is the eyes at 6.28, against 12.17 with Enhance on. Half
+          // the error, because the eyes are still the right colour.
+          maxRegionMeanColorError: 8,
+          maxRegionForeignColorRatio: 0.0005,
+          // 8 requested, 8 found, 7 delivered — one fold, against Enhance-on's
+          // two, and the extra slot is the eyes.
+          maxPaletteShortfall: 1,
+          // The other side of the trade, and the reason this is not simply the
+          // better configuration: Enhance off costs 225 sub-paths against 66 and
+          // 49.3 KB against 18.5. Both are pinned so neither half of the trade
+          // can drift unnoticed.
+          maxPaths: 12,
+          maxSubPaths: 300,
+          maxBytes: 64 * 1024,
+          maxTinySubPathRatio: 0.02,
+          // Anchored on the real product's 0.647 on this artwork, even though
+          // this row carries no exemplar ratio. Ours is 0.984.
+          minCurveCommandRatio: 0.65,
+          maxNearDuplicateFills: 0,
+          maxTransparentAreaColorError: 8,
+          maxMs: 10000,
+        },
+        note:
+          'DEFAULT_SETTINGS on the mascot — deliberately no `settings` override, so this row ' +
+          'moves if the defaults do. It differs from reference-frankie by one tick (Enhance off) ' +
+          'and that tick is worth a palette slot: the eyes keep their olive here and lose it ' +
+          'there, which is the whole shape of the small-hue-distinct-colour finding.',
+      },
+      {
         id: 'unsupported-gif',
         file: 'unsupported-animation.gif',
         kind: 'unsupported',
