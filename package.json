@@ -30,7 +30,7 @@
   "scripts": {
     "postinstall": "node node_modules/electron/install.js && xattr -cr node_modules/electron/dist/Electron.app || true",
     "clean": "node scripts/clean.mjs",
-    "build:node": "tsc -p tsconfig.node.json",
+    "build:node": "tsc -p tsconfig.node.json && node scripts/bundle-updater.mjs",
     "build:renderer": "vite build",
     "build": "npm run build:node && npm run build:renderer",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
@@ -57,11 +57,13 @@
     "@vitejs/plugin-react": "^4.3.1",
     "electron": "^43.3.0",
     "electron-builder": "^26.15.3",
+    "esbuild": "^0.25.0",
     "typescript": "^5.5.4",
     "vite": "^5.4.2"
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
+    "electron-updater": "^6.8.9",
     "imagetracerjs": "^1.2.6",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

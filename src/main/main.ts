@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { existsSync, promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { registerAiEnhanceIpc } from './aiEnhance';
+import { registerUpdaterIpc } from './updater';
 
 /**
  * Electron main process.
@@ -283,4 +284,15 @@ void app.whenReady().then(() => {
     applyAppIdentity();
   }
   createWindow();
+
+  /**
+   * The update check — the app's second and last network touchpoint, after
+   * optional AI Enhance.
+   *
+   * Registered unconditionally because the IPC handlers must exist for the
+   * renderer to ask "anything new?" and get an honest "no". Whether a socket is
+   * ever opened is decided inside (src/main/updater.ts): a packaged build with
+   * no `GETVECT_NO_UPDATE_CHECK=1` checks once, and nothing else does.
+   */
+  registerUpdaterIpc();
 });

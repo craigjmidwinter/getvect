@@ -5,6 +5,7 @@ import type {
   EnhanceRunRequest,
   EnhanceRunResult,
 } from '../shared/aiEnhance';
+import { UPDATE_CHANNEL, type UpdateStatus } from '../shared/update';
 
 /**
  * Preload bridge. Keep this surface small and typed; the renderer must never
@@ -52,6 +53,33 @@ const api = {
     /** Re-illustrate PNG bytes. Always resolves — failures are typed results. */
     run: (request: EnhanceRunRequest): Promise<EnhanceRunResult> =>
       ipcRenderer.invoke('aiEnhance:run', request),
+  },
+
+  /**
+   * Update check (src/main/updater.ts).
+   *
+   * Read-only from the renderer's side but for three verbs, none of which can
+   * originate a network call the main process was not already going to make:
+   * `download` opens the release page (or, in a signed `auto` build, starts the
+   * download the check already found), `install` only does anything once
+   * something has been downloaded, and `dismiss` writes one version string to
+   * disk. There is no `check()` — the check happens once, on the main
+   * process's schedule, and a renderer cannot ask for another.
+   */
+  update: {
+    /** Current status; the renderer calls this on mount, then listens. */
+    status: (): Promise<UpdateStatus> => ipcRenderer.invoke(UPDATE_CHANNEL.status),
+    /** Stop showing the banner for this version, permanently. */
+    dismiss: (version: string): Promise<UpdateStatus> =>
+      ipcRenderer.invoke(UPDATE_CHANNEL.dismiss, version),
+    download: (): Promise<UpdateStatus> => ipcRenderer.invoke(UPDATE_CHANNEL.download),
+    install: (): Promise<UpdateStatus> => ipcRenderer.invoke(UPDATE_CHANNEL.install),
+    /** Subscribe to pushes; returns its own unsubscribe. */
+    onChanged: (callback: (status: UpdateStatus) => void): (() => void) => {
+      const listener = (_event: unknown, status: UpdateStatus) => callback(status);
+      ipcRenderer.on(UPDATE_CHANNEL.changed, listener);
+      return () => ipcRenderer.removeListener(UPDATE_CHANNEL.changed, listener);
+    },
   },
 };
 
