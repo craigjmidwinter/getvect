@@ -86,8 +86,9 @@ re-render of it.
 **Export** — SVG, EPS, DXF, PDF and PNG through the native save dialog, with per-colour
 `<g fill="rgb(...)">` layers in the SVG so the result drops into Illustrator or Inkscape
 as editable colour groups. The DXF keeps its curves: every fitted cubic travels as a
-degree-3 `SPLINE`, so a CAD or cutter file is a drawing rather than a point cloud (a
-`{ curves: 'lines' }` variant flattens to R12 POLYLINE for readers that need it).
+degree-3 `SPLINE`, so a CAD or cutter file is a drawing rather than a point cloud — and
+the **Splines / Lines** picker beside the DXF button flattens it to R12 POLYLINE for the
+older CAD and cutter firmware that cannot read a spline at all.
 
 **Not built** (REFERENCE section E, deliberately out of scope for now): isometric layer
 view, crop, pixel editing, gradient detection, drag-to-regroup colour circles, Android

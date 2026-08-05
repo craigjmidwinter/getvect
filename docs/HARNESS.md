@@ -25,7 +25,7 @@ npm run docs:screenshots # the README's three screenshots -> docs/assets/
 | `npm run build:renderer` | Renderer bundle only. |
 | `npm run typecheck` | Type-checks both projects without emitting. |
 | `npm test` | `scripts/run-tests.mjs`: engine contract tests **then** the Playwright acceptance suite (`pretest` builds first), **both always run**, exit code non-zero if either failed. The engine tests run first because they are the fidelity contracts: if the picture regressed, the UI specs' green is not worth reading. It used to be `node --test … && playwright test`, and that `&&` meant two red engine contracts hid the entire 108-test e2e suite from the documented entry point — the green e2e number was only reachable by bypassing `npm test`. Extra arguments pass through to Playwright: `npm test -- -g "\[B3\]"`. |
-| `npm run test:engine` | Engine contract tests (`node --test`, pure Node). Four files: `engine.test.mjs` (determinism, setting semantics, palette overrides, SVG grouping, EPS/DXF/PDF structure — must stay green), `parity.test.mjs` (the B2-B6 settings, D1 fill notation, D3 DXF colour distinctness and curve survival, B3's colour-budget contract — `palette.length >= min(colorCount, sourceColors) - 1` at 6/8/12/16 — B4's "the default pipeline keeps every colour family the image has", and B3's palette-override identity — feeding a returned palette straight back must repaint nothing, and recolouring one swatch must leave every contour where it was, on the gold standard as well as the flat fixture), `rendered.test.mjs` (rasterizes output: does the *picture* change, is it curve-fitted, are colour boundaries smooth sweeps rather than sawtooth (`layerCompactness` vs the exemplar), do outlines come back solid (`strictInkRecall` vs the exemplar, in the face and the paw-pad crops), does the default pipeline keep a warm region warm, is it economical in shapes — at the Enhance-on **and** the default settings — does it hold up against the exemplar, and does the salient region of the gold standard survive the cleanup passes; the gold-standard source is handed to the engine through `canvasIngest()`, the same one-decode contract the instruments use, because fed a white-flattened snorlax the face scores 0.956 and fed the pixels the app produces it scores 0.865), `alpha.test.mjs` (the input alpha channel: a transparent background must not be traced as an opaque one). |
+| `npm run test:engine` | Engine contract tests (`node --test`, pure Node). Four files: `engine.test.mjs` (determinism, setting semantics, palette overrides, SVG grouping, EPS/DXF/PDF structure — must stay green), `parity.test.mjs` (the B2-B6 settings, D1 fill notation, D3 DXF colour distinctness and curve survival, B3's colour-budget contract — `palette.length >= min(colorCount, sourceColors) - 1` at 6/8/12/16 — B4's "the default pipeline keeps every colour family the image has", and B3's palette-override identity — feeding a returned palette straight back must repaint nothing, recolouring one swatch must leave every contour where it was, and a merge must survive the next setting change (the override is matched against `result.slots`, not the deduped `result.palette`), on the gold standard as well as the flat fixture), `rendered.test.mjs` (rasterizes output: does the *picture* change, is it curve-fitted, are colour boundaries smooth sweeps rather than sawtooth (`layerCompactness` vs the exemplar), do outlines come back solid (`strictInkRecall` vs the exemplar, in the face and the paw-pad crops), does the default pipeline keep a warm region warm, is it economical in shapes — at the Enhance-on **and** the default settings — does it hold up against the exemplar, and does the salient region of the gold standard survive the cleanup passes; the gold-standard source is handed to the engine through `canvasIngest()`, the same one-decode contract the instruments use, because fed a white-flattened snorlax the face scores 0.956 and fed the pixels the app produces it scores 0.865), `alpha.test.mjs` (the input alpha channel: a transparent background must not be traced as an opaque one). |
 | `npm run test:headed` | Same, with a visible window. |
 | `npm run fixtures` | Regenerates `fixtures/` deterministically. |
 | `npm run instruments` | Measures the app engine on every fixture. |
@@ -392,6 +392,13 @@ interface VectorizeResult {
   sourceColors: number;      // palette size BEFORE our own colour folds — lets the
                              // UI tell "the image ran out" from "a cleanup merged
                              // them" (docs/TESTIDS.md `color-count-hint`)
+  slots: RgbColor[];         // one entry per colour SLOT of the engine's segmentation,
+                             // in the same coverage rank, duplicates included.
+                             // `palette` is this with duplicates collapsed. An edit is
+                             // expressed against THIS array, because it is what
+                             // `settings.palette` is positionally matched to: hand back
+                             // the deduped palette after a merge and k-1 colours land on
+                             // k slots, shifting every colour past the merge
 }
 
 // The five functions to implement:
@@ -469,9 +476,13 @@ modules so each can be read on its own.
 Two notes for anyone tuning it:
 
 - **A palette override is an output colour table, not a set of cluster centres.**
-  Clustering always comes from the image with `k = palette.length`; slot *i* is then
-  painted with `palette[i]`. That is what makes "change this swatch" repaint a region
-  instead of stranding the new colour (see the comment in `vectorize`).
+  Clustering always comes from the image with `k = presetColorCount(opts)`, and every
+  cleanup and fold runs identically whether or not `settings.palette` is set. Only then
+  is slot *i* painted with `palette[i]` (`repaintSlots` + the "6. Repaint" step of
+  `vectorize`). That is what makes "change this swatch" repaint a region instead of
+  stranding the new colour — and what keeps a *no-op* edit a no-op. A shorter override is
+  a remove: the slots it does not reach are painted with the nearest colour that survived,
+  which is why nothing is re-quantized behind the user's back.
 - **Trace the exact boundary, then fit it.** imagetracerjs's own `internodes` +
   `batchtracepaths` place every node at the midpoint between two pixel corners, which
   halves every corner, erodes hairlines and collapses a one-pixel region to zero area —

@@ -6,6 +6,7 @@ import {
   isSupportedInput,
   parseHex,
   serialize,
+  toDxf,
   type AntiAliasing,
   type DetailLevel,
   type ExportFormat,
@@ -176,6 +177,20 @@ export function App() {
   const [lastExportPath, setLastExportPath] = useState<string | null>(null);
   /** Format currently in the save dialog, so its button can show it. */
   const [exporting, setExporting] = useState<ExportFormat | null>(null);
+  /**
+   * How curved geometry travels in the DXF (REFERENCE E, "DXF lines-vs-splines
+   * variants").
+   *
+   * `splines` is the default because it is what the curve fitting produced —
+   * the same drawing as the SVG, at a comparable size. `lines` flattens every
+   * curve into POLYLINE vertices for consumers that cannot read a degree-3
+   * SPLINE at all (older CAD, some cutter firmware): bigger file, same picture,
+   * and the only one those machines will open.
+   *
+   * It is an *export* choice, not a vectorization setting, so it lives next to
+   * the button rather than in the settings panel and never triggers a re-trace.
+   */
+  const [dxfCurves, setDxfCurves] = useState<'splines' | 'lines'>('splines');
 
   const paneRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -402,9 +417,14 @@ export function App() {
                       progress: 1,
                       phase: 'done',
                       error: null,
-                      // An edited palette is re-read from the result so the
-                      // swatch the user clicks is exactly the slot the engine
-                      // painted — a merge collapses two slots into one.
+                      // An edited palette is re-read from the result's SLOT
+                      // table, so the stored override always has exactly one
+                      // entry per slot the engine cut — which is what keeps
+                      // slot i paired with swatch i across every later
+                      // re-vectorize. Storing `result.palette` here instead
+                      // wrote back the de-duplicated list, so the first merge
+                      // left k-1 colours for k slots and the *next* setting
+                      // change shifted every colour past the merge.
                       //
                       // `colorCount` is NOT touched. It is the candidate
                       // palette size the user chose, the radio row shows it,
@@ -416,7 +436,7 @@ export function App() {
                       settings: image.settings.palette
                         ? {
                             ...image.settings,
-                            palette: result.palette.map((c) => ({ ...c })),
+                            palette: (result.slots ?? result.palette).map((c) => ({ ...c })),
                           }
                         : image.settings,
                     }
@@ -559,6 +579,18 @@ export function App() {
 
   const settings = selected?.settings ?? DEFAULT_SETTINGS;
   const palette: RgbColor[] = selected?.result?.palette ?? [];
+  /**
+   * The engine's colour *slots* — one per segment of its own segmentation,
+   * duplicates and all (src/engine/types.ts `slots`).
+   *
+   * Every palette edit is expressed against this array, because that is what
+   * `settings.palette` is positionally matched to. The displayed `palette` is
+   * the same list with duplicates collapsed, so sending *it* back after a merge
+   * would hand k-1 colours to k slots and shift every colour past the merge one
+   * place along — i.e. one merge would silently recolour the rest of the
+   * picture.
+   */
+  const slots: RgbColor[] = selected?.result?.slots ?? palette;
   const activeSwatch = palette.length ? clamp(swatchIndex, 0, palette.length - 1) : 0;
   /** True once the palette in the preview is the user's, not the engine's. */
   const paletteEdited = Boolean(settings.palette);
@@ -567,6 +599,19 @@ export function App() {
    * B2), so every colour-budget control below is inert while it is selected.
    */
   const twoTone = (settings.preset ?? 'clipart') === 'drawing';
+  /**
+   * The lowest colour count the current preset will actually use.
+   *
+   * Photo is the reference product's "Many Colors" model and `presetColorCount`
+   * floors it at 16, so a slider parked at 4 delivered sixteen colours while
+   * displaying four — the same dishonesty the Drawing preset's dimmed sliders
+   * were fixed for, in a control that still looked live. Under Photo the whole
+   * colour-budget surface therefore starts at 16: the slider cannot be dragged
+   * below it and the candidate sizes under it are not offered.
+   */
+  const colorFloor = (settings.preset ?? 'clipart') === 'photo' ? 16 : 1;
+  /** The count the engine will really use — what every readout must show. */
+  const effectiveColorCount = clamp(Math.max(settings.colorCount, colorFloor), 1, 64);
   const activeHex = hexOf(palette[activeSwatch] ?? { r: 0, g: 0, b: 0 });
   const disabledColors = settings.disabledColors ?? [];
 
@@ -594,7 +639,7 @@ export function App() {
    * telling the user to drag a slider that could not help them.
    */
   const colorHint = useMemo(() => {
-    const requested = clamp(settings.colorCount, 1, 64);
+    const requested = effectiveColorCount;
     const actual = palette.length;
     if (actual === 0) return { requested, actual, shortfall: 'none', text: 'computing colours…' };
     const plural = `colour${actual === 1 ? '' : 's'}`;
@@ -616,7 +661,7 @@ export function App() {
       shortfall: 'settings',
       text: `${actual} ${plural} in the result — ${source} were found and the cleanup settings merged the rest`,
     };
-  }, [settings.colorCount, palette.length, selected?.result?.sourceColors]);
+  }, [effectiveColorCount, palette.length, selected?.result?.sourceColors]);
 
   const setSetting = useCallback(
     (patch: Partial<VectorizeSettings>, delay: number = DEBOUNCE_DISCRETE) => {
@@ -632,9 +677,9 @@ export function App() {
       if (!selected || next.length === 0) return;
       /**
        * `colorCount` is deliberately left alone. It is the *candidate palette
-       * size* the user picked, and the engine does not need it changed — with
-       * an explicit palette it clusters at `palette.length` and ignores the
-       * slider (see `targetColors` in src/engine/index.ts).
+       * size* the user picked, and the engine does not need it changed — an
+       * explicit palette repaints the slots the colour count produced, it does
+       * not replace the count (see "6. Repaint" in src/engine/index.ts).
        *
        * Rewriting it to the palette length is what broke "Auto palette":
        * editing one swatch of a 10-entry palette that came from candidate size
@@ -648,13 +693,31 @@ export function App() {
     [selected, requestVectorize],
   );
 
+  /**
+   * Repaint one displayed swatch: every slot currently wearing that colour is
+   * handed `color`, and the rest of the table is passed through untouched.
+   *
+   * All three editor operations are this one move — change paints a new colour,
+   * merge paints another swatch's colour (the two slots then collapse into one
+   * layer), remove paints the nearest surviving colour. None of them changes
+   * the number of slots, so none of them re-segments the picture.
+   */
+  const repaintSwatch = useCallback(
+    (entry: number, color: RgbColor) => {
+      if (!palette.length || !slots.length) return;
+      const want = hexOf(palette[entry] ?? palette[0]);
+      applyPalette(slots.map((c) => (hexOf(c) === want ? { ...color } : c)));
+    },
+    [palette, slots, applyPalette],
+  );
+
   const onSwatchColor = useCallback(
     (hex: string) => {
       const rgb = parseHex(hex);
       if (!rgb || !palette.length) return;
-      applyPalette(palette.map((color, i) => (i === activeSwatch ? rgb : color)));
+      repaintSwatch(activeSwatch, rgb);
     },
-    [palette, activeSwatch, applyPalette],
+    [palette.length, activeSwatch, repaintSwatch],
   );
 
   /**
@@ -666,23 +729,42 @@ export function App() {
    */
   const onMerge = useCallback(() => {
     if (palette.length < 2 || effectiveMergeTarget < 0 || effectiveMergeTarget === activeSwatch) return;
-    const target = palette[effectiveMergeTarget];
-    applyPalette(palette.map((color, i) => (i === activeSwatch ? { ...target } : color)));
+    repaintSwatch(activeSwatch, palette[effectiveMergeTarget]);
     setSwatchIndex(Math.min(activeSwatch, effectiveMergeTarget));
     setMergeTarget(0);
-  }, [palette, activeSwatch, effectiveMergeTarget, applyPalette]);
+  }, [palette, activeSwatch, effectiveMergeTarget, repaintSwatch]);
 
   /**
-   * Remove the selected swatch: the palette drops to k-1 entries and the
-   * orphaned pixels are re-quantized into whichever colours remain, so the
-   * removed colour cannot survive anywhere in the output.
+   * Remove the selected swatch: its pixels go to the closest colour still in
+   * the palette, so the removed colour cannot survive anywhere in the output
+   * and the palette drops to k-1 entries.
+   *
+   * "Closest colour" rather than "re-quantize at k-1" on purpose: re-clustering
+   * would re-cut every other region too, so deleting one swatch would redraw
+   * the whole picture. The pixels an absent colour owned belong with the entry
+   * nearest to it, which is what a re-quantization would mostly have done
+   * anyway — minus the collateral.
    */
   const onRemove = useCallback(() => {
     if (palette.length < 2) return;
-    applyPalette(palette.filter((_, i) => i !== activeSwatch));
+    const gone = palette[activeSwatch];
+    let nearest = activeSwatch === 0 ? 1 : 0;
+    let bestD = Infinity;
+    for (let i = 0; i < palette.length; i++) {
+      if (i === activeSwatch) continue;
+      const d =
+        Math.abs(palette[i].r - gone.r) +
+        Math.abs(palette[i].g - gone.g) +
+        Math.abs(palette[i].b - gone.b);
+      if (d < bestD) {
+        bestD = d;
+        nearest = i;
+      }
+    }
+    repaintSwatch(activeSwatch, palette[nearest]);
     setSwatchIndex(Math.max(0, activeSwatch - 1));
     setMergeTarget(0);
-  }, [palette, activeSwatch, applyPalette]);
+  }, [palette, activeSwatch, repaintSwatch]);
 
   /** Throw the edits away and let the engine compute the palette again. */
   const onAutoPalette = useCallback(() => {
@@ -729,7 +811,9 @@ export function App() {
         const contents =
           format === 'png'
             ? await svgToPngBase64(image.result.svg, image.result.width, image.result.height)
-            : serialize(image.result, format);
+            : format === 'dxf'
+              ? toDxf(image.result, { curves: dxfCurves })
+              : serialize(image.result, format);
         const binary = format === 'png';
         const outcome = await bridge.saveExport({
           // D4: the source filename with the format's extension, e.g.
@@ -746,7 +830,7 @@ export function App() {
         setExporting(null);
       }
     },
-    [selected],
+    [selected, dxfCurves],
   );
 
   // --- render --------------------------------------------------------------
@@ -987,17 +1071,42 @@ export function App() {
           <div className="button-group export-group">
             <span className="group-label">Export</span>
             {EXPORT_BUTTONS.map(({ format, testid, title }) => (
-              <button
-                key={format}
-                data-testid={testid}
-                type="button"
-                className={exporting === format ? 'is-busy' : undefined}
-                disabled={!ready || exporting !== null}
-                title={title}
-                onClick={() => void doExport(format)}
-              >
-                {format.toUpperCase()}
-              </button>
+              <span key={format} className="export-format">
+                <button
+                  data-testid={testid}
+                  type="button"
+                  className={exporting === format ? 'is-busy' : undefined}
+                  disabled={!ready || exporting !== null}
+                  title={title}
+                  onClick={() => void doExport(format)}
+                >
+                  {format.toUpperCase()}
+                </button>
+                {/*
+                  REFERENCE E, "DXF lines-vs-splines variants". It sits on the
+                  DXF button because it changes nothing else: the drawing is the
+                  same, only how its curves are written down differs, and the
+                  machine that needs the flattened form needs it at save time.
+                */}
+                {format === 'dxf' ? (
+                  <select
+                    data-testid={TESTIDS.exportDxfCurves}
+                    className="export-variant"
+                    aria-label="DXF curve encoding"
+                    title={
+                      'How curves are written: SPLINE entities (smaller, what the tracer fitted) ' +
+                      'or flattened POLYLINE vertices for consumers that cannot read splines'
+                    }
+                    value={dxfCurves}
+                    onChange={(event) =>
+                      setDxfCurves(event.target.value === 'lines' ? 'lines' : 'splines')
+                    }
+                  >
+                    <option value="splines">Splines</option>
+                    <option value="lines">Lines</option>
+                  </select>
+                ) : null}
+              </span>
             ))}
             {/*
               Both labels occupy a fixed box whether they have anything to say or
@@ -1109,15 +1218,22 @@ export function App() {
                       ? 'Drawing is black & white'
                       : paletteEdited
                         ? 'edited palette'
-                        : describeColors(settings.colorCount)
+                        : describeColors(effectiveColorCount)
                   }
-                  min={1}
+                  min={colorFloor}
                   max={64}
-                  value={clamp(settings.colorCount, 1, 64)}
+                  value={effectiveColorCount}
                   onChange={(value) =>
                     // A colour count is a fresh palette by definition, so an
                     // earlier hand-edit is dropped rather than silently ignored.
-                    setSetting({ colorCount: value, palette: null, disabledColors: [] }, DEBOUNCE_CONTINUOUS)
+                    setSetting(
+                      {
+                        colorCount: Math.max(value, colorFloor),
+                        palette: null,
+                        disabledColors: [],
+                      },
+                      DEBOUNCE_CONTINUOUS,
+                    )
                   }
                 />
                 <Slider
@@ -1302,9 +1418,9 @@ export function App() {
                     data-size={String(size)}
                     type="button"
                     role="radio"
-                    aria-checked={settings.colorCount === size}
-                    disabled={twoTone}
-                    className={`chip${settings.colorCount === size ? ' is-on' : ''}`}
+                    aria-checked={effectiveColorCount === size}
+                    disabled={twoTone || size < colorFloor}
+                    className={`chip${effectiveColorCount === size ? ' is-on' : ''}`}
                     onClick={() =>
                       setSetting({ colorCount: size, palette: null, disabledColors: [] })
                     }
@@ -1328,7 +1444,14 @@ export function App() {
                     <button
                       data-testid={TESTIDS.paletteAutoButton}
                       type="button"
-                      className="link"
+                      /*
+                        Full button chrome, deliberately: this is the only route
+                        back from a hand-edited palette, and as unstyled body
+                        text beside the PALETTE label it was the one thing on a
+                        panel of bordered buttons that did not read as
+                        pressable.
+                      */
+                      className="palette-auto"
                       onClick={onAutoPalette}
                       title="Discard palette edits and recompute from the image"
                     >

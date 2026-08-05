@@ -206,6 +206,19 @@ export interface VectorizeResult {
    * `color-count-hint`).
    */
   sourceColors: number;
+  /**
+   * The colour table as the engine's own segmentation sees it: one entry per
+   * surviving colour *slot*, in the coverage rank the palette editor displays,
+   * including duplicates where two slots have been merged onto one colour.
+   *
+   * `palette` is this list with duplicates collapsed — what the SVG paints and
+   * what the editor shows. `slots` is what an edit must be expressed against,
+   * because it is the array `settings.palette` is positionally matched to
+   * (slot i is painted `settings.palette[i]`). Handing back a *deduped* palette
+   * after a merge would hand back k-1 colours for k slots, and every slot after
+   * the merged one would be repainted with its neighbour's colour.
+   */
+  slots: RgbColor[];
 }
 
 /** Thrown by the stub engine until a real implementation lands. */

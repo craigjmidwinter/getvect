@@ -201,6 +201,43 @@ test('[B3] a palette fed back unchanged repaints nothing — it must not re-segm
   }
 });
 
+test('[B3] a merge survives the next setting change', async () => {
+  /**
+   * The identity check above only covers the first edit. The editor's merge
+   * makes the *displayed* palette shorter than the engine's slot table (two
+   * slots, one colour), so what the app stores as the override has to be
+   * `result.slots`, not `result.palette` — hand back the deduped list and k-1
+   * colours land on k slots, which shifts every colour past the merge one place
+   * along the moment the user touches any other control.
+   *
+   * So: merge, then re-vectorize with what the engine handed back, and the
+   * document must be byte-identical.
+   */
+  const base = await run(snorlaxIn, { colorCount: 16, enhance: true });
+  assert.equal(base.slots.length, base.palette.length, 'an unedited result has one slot per colour');
+
+  const mergeInto0 = base.slots.map((c, i) => (i === 3 ? { ...base.slots[0] } : c));
+  const merged = await run(snorlaxIn, { colorCount: 16, enhance: true, palette: mergeInto0 });
+  assert.equal(
+    merged.palette.length,
+    base.palette.length - 1,
+    'merging two slots must collapse them into one output colour',
+  );
+  assert.equal(
+    merged.slots.length,
+    base.slots.length,
+    'a merge repaints slots; it must not remove one',
+  );
+
+  const again = await run(snorlaxIn, { colorCount: 16, enhance: true, palette: merged.slots });
+  assert.equal(
+    again.svg,
+    merged.svg,
+    'feeding the merged slot table back changed the document — the second edit after a merge ' +
+      'repaints the wrong slots',
+  );
+});
+
 test('[B3] recolouring one swatch repaints that slot and leaves the drawing alone', async () => {
   /**
    * The user-visible half of the check above: pick a swatch, change its colour,
