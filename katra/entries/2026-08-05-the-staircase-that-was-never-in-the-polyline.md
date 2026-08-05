@@ -31,6 +31,8 @@ the brief, and the agent killed it with one table: the boundary entering the
 fitter is already smooth to 0.06 px RMS. The low-pass does its job. **The fitter
 puts the staircase back.**
 
+![The judge that ended the argument: mathematically exact circles, gated on RMS deviation from the equation — 0.424 px of fitter sag before, 0.229 after](../media/arcs-560x256.png)
+
 Two mechanisms, both in the Schneider fit: it accepts the first cubic inside the
 error budget without any reparameterization, and it happily spans 116° of arc
 with a single cubic — which a cubic cannot be. The curve sags 0.72 px mid-segment
