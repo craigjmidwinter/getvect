@@ -3,17 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GetVect — raster to vector, entirely on your machine</title>
-<meta name="description" content="A local desktop vectorizer for macOS. Drop in a PNG, JPEG or BMP; get SVG, EPS, DXF, PDF or PNG. No account, no credits, no upload.">
+<title>GetVect — raster to vector, on your machine</title>
+<meta name="description" content="A local desktop vectorizer for macOS. Drop in a PNG, JPEG or BMP; get SVG, EPS, DXF, PDF or PNG. No account, no credits, offline by default.">
 <meta name="theme-color" content="#12141a">
 <link rel="icon" href="assets/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="assets/favicon.png">
 <link rel="stylesheet" href="styles.css">
 <meta property="og:type" content="website">
-<meta property="og:title" content="GetVect — raster to vector, entirely on your machine">
-<meta property="og:description" content="A local desktop vectorizer for macOS. No account, no credits, no upload.">
+<meta property="og:title" content="GetVect — raster to vector, on your machine">
+<meta property="og:description" content="A local desktop vectorizer for macOS. No account, no credits, offline by default.">
 <meta property="og:url" content="https://getvect.midwinter.io/">
-<meta property="og:image" content="https://getvect.midwinter.io/assets/fox-before-after.png">
+<meta property="og:image" content="https://getvect.midwinter.io/assets/frankie-before-after.png">
 <meta name="twitter:card" content="summary_large_image">
 </head>
 <body>
@@ -23,7 +23,7 @@
 <header class="bar">
   <div class="wrap bar-in">
     <a class="bar-mark" href="./" aria-label="GetVect home">
-      <img class="fox" src="assets/fox-mascot.png" alt="" width="24" height="24">
+      <img class="mascot" src="assets/frankie-mascot.png" alt="" width="30" height="23">
       <img class="word" src="assets/getvect-wordmark.svg" alt="GetVect" width="70" height="24">
     </a>
     <nav aria-label="Primary">
@@ -44,17 +44,19 @@
       <div class="hero-grid">
         <div>
           <img class="word" src="assets/getvect-wordmark.svg" alt="GetVect" width="360" height="123">
-          <h1>Raster&nbsp;→&nbsp;vector, entirely on your machine.</h1>
+          <h1>Raster&nbsp;→&nbsp;vector, on your machine.</h1>
           <p class="lede">
             Drop in a PNG, JPEG or BMP. Get back SVG, EPS, DXF, PDF or PNG — traced by an
             offline engine, with a full control surface for palette, detail, smoothing and
-            speck removal, and saved through the native dialog.
+            speck removal, and saved through the native dialog. Tracing, preview and export
+            make no network calls at all; the one thing that can is
+            <a href="#enhance">AI Enhance</a>, which is off until you turn it on.
           </p>
           <ul class="wedge">
             <li>No account</li>
             <li>No credits</li>
-            <li>No watermark</li>
-            <li>No upload</li>
+            <li>No subscription</li>
+            <li>Offline by default</li>
           </ul>
           <div class="cta-row">
             <a class="btn btn-primary" href="docs.html">Read the docs</a>
@@ -63,9 +65,9 @@
           </div>
         </div>
         <div class="hero-art">
-          <img class="fox" src="assets/fox-mascot.png"
-               alt="The GetVect fox: an orange cartoon fox sticker with a white outline"
-               width="250" height="250">
+          <img class="mascot" src="assets/frankie-mascot.png"
+               alt="Frankie, the GetVect mascot: an orange tabby cat sitting in a loaf, drawn as a die-cut sticker with a white border"
+               width="300" height="231">
         </div>
       </div>
     </div>
@@ -77,7 +79,7 @@
       <p class="eyebrow">Before / after</p>
       <h2>Zoom in until one of them breaks.</h2>
       <p class="lede">
-        Same fox, twice. On the left, the source PNG — real pixels, and at 16× they are all
+        Same cat, twice. On the left, the source PNG — real pixels, and at 16× they are all
         you get. On the right, the SVG GetVect traced from it: curve-fitted outlines that stay
         sharp at any magnification. Drag the divider, then change the zoom.
       </p>
@@ -85,14 +87,14 @@
       <div class="demo">
         <div class="demo-stage" id="stage">
           <div class="demo-layer demo-raster">
-            <img src="assets/fox-raster.png"
-                 alt="The fox as a 1024 by 1024 source PNG; magnified, its edges break into square pixels"
-                 width="1024" height="1024">
+            <img src="assets/frankie-raster.png"
+                 alt="Frankie as a 1195 by 896 source PNG; magnified, his edges break into square pixels"
+                 width="1195" height="896">
           </div>
           <div class="demo-layer demo-vector">
-            <img src="assets/fox-vector.svg"
-                 alt="The same fox after tracing, as a 17 KB SVG; magnified, its outlines stay smooth curves"
-                 width="1024" height="1024">
+            <img src="assets/frankie-vector.svg"
+                 alt="The same cat after tracing, as a 50 KB SVG; magnified, his outlines stay smooth curves"
+                 width="1195" height="896">
           </div>
           <span class="demo-tag demo-tag-l">SOURCE PNG</span>
           <span class="demo-tag demo-tag-r">TRACED SVG</span>
@@ -112,19 +114,21 @@
       </div>
 
       <ul class="readout">
-        <li><b>17 KB</b><span>SVG, from 352 KB</span></li>
-        <li><b>36</b><span>shapes, 5 layers</span></li>
+        <li><b>50 KB</b><span>SVG, from 577 KB</span></li>
+        <li><b>225</b><span>shapes, 7 layers</span></li>
         <li><b>8</b><span>colours, Smart AA</span></li>
         <li><b>0</b><span>network calls</span></li>
       </ul>
 
       <p style="margin-top:1.5rem">
-        The fox is both the mascot and the demo fixture. Traced at 8 colours with Smart
-        anti-aliasing, its 352 KB raster becomes a 17 KB SVG in 5 colour layers and 36 shapes,
+        Frankie is both the mascot and the demo fixture. Traced at 8 colours with Smart
+        anti-aliasing, his 577 KB raster becomes a 50 KB SVG in 7 colour layers and 225 shapes,
         with the transparent background preserved. The same source through the reference product comes
-        back 35.5 KB in 63 paths — and that comparison is not a boast, it is a
+        back 21.7 KB in 40 paths — smaller than ours on this drawing, at settings where their
+        Enhance hands their tracer already-flattened art and ours is off. We publish the number
+        either way, because it is a
         <a href="https://github.com/craigjmidwinter/getvect/blob/main/docs/HARNESS.md">checked-in
-        exemplar the test harness measures against on every run</a>.
+        exemplar the test harness measures against on every run</a>, not a claim.
       </p>
     </div>
   </section>
@@ -272,7 +276,8 @@
         output read at a dozen settings combinations, and those outputs checked in as exemplars
         with fully-known parameters. That recon rewrote the spec and surfaced the finding the
         engine now revolves around: <strong>Smart anti-aliasing collapses path count by ~81% at
-        otherwise identical settings</strong> — 637 paths to 63 on the fox.
+        otherwise identical settings</strong> — 354 to 67 on the first subject, 637 to 63 on
+        the fox, and 758 to 41 on Frankie.
       </p>
 
       <div class="callout callout--flat">
@@ -297,7 +302,7 @@
 
 <footer>
   <div class="wrap foot-in">
-    <img src="assets/fox-mascot.png" alt="" width="30" height="30">
+    <img src="assets/frankie-mascot.png" alt="" width="34" height="26">
     <span>MIT · © 2026 Craig Midwinter</span>
     <span class="foot-links">
       <a href="docs.html">Docs</a>

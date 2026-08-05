@@ -1,15 +1,15 @@
 <div align="center">
 
-<img src="docs/assets/fox-mascot.png" alt="The GetVect fox" width="180">
+<img src="docs/assets/frankie-mascot.png" alt="Frankie, the GetVect mascot" width="220">
 
 <img src="docs/assets/getvect-wordmark.svg" alt="GetVect" width="420">
 
 <br>
 
-**Raster → vector, entirely on your machine.**
+**Raster → vector, on your machine.**
 
 Drop in a PNG, JPEG or BMP. Get back SVG, EPS, DXF, PDF or PNG.
-No account, no credits, no subscription, no upload.
+No account, no credits, no subscription. Offline by default.
 
 [![CI](https://github.com/craigjmidwinter/getvect/actions/workflows/ci.yml/badge.svg)](https://github.com/craigjmidwinter/getvect/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
@@ -23,23 +23,31 @@ Every good online vectorizer wants your image on their server and your card on f
 credit per conversion, a watermark until you pay, a queue when they're busy. GetVect is
 the same job as a desktop app: a local Electron program with an offline tracing engine,
 a full control surface for palette / detail / smoothing / speck removal, and native
-save dialogs. Your artwork never leaves the machine, there is no per-image cost, and the
-renderer runs under a `default-src 'self'` CSP with **no network calls at runtime** — the
-one exception is [AI Enhance](#ai-enhance-optional-bring-your-own-key), which is off by
-default, needs your own API key, and says so on the switch. The
-quality bar is explicit and adversarial: [the reference product](https://the reference product)'s own
-output on the same source images is checked into `fixtures/reference/` and the test
-harness measures us against it on every run.
+save dialogs. There is no per-image cost and nothing to sign up for.
+
+**Ingest, tracing, preview and every export run offline**, with the renderer under a
+`default-src 'self'` CSP and no network calls at all. There is exactly one exception, and
+it is worth naming rather than burying: optional
+[AI Enhance](#ai-enhance-optional-bring-your-own-key) sends the image you are working on
+to Google under your own API key. It ships off, it needs a key you supply, and the switch
+says what it does before you flip it. Leave it off and nothing ever leaves the machine.
+
+The quality bar is explicit and adversarial: [the reference product](https://the reference product)'s
+own output on the same source images is checked into `fixtures/reference/` and the test
+harness measures us against it on every run — including where it wins.
 
 ## Before / after
 
-![Fox sticker: 352 KB PNG at 200% zoom next to the 17 KB SVG GetVect traced from it](docs/assets/fox-before-after.png)
+![Frankie the cat: 577 KB PNG at 200% zoom next to the 50 KB SVG GetVect traced from it](docs/assets/frankie-before-after.png)
 
-The fox is our mascot and our demo fixture. Traced at 8 colours with Smart anti-aliasing,
-a 352 KB raster becomes a **17 KB SVG in 5 colour layers and 36 shapes** — curve-fitted
-outlines, transparent background preserved, and infinitely re-scalable. (Same source
-through the real the reference product: 35.5 KB, 63 paths.) The full output is
-[`docs/assets/fox-vector.svg`](docs/assets/fox-vector.svg); the source and the
+Frankie is our mascot and our demo fixture. Traced at 8 colours with Smart anti-aliasing,
+a 577 KB raster becomes a **50 KB SVG in 7 colour layers and 225 shapes** — curve-fitted
+outlines, transparent background preserved, and infinitely re-scalable. The same source
+through the real the reference product comes back 21.7 KB in 40 paths: **smaller than ours on this
+drawing**, at settings where their Enhance is a generative flatten and ours is switched
+off. That number is checked in and measured on every run, so it is reported here the same
+way it would be if it went the other way. The full output is
+[`docs/assets/frankie-vector.svg`](docs/assets/frankie-vector.svg); the source and the
 reference exemplar live in [`fixtures/reference/`](fixtures/reference/).
 
 ## The app
@@ -195,9 +203,10 @@ combinations, and its actual outputs checked into `fixtures/reference/` as exemp
 fully-known parameters. That recon rewrote the spec — the product thinks in *model presets
 and candidate palettes*, not the detail/smoothing/despeckle sliders we'd guessed — and it
 surfaced the finding the engine now revolves around: **Smart anti-aliasing collapses path
-count by ~81% at otherwise identical settings** (354 → 67 on one subject, 637 → 63 on the
-fox). That is a pre-trace edge cleanup, not a rendering garnish, and it is the difference
-between output that looks *traced* and output that looks *drawn*.
+count by ~81–95% at otherwise identical settings**, now replicated on three subjects
+(354 → 67, 637 → 63 on the fox, 758 → 41 on Frankie). That is a pre-trace edge cleanup,
+not a rendering garnish, and it is the difference between output that looks *traced* and
+output that looks *drawn*.
 
 The loop also caught itself cheating. For an entire lap the instruments fed the engine a
 white-flattened image that no UI could ever produce, while the renderer's canvas ingest
@@ -252,7 +261,9 @@ exercised; Linux needs `xvfb-run -a` for the Electron tests and Windows is untes
 Tracing builds on [imagetracerjs](https://github.com/jankovicsandras/imagetracerjs)
 (Unlicense) for boundary extraction; curve fitting, colour handling and every exporter are
 this project's own. The test harness uses [sharp](https://github.com/lovell/sharp) and
-[resvg-js](https://github.com/yisibl/resvg-js). The fox mascot is original artwork
-generated for this project and is MIT-licensed along with the rest of the repo. The
+[resvg-js](https://github.com/yisibl/resvg-js). The mascot is **Frankie**, an orange tabby
+— the maintainer's own cat, drawn for this project as original artwork and MIT-licensed
+along with the rest of the repo. The fox he replaced is still in
+[`fixtures/reference/`](fixtures/reference/), still license-clean, and still measured. The
 wordmark is set in [Sedgwick Ave Display](https://fonts.google.com/specimen/Sedgwick+Ave+Display)
 (SIL Open Font License), shipped as converted outlines in `docs/assets/getvect-wordmark.svg`.
