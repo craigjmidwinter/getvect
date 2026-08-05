@@ -1187,7 +1187,21 @@ export function layerFills(svg) {
  * otherwise a curve would count as one "edge" however far it travels.
  * Arcs contribute their endpoint only, which is what `subPathBoxes` does too.
  */
-export function subPathPolylines(d, samples = 8) {
+export function subPathPolylines(d, options = 8) {
+  /**
+   * `samples` per curve, or — with `{ step }` — a sample every `step` user
+   * units of control-polygon length.
+   *
+   * A fixed count is the right thing for every metric that compares a curve
+   * with a staircase, and the wrong thing for anything that measures how far a
+   * curve sits from a smooth reference: eight samples across a 200px cubic put
+   * the chords 25px apart, and the sagitta of those chords is a *sampling*
+   * error of a whole pixel that lands in the answer as if the geometry had
+   * wobbled. Measured that way the reference product's own arcs scored 7× our
+   * high-frequency energy on a picture where they are visibly smoother.
+   */
+  const samples = typeof options === 'number' ? options : (options.samples ?? 8);
+  const step = typeof options === 'number' ? 0 : (options.step ?? 0);
   const tokens = d.match(/[MmLlHhVvCcSsQqTtAaZz]|-?(?:\d*\.\d+|\d+)(?:[eE][-+]?\d+)?/g) ?? [];
   const polys = [];
   let poly = null;
@@ -1202,8 +1216,14 @@ export function subPathPolylines(d, samples = 8) {
     if (poly) poly.push([x, y]);
   };
   const cubic = (x1, y1, x2, y2, x3, y3) => {
-    for (let s = 1; s <= samples; s++) {
-      const t = s / samples;
+    let n = samples;
+    if (step > 0) {
+      const hull =
+        Math.hypot(x1 - cx, y1 - cy) + Math.hypot(x2 - x1, y2 - y1) + Math.hypot(x3 - x2, y3 - y2);
+      n = Math.max(2, Math.min(8192, Math.ceil(hull / step)));
+    }
+    for (let s = 1; s <= n; s++) {
+      const t = s / n;
       const u = 1 - t;
       push(
         u * u * u * cx + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3,
@@ -1525,6 +1545,84 @@ export function featureCornerAngles(
     // is the defect, and a mean would bury it under the seven that survived.
     minCornerAngle: Math.min(...angles),
     meanCornerAngle: angles.reduce((s, v) => s + v, 0) / angles.length,
+  };
+}
+
+/**
+ * BOUNDARY SMOOTHNESS — how much of the pixel grid survived into the geometry,
+ * measured against an edge whose true shape is known.
+ *
+ * Every other geometry metric in this file is *self-referential*: it compares
+ * the trace with a smoothed copy of itself, or with the reference product's
+ * trace of the same picture. Neither can answer the question a user asks at 8×
+ * zoom — "is that supposed to be a straight arc?" — because neither knows what
+ * the arc was. `layerWobble` least of all: it is turning per unit length, so a
+ * boundary that rises and falls half a pixel every twenty reads as *smoother*
+ * than the truth it is approximating, which is how our trace scored 0.74× the
+ * exemplar's wobble on artwork whose long arcs visibly undulated against its
+ * clean ones.
+ *
+ * So this metric is only defined where the answer is a fact: on a fixture whose
+ * shapes the generator drew from an equation. `arcs` is a list of
+ * `{ name, cx, cy, r }` in source pixels; every fitted boundary point within
+ * `capture` px of that radius is taken to belong to that circle, and what is
+ * reported is the RMS and the worst |distance − mean radius| in pixels.
+ *
+ * A perfect trace of a rasterized disc scores ~0. Fitting its *pixel* boundary
+ * verbatim scores 0.37 (the staircase's own RMS about the circle it
+ * approximates), and anything in between is the share of the staircase that got
+ * through — which makes the number directly readable: **0.05px means the
+ * geometry is as good as the boundary the fitter was handed; 0.35px means the
+ * fitter reproduced the pixel grid.**
+ *
+ * Curves are flattened at a fixed 0.1px step rather than a fixed sample count,
+ * because at eight samples per cubic the chord sagitta of a long fitted curve
+ * is itself a pixel of "wobble" (see `subPathPolylines`).
+ */
+export function boundarySmoothness(svg, arcs, { capture = 3.5, step = 0.1, minPoints = 64 } = {}) {
+  if (!arcs?.length) return null;
+  const points = [];
+  for (const chunk of fillLayerChunks(svg)) {
+    for (const d of pathDataAttributes(chunk.body)) {
+      for (const poly of subPathPolylines(d, { step })) points.push(...poly);
+    }
+  }
+  const measured = [];
+  for (const arc of arcs) {
+    const radii = [];
+    for (const [x, y] of points) {
+      const dist = Math.hypot(x - arc.cx, y - arc.cy);
+      if (Math.abs(dist - arc.r) <= capture) radii.push(dist);
+    }
+    if (radii.length < minPoints) {
+      measured.push({ name: arc.name, r: arc.r, points: radii.length, rms: null, max: null });
+      continue;
+    }
+    const mean = radii.reduce((s, v) => s + v, 0) / radii.length;
+    let sq = 0;
+    let max = 0;
+    for (const v of radii) {
+      const e = v - mean;
+      sq += e * e;
+      if (Math.abs(e) > max) max = Math.abs(e);
+    }
+    measured.push({
+      name: arc.name,
+      r: arc.r,
+      points: radii.length,
+      fittedRadius: mean,
+      rms: Math.sqrt(sq / radii.length),
+      max,
+    });
+  }
+  const scored = measured.filter((m) => m.rms != null);
+  return {
+    arcs: measured,
+    // The WORST arc, not the mean: one arc that came back as a pixel staircase
+    // is the defect, and averaging it with five clean ones hides it.
+    rms: scored.length ? Math.max(...scored.map((m) => m.rms)) : null,
+    max: scored.length ? Math.max(...scored.map((m) => m.max)) : null,
+    counted: scored.length,
   };
 }
 

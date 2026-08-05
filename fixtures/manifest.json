@@ -174,6 +174,70 @@
       "note": "8 outlined triangles, 64px down to 15px tall, 4px apart, over two abutting flat bands. Antialiased (supersampled 3x and box-averaged), which is the whole point: ink fusion and seam slivers are both made by the ramp."
     },
     {
+      "id": "arcs-560x256",
+      "file": "arcs-560x256.png",
+      "kind": "clipart",
+      "format": "png",
+      "width": 560,
+      "height": 256,
+      "supported": true,
+      "distinctColors": null,
+      "arcs": [
+        {
+          "name": "disc-100",
+          "cx": 112,
+          "cy": 128,
+          "r": 100
+        },
+        {
+          "name": "disc-60",
+          "cx": 288,
+          "cy": 128,
+          "r": 60
+        },
+        {
+          "name": "disc-32",
+          "cx": 392,
+          "cy": 86,
+          "r": 32
+        },
+        {
+          "name": "disc-16",
+          "cx": 392,
+          "cy": 182,
+          "r": 16
+        },
+        {
+          "name": "ring-outer",
+          "cx": 492,
+          "cy": 128,
+          "r": 48
+        },
+        {
+          "name": "ring-inner",
+          "cx": 492,
+          "cy": 128,
+          "r": 28
+        }
+      ],
+      "thresholds": {
+        "meanColorError": 8,
+        "ssim": 0.9,
+        "maxArcResidualRms": 0.24,
+        "maxPaths": 200,
+        "maxSubPaths": 200,
+        "maxTinySubPathRatio": 0.02,
+        "minCurveCommandRatio": 0.5,
+        "maxNearDuplicateFills": 0,
+        "maxBytes": 102400,
+        "maxMs": 10000
+      },
+      "aspirations": {
+        "maxArcResidualRms": 0.08
+      },
+      "note": "Four antialiased discs (r=100/60/32/16) and an annulus, drawn from the circle equation so the fitted boundary can be scored against the shape rather than against itself. `boundarySmoothness` reports the worst arc."
+    },
+    {
       "id": "sticker-alpha-256",
       "file": "sticker-alpha-256.png",
       "kind": "alpha",

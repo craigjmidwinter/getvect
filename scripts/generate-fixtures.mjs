@@ -247,6 +247,54 @@ function insetTriangle(a, b, c, t) {
 }
 
 /**
+ * The `arcs` fixture — long smooth boundaries whose true shape is an equation.
+ *
+ * Everything else here is measured against itself or against the reference
+ * product's trace of the same picture, and neither can answer "was that arc
+ * supposed to be smooth?". This one can, because the generator drew it from
+ * `x² + y² = r²`: `instruments/lib/metrics.mjs boundarySmoothness` takes the
+ * fitted boundary points near each declared radius and reports how far they
+ * stray from a circle, in pixels.
+ *
+ * Why it needed a fixture of its own. A curve fitter given a ±½px pixel
+ * staircase and an error budget of ~0.9px will spend the budget: it emits one
+ * cubic across 116° of arc, three quarters of a pixel off the circle in the
+ * middle of the segment and back on it at both ends, and every economy and
+ * fidelity number in this harness calls that a success — the file is small, the
+ * commands are curves, the colour is right, the ink is intact, and
+ * `layerWobble` scores it *better* than the truth because a boundary that
+ * undulates gently turns less per unit length than one that curves. At 8× zoom
+ * it is the first thing anyone notices.
+ *
+ * Four radii from 16px to 100px plus an annulus, so the number is reported
+ * across the range where the failure scales (it is proportional to the radius)
+ * and on a concave boundary as well as convex ones. Antialiased by the same 3×
+ * supersample the spikes fixture uses: a hard-edged circle is not what a tracer
+ * meets, and the ramp is what a subpixel boundary estimator would have to read.
+ */
+function drawArcs(width, height) {
+  const S = 3;
+  const big = new Canvas(width * S, height * S);
+  big.fill(PALETTE.paper);
+  const arcs = [
+    { name: 'disc-100', cx: 112, cy: 128, r: 100, color: PALETTE.navy },
+    { name: 'disc-60', cx: 288, cy: 128, r: 60, color: PALETTE.orange },
+    { name: 'disc-32', cx: 392, cy: 86, r: 32, color: PALETTE.green },
+    { name: 'disc-16', cx: 392, cy: 182, r: 16, color: PALETTE.yellow },
+  ];
+  for (const a of arcs) big.disc(a.cx * S, a.cy * S, a.r * S, a.color);
+  // An annulus: its inner boundary is the only CONCAVE long arc in the set, and
+  // a hole is fitted through a different path (reversed winding, traced as a
+  // hole child) than the outer contours above.
+  const ring = { name: 'ring-outer', cx: 492, cy: 128, r: 48 };
+  const hole = { name: 'ring-inner', cx: 492, cy: 128, r: 28 };
+  big.ring(ring.cx * S, ring.cy * S, ring.r * S, hole.r * S, PALETTE.ink);
+  const canvas = downsample(big, S);
+  canvas.arcs = [...arcs.map(({ color, ...a }) => a), ring, hole];
+  return canvas;
+}
+
+/**
  * The `spikes-and-bands` fixture — two visual defects, license-free.
  *
  * Everything else in `fixtures/` is flat clipart with hard edges, and neither of
@@ -581,8 +629,10 @@ async function main() {
   const bmpShapes = drawLogo(256);
   const sticker = drawSticker(256);
   const spikes = drawSpikesAndBands(384, 256);
+  const arcs = drawArcs(560, 256);
 
   await writePng(spikes, join(outDir, 'spikes-bands-384.png'));
+  await writePng(arcs, join(outDir, 'arcs-560x256.png'));
   await writePng(sticker, join(outDir, 'sticker-alpha-256.png'));
   await writePng(logo512, join(outDir, 'logo-flat-512.png'));
   await writePng(noisy512, join(outDir, 'logo-noisy-512.png'));
@@ -846,6 +896,51 @@ async function main() {
           `${spikes.spikes[spikes.spikes.length - 1].height}px tall, 4px apart, over two ` +
           'abutting flat bands. Antialiased (supersampled 3x and box-averaged), which is ' +
           'the whole point: ink fusion and seam slivers are both made by the ramp.',
+      },
+      {
+        /**
+         * THE SMOOTH-ARC FIXTURE. See `drawArcs` for why it exists; the bar it
+         * carries is `maxArcResidualRms`, and it is the only geometry gate in
+         * this file measured against a shape rather than against a smoothed
+         * copy of our own output.
+         *
+         * Reading the number: a trace that reproduced the pixel boundary
+         * verbatim scores ~0.37px — the RMS of the staircase itself about the
+         * circle it approximates — and one whose geometry is as good as the
+         * low-passed boundary it was handed scores ~0.06px. The lap that added
+         * this fixture measured 0.424px on the worst arc and left it at
+         * 0.229px, so the gate is a ratchet at 0.24. The worst arc is now the
+         * annulus, whose outer edge the anti-aliasing ramp snap also grows
+         * unevenly (`src/engine/preprocess.ts INK_RAMP_BIAS`) — a different
+         * defect from the one the fitter carried. 0.08 is the number to aim at
+         * and it sits in `aspirations` so the distance stays on screen.
+         */
+        id: 'arcs-560x256',
+        file: 'arcs-560x256.png',
+        kind: 'clipart',
+        format: 'png',
+        width: 560,
+        height: 256,
+        supported: true,
+        distinctColors: null,
+        arcs: arcs.arcs,
+        thresholds: {
+          meanColorError: 8,
+          ssim: 0.9,
+          maxArcResidualRms: 0.24,
+          maxPaths: 200,
+          maxSubPaths: 200,
+          maxTinySubPathRatio: 0.02,
+          minCurveCommandRatio: 0.5,
+          maxNearDuplicateFills: 0,
+          maxBytes: 100 * 1024,
+          maxMs: 10000,
+        },
+        aspirations: { maxArcResidualRms: 0.08 },
+        note:
+          'Four antialiased discs (r=100/60/32/16) and an annulus, drawn from the circle ' +
+          'equation so the fitted boundary can be scored against the shape rather than ' +
+          'against itself. `boundarySmoothness` reports the worst arc.',
       },
       {
         // The alpha fixture. Every other generated fixture is opaque, which is
