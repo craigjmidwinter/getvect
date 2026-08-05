@@ -756,6 +756,64 @@ button.toggle.is-on,
   font-size: 12px;
 }
 
+.switch.is-disabled {
+  opacity: 0.45;
+}
+
+/*
+ * AI Enhance: its own boxed group inside the quality column.
+ *
+ * Boxed rather than another row of switches because it is categorically
+ * different from everything else on this panel — every other control here runs
+ * on the user's machine, and this one sends the picture to a third party. The
+ * border, the title and the notice under the switch are the affordance for
+ * that; the notice is a permanent line of body text, never a tooltip.
+ */
+.ai-enhance {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(92, 157, 255, 0.04);
+  /* The column is a flex container: without this the group is squeezed and its
+     notice is clipped rather than the column scrolling. */
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.ai-key-input {
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.ai-key-input::placeholder {
+  color: var(--ink-dim);
+}
+
+.hint.is-ok {
+  color: var(--ok);
+}
+
+.hint.is-warn {
+  color: var(--danger);
+}
+
+/* The privacy sentence is the point of the group: give it normal body colour
+   rather than the dimmed hint grey, and room to wrap. */
+.ai-notice {
+  color: var(--ink);
+  font-size: 11px;
+}
+
 .palette-editor {
   display: flex;
   flex-direction: column;
