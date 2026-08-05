@@ -220,8 +220,16 @@ export function strictInkRecall(reference, traced, { inkLuma = 60 } = {}) {
  *
  * Verdicts are memoized per quantized traced colour, so this stays linear in
  * pixels and quadratic only in the (small) number of distinct cells.
+ *
+ * The window is 32, the same one `nearDuplicateFillPairs` calls a duplicate. It
+ * was 40, and 40 is wide enough to miss the defect this metric exists for: the
+ * teal that painted a fifth of the gold standard's lower jaw sat 40.2 units
+ * from the nearest colour its crop contains, so `reference-snorlax` reported
+ * "foreign colour 0.00%" for a muzzle that visibly held it. Both real
+ * exemplars still score 0 everywhere at 32, which is the check that this is a
+ * tightening rather than a re-baselining.
  */
-export function foreignColorRatio(reference, traced, { tolerance = 40, bin = 4 } = {}) {
+export function foreignColorRatio(reference, traced, { tolerance = 32, bin = 4 } = {}) {
   assertSameSize(reference, traced);
   const key = (r, g, b) =>
     ((Math.min(255, r) / bin) | 0) * 65536 + ((Math.min(255, g) / bin) | 0) * 256 + ((Math.min(255, b) / bin) | 0);
