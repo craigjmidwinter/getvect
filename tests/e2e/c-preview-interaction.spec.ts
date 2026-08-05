@@ -130,6 +130,52 @@ test('[C2] preview controls are inert until an image is loaded', async ({ page }
   }
 });
 
+test('[C1] the preview chrome reads cleanly: no stray pan readout, no clipped badges', async ({
+  page,
+}) => {
+  /**
+   * Two cosmetic-but-visible defects a critic caught in the contact sheet:
+   * a bare "0, 0" pan readout rendered in the header of an app with no image
+   * loaded (artifacts/screenshots/01-launch-drop-zone.png), and the
+   * ORIGINAL / VECTOR corner badges drawn cut off at the pane edge in
+   * side-by-side mode (18-preview-side-by-side.png).
+   */
+  const panState = page.locator(tid(TESTIDS.panState));
+  const idleText = ((await panState.textContent()) ?? '').trim();
+  expect(
+    idleText,
+    `the header shows a pan readout ("${idleText}") with no image loaded — it is a coordinate ` +
+      'for a thing that does not exist',
+  ).toBe('');
+
+  await loadViaPicker(page, FIXTURE.flat512);
+  await waitForReady(page);
+  await page.locator(tid(TESTIDS.previewSideBySide)).click();
+  await expect(page.locator(tid(TESTIDS.previewPane))).toHaveAttribute('data-mode', 'side-by-side');
+
+  for (const id of [TESTIDS.previewOriginal, TESTIDS.previewVector]) {
+    const view = await rectOf(page, id);
+    const badge = await page
+      .locator(`${tid(id)} ${tid(TESTIDS.previewViewLabel)}`)
+      .first()
+      .evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
+      });
+    expect(badge.width, `${id} badge has no width`).toBeGreaterThan(0);
+    expect(badge.x, `${id} badge starts left of its pane`).toBeGreaterThanOrEqual(view.x);
+    expect(badge.y, `${id} badge starts above its pane`).toBeGreaterThanOrEqual(view.y);
+    expect(
+      badge.x + badge.width,
+      `${id} badge runs past the right edge of its pane — it is drawn clipped`,
+    ).toBeLessThanOrEqual(view.x + view.width);
+    expect(
+      badge.y + badge.height,
+      `${id} badge runs past the bottom edge of its pane`,
+    ).toBeLessThanOrEqual(view.y + view.height);
+  }
+});
+
 test('[C2] the grab cursor only appears when there is somewhere to pan', async ({ page }) => {
   // A grab cursor at Fit invites a drag whose only possible effect is to push
   // the artwork away — the affordance has to follow the geometry.
