@@ -546,10 +546,21 @@ button.toggle.is-on,
   cursor: pointer;
 }
 
+/*
+ * One row, scrolled. The eleven candidate sizes wrapped onto two rows at the
+ * app's default window size, and those ~24px pushed the OUTPUT COLOURS list —
+ * which carries B3's headline control, "disable the background colour to get a
+ * transparent background" — off the bottom of the screen. A strip that scrolls
+ * sideways costs nothing: the sizes are an ordered scale, so the ones a user
+ * looks for first are at the start of it.
+ */
 .palette-sizes {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  flex: none;
 }
 
 .slider.is-disabled {

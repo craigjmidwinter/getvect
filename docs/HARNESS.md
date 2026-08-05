@@ -325,7 +325,7 @@ interface VectorizeSettings {
   mergeThreshold?: number;   // percent coverage; groups smaller than it merge   // B3
   sortOrder?: 'coverage' | 'brightness' | 'hue';                                // B3
   noiseReduction?: 'off' | 'low' | 'high';                                      // B4
-  antiAliasing?: 'off' | 'smart' | 'mid';                                       // B4
+  antiAliasing?: 'off' | 'smart' | 'mid';   // B4, default 'smart' (see below)
   roundness?: 0 | 1 | 2;     // three curve-fitting levels                      // B5
   minArea?: 0 | 5 | 90;      // px^2 speck removal                              // B5
   overlap?: 'full' | 'high'; // whether lower layers are painted under upper    // B5
@@ -343,6 +343,9 @@ interface VectorizeResult {
   width: number;
   height: number;
   durationMs: number;
+  sourceColors: number;      // palette size BEFORE our own colour folds — lets the
+                             // UI tell "the image ran out" from "a cleanup merged
+                             // them" (docs/TESTIDS.md `color-count-hint`)
 }
 
 // The five functions to implement:
@@ -355,10 +358,14 @@ function vectorize(
 function computePalette(image: RasterImage, colorCount: number): Promise<RgbColor[]>;
 function enhanceImage(image: RasterImage): Promise<RasterImage>;
 function toEps(result: VectorizeResult): string;
-function toDxf(result: VectorizeResult): string;
+function toDxf(result: VectorizeResult, options?: { curves?: 'splines' | 'lines' }): string;
+// 'splines' (default) = R2000 with degree-3 SPLINE entities, curve geometry intact;
+// 'lines' = R12 with everything flattened into POLYLINE vertices. Both variants are
+// downloads the real product offers (fixtures/reference/OBSERVED-UI.md).
 
 // Already implemented, no need to touch:
-const DEFAULT_SETTINGS: VectorizeSettings;   // colorCount 8, detail 60, smoothing 50, despeckle 20
+const DEFAULT_SETTINGS: VectorizeSettings;   // colorCount 8, detail 60, smoothing 50,
+                                             // despeckle 20, antiAliasing 'smart'
 function serialize(result: VectorizeResult, format: 'svg'|'eps'|'dxf'): string;
 function isSupportedInput(nameOrMime: string): boolean;
 const SUPPORTED_INPUT_EXTENSIONS: readonly string[];
