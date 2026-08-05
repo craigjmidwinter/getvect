@@ -24,7 +24,7 @@ npm run screenshots   # flow screenshots -> artifacts/screenshots/
 | `npm run build:renderer` | Renderer bundle only. |
 | `npm run typecheck` | Type-checks both projects without emitting. |
 | `npm test` | Engine contract tests **then** the Playwright acceptance suite (`pretest` builds first). The engine tests run first because they are the fidelity contracts: if the picture regressed, the UI specs' green is not worth reading. |
-| `npm run test:engine` | Engine contract tests (`node --test`, pure Node). Three files: `engine.test.mjs` (determinism, setting semantics, palette overrides, SVG grouping, EPS/DXF/PDF structure — must stay green), `parity.test.mjs` (the B2-B6 settings, D1 fill notation, D3 DXF colour distinctness), `rendered.test.mjs` (rasterizes output: does the *picture* change, is it curve-fitted, is it economical in shapes, does it hold up against the exemplar). |
+| `npm run test:engine` | Engine contract tests (`node --test`, pure Node). Four files: `engine.test.mjs` (determinism, setting semantics, palette overrides, SVG grouping, EPS/DXF/PDF structure — must stay green), `parity.test.mjs` (the B2-B6 settings, D1 fill notation, D3 DXF colour distinctness and curve survival), `rendered.test.mjs` (rasterizes output: does the *picture* change, is it curve-fitted, is it economical in shapes, does it hold up against the exemplar), `alpha.test.mjs` (the input alpha channel: a transparent background must not be traced as an opaque one). |
 | `npm run test:headed` | Same, with a visible window. |
 | `npm run fixtures` | Regenerates `fixtures/` deterministically. |
 | `npm run instruments` | Measures the app engine on every fixture. |
@@ -63,6 +63,10 @@ title is prefixed with its REFERENCE.md checklist id:
 | `tests/e2e/b6-result-style.spec.ts` | **B6** Filled vs Stroked layers, in the preview and in the export |
 | `tests/e2e/c-preview-interaction.spec.ts` | **C1** preview never blanks, busy overlay is centred · **C2** wheel zoom, pan clamping, controls inert when empty |
 | `tests/e2e/d4-export-status.spec.ts` | **D4** export row does not re-flow · `data-last-export-path` invalidation · live `export-size` |
+| `tests/e2e/q-decode-parity.spec.ts` | **quality-bar** a transparent PNG exports without an invented background · the app's exported SVG equals `engine.vectorize()` run headlessly on the same file (byte-identical on the flat fixture, structurally on the gold-standard one) |
+| `tests/e2e/a2-decode-failure.spec.ts` | **A2** a file that decodes to nothing leaves no `image-list-item`, does not poison the workspace, and does not leave a stale `export-size` |
+| `tests/e2e/c2-resize-fit.spec.ts` | **C2** shrinking the window re-fits the preview; a zoom the user chose survives a resize |
+| `tests/e2e/b-controls-affordance.spec.ts` | **B2** Drawing disables the colour controls it cannot use · **B3** `merge-threshold` / `color-sort` are on screen at the default window size, colour-count hint is not clipped |
 
 Selectors are `data-testid` only. The full DOM contract is
 [docs/TESTIDS.md](./TESTIDS.md) — read it before building UI, it is what makes the app and
@@ -97,6 +101,24 @@ Pure-Node, no Electron. For each fixture it decodes the source, calls the engine
 `vectorize()`, rasterizes the returned SVG **back to the source dimensions** with resvg,
 and diffs.
 
+### One decode contract
+
+The engine is handed `canvasIngest(decodeImageFile(file))` — the *same pixels the
+renderer's canvas ingest produces*, including `(0,0,0,0)` for every fully transparent
+pixel — while fidelity is judged against `flattenOnWhite(...)` of the same file.
+
+This is not a detail. For one whole lap the instruments fed `vectorize()` a
+white-flattened image no UI could produce, and reported `reference-snorlax` passing at
+2.82× the exemplar's sub-paths for a document the user could not obtain: through the app
+the same fixture traced its transparent background as **opaque black**, took the dominant
+palette slot for it, and came out at 4.9×. A number measured on pixels the product never
+sees is not a measurement of the product.
+
+So: **if you change how the renderer decodes, change `canvasIngest()` in the same
+commit.** `tests/e2e/q-decode-parity.spec.ts` is the guard — it exports SVG through the
+UI and compares it to `engine.vectorize()` run headlessly on the same file at the same
+settings — and it is meant to go red the moment the two drift apart.
+
 Reported per fixture (`artifacts/metrics.json`):
 
 | field | meaning | REFERENCE bar |
@@ -114,6 +136,9 @@ Reported per fixture (`artifacts/metrics.json`):
 | `layerCount` | `<g fill>` colour layers | — |
 | `nearDuplicateFillPairs` | pairs of colour layers within RGB distance 24 — the anti-aliasing halo signature | 0 on flat fixtures |
 | `perColorCoverageDelta` | max change in a palette colour's area fraction between source and re-raster; catches hairline erosion that MAE/SSIM average away | ≤ 0.01 on flat fixtures |
+| `sourceTransparentRatio` | share of source pixels with alpha < 128 | context (0.33 for snorlax, 0.60 for the sticker) |
+| `transparentAreaColorError` | mean colour error **over those pixels only**, against the source flattened on white | ≤ 8 wherever the source has alpha. Leaving the background out of the drawing scores ~0 (resvg composites on white) and so does flattening it to white; inventing an opaque backdrop scores ~255 |
+| `backdropFill` | fill of the full-bleed `<rect>`, or `null` | reported, not gated — it is the *why* behind `transparentAreaColorError` |
 | `svgBytes` | exported SVG size | < 100 KB on flat fixtures |
 | `wallClockMs` | measured around `vectorize()` | < 10 000 |
 | `paletteSize` | length of the returned palette | — |
@@ -167,7 +192,7 @@ engine is still a stub · `3` the harness itself blew up.
 **Sanity-check the instrument, not just the engine:** `npm run instruments:selftest` runs
 the same pipeline against `instruments/reference-engine.mjs`, a deliberately naive
 run-length tracer. It scores `meanColorError 0.00 / ssim 1.0000` on the flat fixtures
-(pixel-exact geometry) and blows the economy budget with megabyte SVGs, 949× the
+(pixel-exact geometry) and blows the economy budget with megabyte SVGs, 1025× the
 exemplar's sub-path count and a curve-command ratio of exactly 0 — which is precisely
 the tradeoff a real tracer has to beat, and a useful sanity check that the new
 structural metrics point the right way. If the selftest stops scoring ~0 error, the
@@ -185,6 +210,34 @@ plus `manifest.json` recording `ok`/`skipped` and the reason. It never fails the
 steps that aren't built yet are recorded as skipped and still screenshotted, so each lap
 produces a comparable contact sheet and the `skipped` count is itself a progress metric.
 
+Shots are captured at **1x device scale** (`--force-device-scale-factor=1`, plus a sharp
+downscale to 1280 px as a backstop for HiDPI buffers), and `manifest.json` records
+`shotWidth` / `capturedWidth` / `downscaledTo1x`. A retina 2560 px sheet costs an agent
+roughly 4× the tokens of the 1280 px one and shows exactly the same UI.
+
+## Token-lean output (read this before consuming the harness)
+
+The instruments and the suite are read mostly by agents, and an agent that `Read`s a
+whole report burns its context on JSON it did not need.
+
+- **The stdout table is the interface.** `npm run instruments` prints one row per fixture
+  plus a failure line per fixture; that is the full picture, and it is a few hundred
+  tokens. Same for `npm test` — the reporter's summary is the answer.
+- **Query the JSON, never read it whole.** `artifacts/metrics.json` is ~40 KB and
+  `artifacts/e2e-results.json` is bigger. Use targeted queries:
+
+  ```bash
+  jq -r '.results[] | select(.status=="FAIL") | "\(.id): \(.failures|join("; "))"' artifacts/metrics.json
+  jq '.results[] | select(.id=="reference-snorlax") | .metrics.exemplarSubPathRatio' artifacts/metrics.json
+  jq -r '.suites[].specs[]? | select(.ok==false) | .title' artifacts/e2e-results.json
+  grep -c '"status": "FAIL"' artifacts/metrics.json
+  ```
+- **Screenshots are the expensive artifact.** Read one deliberately chosen shot, not the
+  sheet. `artifacts/screenshots/manifest.json` names every step, so pick by name first.
+- **Diff images before full renders.** `artifacts/diff/<id>.png` says where a fixture is
+  wrong in one glance; `artifacts/raster/<id>.png` is only worth opening once the diff
+  has told you which fixture to look at.
+
 ## Fixtures
 
 `npm run fixtures` regenerates everything from pure math with a seeded PRNG, so output is
@@ -198,6 +251,7 @@ exactly six colours and palette assertions can be exact.
 | `logo-flat-1024.png` | 1024×1024 version | responsiveness bar (< 10 s) |
 | `photo-gradient-512x384.jpg` | continuous-tone JPEG | JPEG ingest; the non-target case |
 | `shapes-256.bmp` | 24-bit uncompressed BMP | BMP ingest (A1) |
+| `sticker-alpha-256.png` | 3 flat colours on a **fully transparent** background | the alpha channel — REFERENCE's sticker/decal use case. Every other generated fixture is opaque, which is how transparent-background tracing stayed broken for a lap |
 | `unsupported-animation.gif` | valid 4×4 GIF89a | rejection (A2) — a real image the app must still refuse |
 | `unsupported-notes.txt` | plain text | rejection (A2) |
 | `reference/snorlax.png` | real 1046×833 artwork (**not** generated) | REFERENCE's gold-standard A/B source; instrumented twice, as `reference-snorlax` (16 colours, exemplar `reference/snorlax.svg`) and `reference-snorlax-6c` (6 colours, exemplar `reference/snorlax-clipart-6colors-min90.svg`) |
@@ -294,8 +348,14 @@ Obligations beyond the types:
 3. **`svg` is the deliverable.** It is what the preview shows (C3) and what SVG export
    writes (D1) — the same string, unmodified.
 4. **`viewBox="0 0 width height"`** in source pixels; the instruments rasterize against it.
-5. **Decoding is not the engine's job.** Callers hand over RGBA: the renderer via canvas
-   `getImageData()`, the instruments via sharp / the bundled BMP decoder.
+5. **Decoding is not the engine's job — but the alpha channel is.** Callers hand over
+   RGBA: the renderer via canvas `getImageData()`, the instruments via sharp / the
+   bundled BMP decoder plus `canvasIngest()`. The `A` byte is data, not padding: a
+   canvas returns `(0,0,0,0)` for a transparent pixel, so an engine that reads only RGB
+   sees a black rectangle and traces REFERENCE's whole sticker/decal use case with an
+   invented opaque background. Whether the engine drops those pixels from the drawing or
+   flattens them onto white is its choice; treating them as opaque black is not one.
+   Gated by `maxTransparentAreaColorError` and `tests/engine/alpha.test.mjs`.
 6. **Palette overrides drive the palette editor.** Change / merge / remove all reduce to
    "re-vectorize with this explicit `settings.palette`".
 

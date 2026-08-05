@@ -129,6 +129,24 @@ function drawLogo(size) {
   return c;
 }
 
+/**
+ * A sticker/decal: flat shapes on a FULLY TRANSPARENT background.
+ *
+ * REFERENCE's headline use cases (stickers, decals, t-shirt art) ship with an
+ * alpha channel, and alpha is the one thing every other fixture is missing.
+ * `Canvas` starts life as all zeroes — alpha 0 — and `set()` writes alpha 255,
+ * so simply not calling `fill()` leaves a genuinely transparent background.
+ */
+function drawSticker(size) {
+  const c = new Canvas(size, size);
+  const u = size / 256;
+  c.disc(128 * u, 118 * u, 84 * u, PALETTE.navy);
+  c.disc(128 * u, 118 * u, 52 * u, PALETTE.orange);
+  c.rect(Math.round(56 * u), Math.round(192 * u), Math.round(144 * u), Math.round(30 * u), PALETTE.navy);
+  c.triangle([128 * u, 24 * u], [176 * u, 96 * u], [80 * u, 96 * u], PALETTE.yellow);
+  return c;
+}
+
 /** Speckle noise: isolated impulse pixels + mild per-pixel jitter. Seeded. */
 function speckle(src, seed) {
   const rnd = mulberry32(seed);
@@ -273,7 +291,9 @@ async function main() {
   const noisy512 = speckle(logo512, 0x5eed1234);
   const gradient = drawGradient(512, 384);
   const bmpShapes = drawLogo(256);
+  const sticker = drawSticker(256);
 
+  await writePng(sticker, join(outDir, 'sticker-alpha-256.png'));
   await writePng(logo512, join(outDir, 'logo-flat-512.png'));
   await writePng(noisy512, join(outDir, 'logo-noisy-512.png'));
   await writePng(logo1024, join(outDir, 'logo-flat-1024.png'));
@@ -288,6 +308,16 @@ async function main() {
   const distinct = (canvas) => {
     const seen = new Set();
     for (let i = 0; i < canvas.data.length; i += 4) {
+      seen.add((canvas.data[i] << 16) | (canvas.data[i + 1] << 8) | canvas.data[i + 2]);
+    }
+    return seen.size;
+  };
+
+  /** Distinct colours among OPAQUE pixels only (the transparent fixture). */
+  const distinctOpaque = (canvas) => {
+    const seen = new Set();
+    for (let i = 0; i < canvas.data.length; i += 4) {
+      if (canvas.data[i + 3] < 128) continue;
       seen.add((canvas.data[i] << 16) | (canvas.data[i + 1] << 8) | canvas.data[i + 2]);
     }
     return seen.size;
@@ -335,9 +365,14 @@ async function main() {
         height: 512,
         supported: true,
         distinctColors: distinct(noisy512),
+        // Fidelity is measured against the CLEAN artwork: despeckling is a
+        // feature, and SSIM's variance term scores the clean mark 0.35 against
+        // its own speckled copy, so scoring against the noise would reward
+        // reproducing every speck (docs/HARNESS.md `compareTo`).
+        compareTo: 'logo-flat-512.png',
         thresholds: {
-          meanColorError: 14,
-          ssim: 0.7,
+          meanColorError: 8,
+          ssim: 0.9,
           minInkRecall: 0.97,
           maxPaths: 1200,
           // The default despeckle must not leave every source speckle as its
@@ -349,7 +384,12 @@ async function main() {
           maxBytes: 400 * 1024,
           maxMs: 10000,
         },
-        note: 'Same mark + seeded speckle. Exercises despeckle and the enhance toggle (B4).',
+        note:
+          'Same mark + seeded speckle. Exercises despeckle, Minimum Area (B5) and the enhance ' +
+          'toggle (B4). Fidelity is measured against the CLEAN original (compareTo) because ' +
+          'that is what despeckling is supposed to recover: the speckled source scores SSIM ' +
+          '0.35 against the clean artwork, so scoring against it would reward reproducing ' +
+          'every speck.',
       },
       {
         id: 'logo-flat-1024',
@@ -421,6 +461,40 @@ async function main() {
         note: 'BMP ingest path (REFERENCE A1).',
       },
       {
+        // The alpha fixture. Every other generated fixture is opaque, which is
+        // how a whole lap shipped with transparent PNGs traced as solid black:
+        // the renderer's canvas ingest hands the engine (0,0,0,0) and the
+        // engine reads only RGB. `maxTransparentAreaColorError` measures what
+        // the trace paints where the source is see-through — 0 if it leaves it
+        // alone (or flattens onto white), ~255 if it paints a black backdrop.
+        id: 'sticker-alpha-256',
+        file: 'sticker-alpha-256.png',
+        kind: 'alpha',
+        format: 'png',
+        width: 256,
+        height: 256,
+        supported: true,
+        distinctColors: distinctOpaque(sticker),
+        thresholds: {
+          meanColorError: 8,
+          ssim: 0.9,
+          minInkRecall: 0.95,
+          maxTransparentAreaColorError: 8,
+          maxPaths: 200,
+          maxSubPaths: 200,
+          maxTinySubPathRatio: 0.02,
+          minCurveCommandRatio: 0.5,
+          maxNearDuplicateFills: 0,
+          maxBytes: 100 * 1024,
+          maxMs: 10000,
+        },
+        note:
+          'Sticker/decal with a fully transparent background (REFERENCE\'s named use case). ' +
+          'Fidelity is judged against the source flattened on white, which is what resvg ' +
+          'composites onto, so both "leave it transparent" and "flatten onto white" pass and ' +
+          'only an invented opaque background fails.',
+      },
+      {
         // REFERENCE lines 73-83: the gold-standard blind A/B case. Not
         // generated — it is real artwork plus the SVG the reference product actually
         // produced for it, checked into fixtures/reference/. Thresholds are
@@ -440,6 +514,10 @@ async function main() {
           meanColorError: 7,
           ssim: 0.9,
           minInkRecall: 0.94,
+          // 32.5% of this artwork is transparent. The real product's output for
+          // it has a white/transparent background; painting it opaque is the
+          // blocker this gate names.
+          maxTransparentAreaColorError: 8,
           maxPathRatio: 3,
           maxSubPathRatio: 3,
           maxBytesRatio: 5,
@@ -450,9 +528,10 @@ async function main() {
         },
         note:
           'Gold-standard exemplar (REFERENCE "blind A/B"). Judged at 16 colours + enhance, ' +
-          'the setting the captured output corresponds to. snorlax.svg is a low-colour ' +
-          'capture, so it anchors ECONOMY (paths/sub-paths/bytes/curve ratio); fidelity is ' +
-          'gated absolutely here and relatively in reference-snorlax-6c.',
+          'the settings the captured output corresponds to (fixtures/reference/OBSERVED-UI.md ' +
+          'records Smart anti-aliasing and Enhance on; our Enhance bundles that same cleanup). ' +
+          'It anchors ECONOMY (paths/sub-paths/bytes/curve ratio); fidelity is gated absolutely ' +
+          'here and relatively in reference-snorlax-6c.',
       },
       {
         // The DOM-extracted Clipart / 6-colour / Minimum Area 90px² output is
@@ -472,6 +551,7 @@ async function main() {
         thresholds: {
           maxMeanColorErrorRatio: 1.5,
           minInkRecall: 0.94,
+          maxTransparentAreaColorError: 8,
           maxPathRatio: 3,
           maxSubPathRatio: 3,
           maxBytesRatio: 5,

@@ -63,6 +63,38 @@ export function decodeBmp(buf) {
   return { width, height, data: out };
 }
 
+/**
+ * Emulate what the app's ingest actually hands the engine.
+ *
+ * `src/renderer/lib/decode.ts` draws the decoded bitmap into a 2D canvas and
+ * reads `getImageData()`. Canvas stores premultiplied 8-bit RGBA and
+ * unpremultiplies on read, so a pixel that is fully transparent comes back as
+ * `(0,0,0,0)` no matter what colour the file recorded there — which is why the
+ * instruments must not feed the engine `flattenOnWhite()` pixels the UI can
+ * never produce (see docs/HARNESS.md "One decode contract").
+ */
+export function canvasIngest(image) {
+  const { width, height, data } = image;
+  const out = new Uint8ClampedArray(width * height * 4);
+  for (let i = 0; i < data.length; i += 4) {
+    const a = data[i + 3];
+    out[i + 3] = a;
+    if (a === 0) continue; // premultiply -> 0, unpremultiply -> 0/0 -> 0
+    for (let c = 0; c < 3; c++) {
+      const premultiplied = Math.round((data[i + c] * a) / 255);
+      out[i + c] = Math.round((premultiplied * 255) / a);
+    }
+  }
+  return { width, height, data: out };
+}
+
+/** Fraction of pixels the file marks as (near-)transparent. */
+export function transparentRatio(image, threshold = 128) {
+  let n = 0;
+  for (let i = 3; i < image.data.length; i += 4) if (image.data[i] < threshold) n++;
+  return n / (image.width * image.height);
+}
+
 /** Flatten RGBA onto white — comparisons are done on opaque images. */
 export function flattenOnWhite(image) {
   const { width, height, data } = image;

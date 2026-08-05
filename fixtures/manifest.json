@@ -119,6 +119,30 @@
       "note": "BMP ingest path (REFERENCE A1)."
     },
     {
+      "id": "sticker-alpha-256",
+      "file": "sticker-alpha-256.png",
+      "kind": "alpha",
+      "format": "png",
+      "width": 256,
+      "height": 256,
+      "supported": true,
+      "distinctColors": 3,
+      "thresholds": {
+        "meanColorError": 8,
+        "ssim": 0.9,
+        "minInkRecall": 0.95,
+        "maxTransparentAreaColorError": 8,
+        "maxPaths": 200,
+        "maxSubPaths": 200,
+        "maxTinySubPathRatio": 0.02,
+        "minCurveCommandRatio": 0.5,
+        "maxNearDuplicateFills": 0,
+        "maxBytes": 102400,
+        "maxMs": 10000
+      },
+      "note": "Sticker/decal with a fully transparent background (REFERENCE's named use case). Fidelity is judged against the source flattened on white, which is what resvg composites onto, so both \"leave it transparent\" and \"flatten onto white\" pass and only an invented opaque background fails."
+    },
+    {
       "id": "reference-snorlax",
       "file": "reference/snorlax.png",
       "kind": "clipart",
@@ -136,6 +160,7 @@
         "meanColorError": 7,
         "ssim": 0.9,
         "minInkRecall": 0.94,
+        "maxTransparentAreaColorError": 8,
         "maxPathRatio": 3,
         "maxSubPathRatio": 3,
         "maxBytesRatio": 5,
@@ -162,13 +187,14 @@
       "exemplar": "reference/snorlax-clipart-6colors-min90.svg",
       "thresholds": {
         "maxMeanColorErrorRatio": 1.5,
+        "minInkRecall": 0.94,
+        "maxTransparentAreaColorError": 8,
         "maxPathRatio": 3,
         "maxSubPathRatio": 3,
         "maxBytesRatio": 5,
         "maxTinySubPathRatio": 0.02,
         "minCurveCommandRatio": 0.5,
-        "maxMs": 10000,
-        "minInkRecall": 0.94
+        "maxMs": 10000
       },
       "note": "Blind A/B against real Clipart 6-colour output (93 paths, 91KB, curve ratio 0.64)."
     },
