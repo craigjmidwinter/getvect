@@ -27,6 +27,7 @@ import {
   describeEnhanceError,
   enhanceProvider,
   type EnhanceProviderId,
+  type EnhanceQuality,
 } from '../shared/aiEnhance';
 import { api } from './api';
 import { basename, decodeBlob, mimeForName, stemOf } from './lib/decode';
@@ -213,6 +214,7 @@ export function App() {
    * from there; the value never does (src/main/preload.ts).
    */
   const [aiProvider, setAiProvider] = useState<EnhanceProviderId>(DEFAULT_ENHANCE_PROVIDER);
+  const [aiQuality, setAiQuality] = useState<EnhanceQuality>('fast');
   const [aiHasKey, setAiHasKey] = useState(false);
   const [aiKeyDraft, setAiKeyDraft] = useState('');
   const [aiEnabled, setAiEnabled] = useState(false);
@@ -482,6 +484,7 @@ export function App() {
           // transparent background instead of a white one when the source has
           // real alpha (src/main/aiEnhance.ts `promptFor`).
           transparent: hasMeaningfulAlpha(image.raster),
+          quality: aiQuality,
         });
         if (!outcome.ok) {
           throw new Error(describeEnhanceError(outcome.code, providerInfo.label));
@@ -508,8 +511,23 @@ export function App() {
       }
       requestVectorize(id);
     },
-    [aiProvider, providerInfo.label, patchImage, requestVectorize],
+    [aiProvider, aiQuality, providerInfo.label, patchImage, requestVectorize],
   );
+
+  /**
+   * A different model tier is a different result: drop cached enhancements so
+   * the next (or current) selection re-runs at the newly chosen quality.
+   */
+  useEffect(() => {
+    setImages((prev) =>
+      prev.map((entry) => {
+        if (!entry.aiRaster && entry.aiState === 'idle') return entry;
+        if (entry.aiUrl) URL.revokeObjectURL(entry.aiUrl);
+        return { ...entry, aiRaster: null, aiUrl: null, aiState: 'idle' };
+      }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset on tier change only
+  }, [aiQuality]);
 
   /**
    * One enhancement per image, for the selected image only — the same rule the
@@ -1562,6 +1580,18 @@ export function App() {
                         {provider.label}
                       </option>
                     ))}
+                  </select>
+                </Field>
+
+                <Field label="Quality">
+                  <select
+                    data-testid={TESTIDS.aiQualitySelect}
+                    aria-label="AI Enhance quality"
+                    value={aiQuality}
+                    onChange={(event) => setAiQuality(event.target.value as EnhanceQuality)}
+                  >
+                    <option value="fast">Fast — ~8s, cheaper</option>
+                    <option value="best">Best — ~20s, truly flat fills</option>
                   </select>
                 </Field>
 

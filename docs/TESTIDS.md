@@ -166,6 +166,7 @@ first and the classical bundle runs second.
 | --- | --- | --- |
 | `ai-enhance-group` | container | **Required:** `data-provider` (the selected `EnhanceProviderId`), `data-has-key` = `"true"`/`"false"`, `data-enabled` = `"true"`/`"false"` (the feature is *enabled* only when it is switched on **and** a key exists). Mounted with the settings panel. |
 | `ai-provider-select` | `<select>` | Option values are `EnhanceProviderId`s (`gemini` today). |
+| `ai-quality-select` | `<select>` | Option values are `EnhanceQuality` (`fast` = flash model, `best` = pro model). Changing it drops cached enhancements so the next run uses the new tier. |
 | `ai-key-input` | `<input type="password">` | Never pre-filled and never re-displays a saved key: after a successful save its value is `""`. |
 | `ai-key-save` / `ai-key-clear` | buttons | Save stores the key **in the main process** (`aiEnhance:setKey`); Clear deletes it and switches the feature off. Clear is disabled with no key saved. |
 | `ai-key-status` | label | **Required:** `data-has-key` = `"true"`/`"false"`. Text says only whether a key is saved — it must never contain key material. |
