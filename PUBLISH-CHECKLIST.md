@@ -367,7 +367,7 @@ gh browse craigjmidwinter/getvect
   | packaged `.app` bundle icon | `mac.icon: build/icon.icns` in [`electron-builder.yml`](./electron-builder.yml) |
   | Dock icon under `npm start` | `app.dock.setIcon()` in `src/main/main.ts` (dev only — a packaged app already has the icns, and the whole identity block is skipped under `GETVECT_E2E=1`) |
   | window/taskbar icon on Linux + Windows | `BrowserWindow({ icon })`, resolved from `process.resourcesPath` in a packaged app via the `extraResources` entry |
-  | menu bar + About panel | `app.setName('GetVect')` + `app.setAboutPanelOptions()` |
+  | menu bar + About panel | `app.setName('GetVect')` + `app.setAboutPanelOptions()`. Note the dev caveat: macOS takes the *leftmost menu title* from the running bundle's `CFBundleName`, which under `npm start` is Electron's own `Electron.app`, so it still says "Electron" there. Everything derived from `app.name` — About/Hide/Quit — does say GetVect, and the packaged bundle gets the title too |
   | renderer favicon | `src/renderer/favicon.png` (32px, `sips`-derived from `build/icon-1024.png`), fingerprinted into `dist/renderer/assets/` by Vite |
 
   To regenerate the icns from new artwork:
