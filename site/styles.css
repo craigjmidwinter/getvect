@@ -303,6 +303,8 @@ section > .wrap > p:last-child { margin-bottom: 0; }
 .demo-stage {
   --pos: 50;
   --z: 1;
+  --tx: 0;
+  --ty: 0;
   position: relative;
   /* not aspect-ratio: with a max-height that shrinks the width instead */
   height: clamp(320px, 44vw, 560px);
@@ -311,7 +313,16 @@ section > .wrap > p:last-child { margin-bottom: 0; }
   border-radius: var(--radius);
   overflow: hidden;
   isolation: isolate;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y;
+  cursor: default;
 }
+/* Set by demo.js from the pointer position: the divider corridor everywhere it
+   applies, the grab hand on the rest of the surface once there is something to pan. */
+.demo-stage[data-cursor="divider"] { cursor: ew-resize; }
+.demo-stage[data-cursor="pan"] { cursor: grab; }
+.demo-stage[data-cursor="panning"] { cursor: grabbing; }
 .demo-layer {
   position: absolute;
   inset: 0;
@@ -322,20 +333,18 @@ section > .wrap > p:last-child { margin-bottom: 0; }
   width: 100%;
   height: 100%;
   object-fit: contain;
-  transform: scale(var(--z));
-  /* Zoom about the face — the eyes, the nose and the mouth arcs, the crop where
-     a traced line either holds together or doesn't, and the same framing the
-     README's before/after composite uses.
-
-     Frankie is a loaf facing left, so his face is around 32% across the artwork
-     rather than centred like the fox's was. The image is letterboxed by
-     `object-fit: contain` and this origin is relative to the ELEMENT box, so the
-     x mapping drifts a little with the viewport (~35% narrow, ~40% wide); 38%
-     lands on the face at every width we render at. Vertically the image is
-     full-bleed, so 44% is exact. */
-  transform-origin: 38% 44%;
+  /* Zoom and pan are one transform off a top-left origin: demo.js works out the
+     translate, including the offset that keeps the face anchored (see its ANCHOR
+     constants). Both panes read the same three properties, so they cannot drift.
+     Scale stays a transform rather than a layout size so the SVG pane keeps being
+     re-rasterized by the browser at its painted resolution — the whole point of the
+     right-hand side. */
+  transform: translate(calc(var(--tx) * 1px), calc(var(--ty) * 1px)) scale(var(--z));
+  transform-origin: 0 0;
   transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
+/* A drag is 1:1 with the pointer; only the zoom buttons get the glide. */
+.demo-stage.is-dragging .demo-layer img { transition: none; }
 .demo-raster img { image-rendering: pixelated; }
 .demo-vector { clip-path: inset(0 0 0 calc(var(--pos) * 1%)); }
 
@@ -373,11 +382,13 @@ section > .wrap > p:last-child { margin-bottom: 0; }
   height: 100%;
   margin: 0;
   opacity: 0;
-  cursor: ew-resize;
   appearance: none;
   -webkit-appearance: none;
   background: transparent;
   z-index: 3;
+  /* Still the accessible control and still takes arrow keys, but the stage owns the
+     pointer now — otherwise a full-surface range input eats every pan. */
+  pointer-events: none;
 }
 .demo-range::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -444,6 +455,28 @@ section > .wrap > p:last-child { margin-bottom: 0; }
   font-size: 0.72rem;
   color: var(--muted);
   letter-spacing: 0.04em;
+}
+
+/* The one thing worth saying about the demo that no number in the readout says. */
+.demo-note {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  margin: 0.9rem 0 0;
+  padding-left: 0.7rem;
+  border-left: 2px solid var(--accent);
+}
+.demo-note strong { color: var(--text); font-weight: 600; }
+
+.art-note {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 0.8rem 0 0;
+  max-width: 34ch;
 }
 
 .readout {
@@ -646,8 +679,12 @@ footer {
 
 @media (max-width: 720px) {
   .hero-grid { grid-template-columns: 1fr; }
-  .hero img.mascot { width: 160px; }
-  .hero-art { order: -1; }
+  .hero img.mascot { width: 160px; order: -1; }
+  /* The mascot leads on narrow screens, but its provenance note should not wedge
+     itself between the mascot and the wordmark — let both become grid items so the
+     note can drop below the copy. */
+  .hero-art { display: contents; }
+  .art-note { order: 1; max-width: none; }
   .demo-stage { height: min(86vw, 420px); }
   .bar nav { gap: 1rem; }
   .foot-links { margin-left: 0; }

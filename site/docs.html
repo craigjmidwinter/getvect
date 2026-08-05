@@ -111,7 +111,7 @@ npm run dist    <span class="c"># package -&gt; release/mac-arm64/GetVect.app (+
     <div class="wrap">
       <p class="eyebrow">Control surface</p>
       <h2>Every control on the panel</h2>
-      <p>The settings model is the real product's, captured live rather than guessed: model
+      <p>The settings model follows a shipping web vectorizer's, captured live rather than guessed: model
         presets and candidate palettes, not detail/smoothing/despeckle sliders.</p>
 
       <h3>Model presets</h3>
@@ -206,7 +206,7 @@ npm run dist    <span class="c"># package -&gt; release/mac-arm64/GetVect.app (+
             <tr>
               <td><strong>Anti-aliasing</strong></td>
               <td>off / <strong>smart</strong> / mid</td>
-              <td>Smart is the default, as it is in the real product, and it is the single highest
+              <td>Smart is the default, as it is in the tools we benchmark against, and it is the single highest
                 -value setting here: a pre-trace edge cleanup worth 1747 sub-paths → 551 and
                 396 KB → 140 KB on the reference artwork. It is the difference between output that
                 looks traced and output that looks drawn.</td>
@@ -415,7 +415,7 @@ npm run screenshots   <span class="c"># a labelled contact sheet of the whole fl
         <li><strong>Instruments</strong> — the light meter. For every fixture it traces, rasterizes
           the SVG back to source dimensions and diffs: mean colour error, structural similarity,
           ink recall, sub-path count, speck ratio, curve ratio, stroke-width evenness, and ratios
-          against the real the reference product output of the same source.</li>
+          against the benchmark web vectorizer's output of the same source.</li>
       </ul>
       <p>Do not read <code>artifacts/metrics.json</code> whole — the stdout table is the interface,
         and the file is meant to be queried with <code>jq</code>.</p>
@@ -484,7 +484,7 @@ npm run screenshots   <span class="c"># a labelled contact sheet of the whole fl
           <span class="tag">Build log</span>
           <h3><a href="https://github.com/craigjmidwinter/getvect/tree/main/katra/entries">katra/entries/</a></h3>
           <p>The whole build chronicled as it happened — the loop design, the ground-truth recon
-            against the real product, the laps, and the day AI Enhance turned out to be an
+            against a shipping product, the laps, and the day AI Enhance turned out to be an
             illustrator rather than a filter.</p>
         </article>
         <article class="card">
