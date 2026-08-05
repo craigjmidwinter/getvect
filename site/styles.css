@@ -323,9 +323,17 @@ section > .wrap > p:last-child { margin-bottom: 0; }
   height: 100%;
   object-fit: contain;
   transform: scale(var(--z));
-  /* zoom about the muzzle: the nose, the mouth arcs and the white around them —
-     the crop where a traced line either holds together or doesn't */
-  transform-origin: 50% 46%;
+  /* Zoom about the face — the eyes, the nose and the mouth arcs, the crop where
+     a traced line either holds together or doesn't, and the same framing the
+     README's before/after composite uses.
+
+     Frankie is a loaf facing left, so his face is around 32% across the artwork
+     rather than centred like the fox's was. The image is letterboxed by
+     `object-fit: contain` and this origin is relative to the ELEMENT box, so the
+     x mapping drifts a little with the viewport (~35% narrow, ~40% wide); 38%
+     lands on the face at every width we render at. Vertically the image is
+     full-bleed, so 44% is exact. */
+  transform-origin: 38% 44%;
   transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .demo-raster img { image-rendering: pixelated; }
