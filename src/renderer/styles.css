@@ -150,6 +150,21 @@ code {
   letter-spacing: 0.06em;
 }
 
+/*
+ * The toast is where a failure says WHY, so it must not truncate.
+ *
+ * It lives in the narrow left sidebar and carries text this app does not write:
+ * a provider's own error string, which can be one long unbroken token (a URL, a
+ * request id, a quoted JSON body). A flex child defaults to `min-width: auto`,
+ * so such a token refuses to shrink, pushes past the panel and is clipped —
+ * "Enhancement failed —" and nothing after it, which is the one part of the
+ * sentence the user already knew.
+ *
+ * So: the message may shrink (`min-width: 0`), it breaks mid-token if it has to
+ * (`overflow-wrap: anywhere`), and a genuinely long one scrolls inside the toast
+ * rather than growing it without limit. Wrapping, never clipping — the dismiss
+ * button stays put beside it because only the message scrolls.
+ */
 .error-toast {
   display: flex;
   gap: 8px;
@@ -160,6 +175,20 @@ code {
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 12px;
+}
+
+.error-toast > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+  max-height: 8.5em;
+  overflow-y: auto;
+}
+
+.error-toast > .link {
+  flex: none;
 }
 
 .image-list {
