@@ -13,6 +13,7 @@
       "thresholds": {
         "meanColorError": 8,
         "ssim": 0.9,
+        "minInkRecall": 0.98,
         "maxPaths": 200,
         "maxSubPaths": 200,
         "maxTinySubPathRatio": 0.02,
@@ -37,6 +38,7 @@
       "thresholds": {
         "meanColorError": 8,
         "ssim": 0.9,
+        "minInkRecall": 0.97,
         "maxPaths": 1200,
         "maxSubPaths": 1200,
         "maxTinySubPathRatio": 0.1,
@@ -59,6 +61,7 @@
       "thresholds": {
         "meanColorError": 8,
         "ssim": 0.9,
+        "minInkRecall": 0.98,
         "maxPaths": 300,
         "maxSubPaths": 300,
         "maxTinySubPathRatio": 0.02,
@@ -82,6 +85,7 @@
       "thresholds": {
         "meanColorError": 28,
         "ssim": 0.6,
+        "minInkRecall": 0.9,
         "maxPaths": 4000,
         "maxSubPaths": 6000,
         "maxTinySubPathRatio": 0.3,
@@ -102,6 +106,7 @@
       "thresholds": {
         "meanColorError": 8,
         "ssim": 0.88,
+        "minInkRecall": 0.97,
         "maxPaths": 200,
         "maxSubPaths": 200,
         "maxTinySubPathRatio": 0.02,
@@ -128,8 +133,9 @@
       },
       "exemplar": "reference/artwork.svg",
       "thresholds": {
-        "meanColorError": 20,
-        "ssim": 0.85,
+        "meanColorError": 7,
+        "ssim": 0.9,
+        "minInkRecall": 0.94,
         "maxPathRatio": 3,
         "maxSubPathRatio": 3,
         "maxBytesRatio": 5,
@@ -161,7 +167,8 @@
         "maxBytesRatio": 5,
         "maxTinySubPathRatio": 0.02,
         "minCurveCommandRatio": 0.5,
-        "maxMs": 10000
+        "maxMs": 10000,
+        "minInkRecall": 0.94
       },
       "note": "Blind A/B against real Clipart 6-colour output (93 paths, 91KB, curve ratio 0.64)."
     },

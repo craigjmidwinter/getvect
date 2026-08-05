@@ -429,6 +429,41 @@ export interface DespeckleOptions {
    * merged. `Infinity` merges regardless of contrast.
    */
   maxContrast?: number;
+  /**
+   * Exempt *strokes* from the area test.
+   *
+   * A speck and a hairline can have the same pixel count, and an area-only
+   * filter cannot tell them apart: at the enhance floor (~87px² on the 1046px
+   * reference artwork) a 2px-wide, 30px-long eyelid is 60px² and disappears,
+   * which is what turned Artwork's mouth and eyes into dashes. Elongation
+   * separates them without a magic length: `maxDim² / area` is 1 for a disc,
+   * ~1 for any compact blob, and grows with the aspect ratio of a stroke, so a
+   * region longer than ~`elongation`× its own thickness is treated as line art
+   * and kept.
+   *
+   * Off by default: REFERENCE B5's Minimum Area is a literal promise about the
+   * document ("nothing under N px²"), so only the cleanup filters that claim to
+   * remove *noise* turn it on.
+   */
+  keepElongated?: boolean;
+  /** `maxDim² / area` at or above which a small region counts as a stroke. */
+  elongation?: number;
+  /**
+   * Merge only *fringe* regions — the ones whose colour lies between the two
+   * colours they separate (REFERENCE B4 anti-aliasing, at region scale).
+   *
+   * The pixel-level pass in preprocess.ts only sees a 3×3 window, so a fringe
+   * two or three pixels wide is a local majority and survives it, and it can be
+   * far too large for any speck threshold: the 40×3 grey band along the
+   * reference artwork's mouth is 120px². What identifies it is not its size but
+   * that it is thin AND in-between, which is exactly what this mode tests.
+   */
+  onlyFringe?: boolean;
+  /**
+   * Average thickness (area / longest side), in pixels, at or below which a
+   * region counts as a thin band. Only used with `onlyFringe`.
+   */
+  maxThickness?: number;
 }
 
 /**
@@ -447,11 +482,17 @@ export function despeckleIndices(
   const minArea = options.minArea;
   const palette = options.palette;
   const maxContrast = options.maxContrast ?? Infinity;
-  if (minArea <= 1) return 0;
+  const keepElongated = options.keepElongated === true;
+  const elongation = options.elongation ?? 6;
+  const onlyFringe = options.onlyFringe === true;
+  const maxThickness = options.maxThickness ?? 3;
+  if (minArea <= 1 && !onlyFringe) return 0;
   const n = width * height;
   const labels = new Int32Array(n).fill(-1);
   const queue = new Int32Array(n);
   const areas: number[] = [];
+  /** Longest bounding-box side per label; only needed for `keepElongated`. */
+  const maxDims: number[] = [];
   let labelCount = 0;
 
   for (let start = 0; start < n; start++) {
@@ -463,11 +504,19 @@ export function despeckleIndices(
     queue[tail++] = start;
     labels[start] = label;
     let area = 0;
+    let x0 = width;
+    let x1 = -1;
+    let y0 = height;
+    let y1 = -1;
     while (head < tail) {
       const p = queue[head++];
       area++;
       const x = p % width;
       const y = (p / width) | 0;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
       if (x > 0) {
         const q = p - 1;
         if (labels[q] === -1 && indices[q] === color) {
@@ -498,6 +547,7 @@ export function despeckleIndices(
       }
     }
     areas.push(area);
+    maxDims.push(Math.max(x1 - x0, y1 - y0) + 1);
   }
 
   // Bucket pixels by label (counting sort) so each speck can be rewritten.
@@ -508,11 +558,21 @@ export function despeckleIndices(
   for (let p = 0; p < n; p++) members[cursor[labels[p]]++] = p;
 
   const small: number[] = [];
-  for (let l = 0; l < labelCount; l++) if (areas[l] < minArea) small.push(l);
+  for (let l = 0; l < labelCount; l++) {
+    if (onlyFringe) {
+      // Thin bands only — a fringe is by definition a couple of pixels wide.
+      if (areas[l] / maxDims[l] <= maxThickness) small.push(l);
+    } else if (areas[l] < minArea) {
+      small.push(l);
+    }
+  }
   // Smallest first: specks inside specks collapse outward.
   small.sort((a, b) => areas[a] - areas[b] || a - b);
 
   const tally = new Int32Array(256);
+  /** Global pixel count per index — the rarity tiebreak below needs it. */
+  const coverage = new Int32Array(256);
+  if (onlyFringe) for (let p = 0; p < n; p++) coverage[indices[p]]++;
   let merged = 0;
 
   for (const label of small) {
@@ -551,7 +611,101 @@ export function despeckleIndices(
       }
     }
     const own = indices[members[from]];
-    if (bestColor < 0 || bestColor === own) continue;
+    if (bestColor < 0) continue;
+    const ownColor = palette ? palette[own] : undefined;
+
+    /** Runner-up neighbour by border length — the other side of a fringe. */
+    let secondColor = -1;
+    let secondScore = 0;
+    for (let c = 0; c < 256; c++) {
+      if (c === bestColor) continue;
+      if (tally[c] > secondScore) {
+        secondScore = tally[c];
+        secondColor = c;
+      }
+    }
+
+    /**
+     * Is this region an antialiasing fringe?
+     *
+     * A fringe is the one-pixel ramp between two flat colours, so its colour
+     * lies *between* the two regions it separates. A piece of line art is an
+     * extreme instead — the black of a stroke is not between the cream either
+     * side of it. Same test `deAntialias` uses per pixel (src/engine/
+     * preprocess.ts), applied to a whole region.
+     */
+    let fringe = false;
+    if (ownColor && palette && secondColor >= 0) {
+      const a = palette[bestColor];
+      const b = palette[secondColor];
+      if (a && b) {
+        const span = dist(a.r, a.g, a.b, b);
+        const da = dist(ownColor.r, ownColor.g, ownColor.b, a);
+        const db = dist(ownColor.r, ownColor.g, ownColor.b, b);
+        fringe = span >= 48 && da > 0 && db > 0 && da + db <= span * 1.35;
+      }
+    }
+
+    /**
+     * Strokes survive a *noise* filter; fringes do not.
+     *
+     * A speck and a hairline can have the same pixel count, so an area-only
+     * test deletes line art: at the enhance floor (~87px² on the 1046px
+     * reference artwork) a 2px-wide, 30px-long eyelid is 60px² and vanishes.
+     * `maxDim² / area` is ~1 for any compact blob and grows with aspect ratio,
+     * so it separates the two without a magic length — but only for regions
+     * that are not fringes, or the exemption would preserve exactly the halo
+     * bands anti-aliasing exists to remove (they are long and thin too).
+     */
+    if (keepElongated && !fringe && (maxDims[label] * maxDims[label]) / areas[label] >= elongation) {
+      continue;
+    }
+    // Fringe-only mode judges nothing but that: thin was checked when the
+    // candidate list was built, in-between is checked here.
+    if (onlyFringe && !fringe) continue;
+
+    /**
+     * Border length says which region a speck *sits in*; it does not say which
+     * one it *is*. A mid-grey chunk of an antialiased line touches the cream
+     * paper along its whole length and the black stroke only at its ends, so
+     * "most border" repaints it cream and punches a hole in the stroke — that
+     * is what turned the reference artwork's mouth and eyelids into dashes.
+     *
+     * The error a merge introduces is `area × colour distance`, and the area is
+     * fixed, so among the neighbours it genuinely borders (a quarter of the
+     * winner's border length or more — a corner touch is not a neighbourhood)
+     * the right target is the closest colour.
+     */
+    if (ownColor && palette) {
+      const floor = bestScore * 0.25;
+      let nearest = bestColor;
+      let nearestDist = Infinity;
+      for (let c = 0; c < 256; c++) {
+        if (tally[c] < floor || c === own) continue;
+        const cand = palette[c];
+        if (!cand) continue;
+        const d = dist(ownColor.r, ownColor.g, ownColor.b, cand);
+        /**
+         * A 50 %-coverage fringe pixel is equidistant from both sides by
+         * construction, and then the choice decides whether a hairline survives
+         * or is erased. Ties (within 15 %) go to the rarer colour: paper has
+         * plenty of pixels to spare, a one-pixel stroke has none, and losing
+         * the stroke destroys information the picture cannot get back.
+         */
+        const better =
+          d < nearestDist ||
+          (onlyFringe &&
+            nearestDist < Infinity &&
+            d <= nearestDist * 1.15 &&
+            coverage[c] < coverage[nearest]);
+        if (better) {
+          nearestDist = Math.min(nearestDist, d);
+          nearest = c;
+        }
+      }
+      bestColor = nearest;
+    }
+    if (bestColor === own) continue;
     if (maxContrast !== Infinity && palette) {
       const a = palette[own];
       const b = palette[bestColor];

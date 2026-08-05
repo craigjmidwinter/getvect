@@ -129,3 +129,24 @@ test('[C2] preview controls are inert until an image is loaded', async ({ page }
     await expect(page.locator(tid(id)), `${id} should be disabled with no image`).toBeDisabled();
   }
 });
+
+test('[C2] the grab cursor only appears when there is somewhere to pan', async ({ page }) => {
+  // A grab cursor at Fit invites a drag whose only possible effect is to push
+  // the artwork away — the affordance has to follow the geometry.
+  await loadViaPicker(page, FIXTURE.flat512);
+  await waitForReady(page);
+  await page.locator(tid(TESTIDS.zoomFit)).click();
+
+  const pane = page.locator(tid(TESTIDS.previewPane));
+  const cursor = () => pane.evaluate((el) => getComputedStyle(el).cursor);
+  await expect(pane).toHaveAttribute('data-pannable', 'false');
+  expect(await cursor(), 'the pane offers a grab cursor with the whole image in view').not.toBe(
+    'grab',
+  );
+
+  await page.locator(tid(TESTIDS.zoomIn)).click();
+  await page.locator(tid(TESTIDS.zoomIn)).click();
+  await page.locator(tid(TESTIDS.zoomIn)).click();
+  await expect(pane).toHaveAttribute('data-pannable', 'true');
+  expect(await cursor(), 'no grab cursor once the artwork is bigger than the view').toBe('grab');
+});

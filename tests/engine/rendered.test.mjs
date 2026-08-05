@@ -22,6 +22,7 @@ import {
   countCubics,
   countSubPaths,
   curveCommandRatio,
+  inkRecall,
   meanColorError,
   perColorCoverageDelta,
   pixelMismatchRatio,
@@ -88,6 +89,27 @@ test('[B2] smoothing changes the shape of a curved boundary', async () => {
     curveCommandRatio(smooth.svg) > curveCommandRatio(sharp.svg),
     'maximum smoothing must fit more curve than none',
   );
+
+  // Hard-edged artwork is where smoothing has the most to do — a staircase to
+  // remove — so the bar is higher there, and the removed staircase has to show
+  // up as bytes that are no longer being spent on it.
+  for (const [name, image] of [
+    ['flat logo', flat],
+    ['artwork', artwork],
+  ]) {
+    const a = await engine.vectorize(image, { ...S, smoothing: 0 });
+    const b = await engine.vectorize(image, { ...S, smoothing: 100 });
+    const moved = pixelMismatchRatio(renderResult(a), renderResult(b));
+    assert.ok(
+      moved > 0.015,
+      `smoothing 0 -> 100 moved only ${(moved * 100).toFixed(2)}% of the ${name}'s pixels`,
+    );
+    assert.ok(
+      b.svg.length < a.svg.length * 0.8,
+      `smoothing the ${name} to 100 saved only ${a.svg.length - b.svg.length} bytes ` +
+        `of ${a.svg.length} — the staircase is still being paid for`,
+    );
+  }
 });
 
 test('[quality] outlines are curve-fitted, not a pixel staircase', async () => {
@@ -155,6 +177,33 @@ test('[quality] the gold-standard exemplar is matched on economy and fidelity', 
   // ...and the rendering has to hold up next to it, at the source size.
   const mae = meanColorError(artwork, render(r.svg, r.width, r.height));
   assert.ok(mae < 20, `mean colour error ${mae.toFixed(2)} against the source`);
+});
+
+test('[quality] hairlines stay unbroken through the cleanup passes', async () => {
+  /**
+   * The cleanups (Enhance's canvas-proportional area floor, the despeckle
+   * noise filter) judge a region by how many pixels it has, and a hairline has
+   * almost none: the reference artwork's eyelids are 2px wide, so an area-only
+   * test deleted them piece by piece and left dashes. MAE and SSIM barely
+   * noticed — 0.3 % of the pixels — which is why this is measured separately.
+   */
+  const r = await engine.vectorize(artwork, { ...S, colorCount: 16, enhance: true });
+  const recall = inkRecall(artwork, render(r.svg, r.width, r.height));
+  assert.ok(
+    recall >= 0.94,
+    `only ${(recall * 100).toFixed(1)}% of the source's ink is still ink after tracing — ` +
+      'the cleanup passes are eating line art',
+  );
+
+  // Enhance must not be the setting that costs you the linework: with every
+  // cleanup off the trace is noisier but keeps everything, and Enhance has to
+  // stay in the same class.
+  const raw = await engine.vectorize(artwork, { ...S, colorCount: 16 });
+  const rawRecall = inkRecall(artwork, render(raw.svg, raw.width, raw.height));
+  assert.ok(
+    recall >= rawRecall - 0.03,
+    `enhance drops ink recall from ${rawRecall.toFixed(3)} to ${recall.toFixed(3)}`,
+  );
 });
 
 test('[quality] the black outline survives a small colour budget', async () => {

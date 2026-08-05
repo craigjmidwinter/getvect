@@ -12,16 +12,17 @@ minimum area, overlap, circle detection), filled-vs-stroked result styles,
 original/vector/side-by-side preview with synchronised zoom & pan, and
 SVG/EPS/DXF/PDF/PNG export through the native save dialog.
 
-`npm test` 94 pass / 0 fail · `npm run test:engine` 49 pass / 0 fail ·
-`npm run instruments` 7 fixtures pass, including the blind A/B against the real
-the reference product exemplars (2.05x their sub-path count at 16 colours, 0.56x at 6, with
-lower mean colour error against the source in both cases).
+`npm test` runs both suites — 50 engine contract tests then 96 Playwright acceptance
+specs, 0 fail. `npm run instruments` 7 fixtures pass, including the blind A/B against
+the real the reference product exemplars (2.82x their sub-path count at 16 colours, 0.81x at 6,
+with lower mean colour error against the source in both cases, and 96 % ink recall —
+the hairlines the cleanup passes used to eat).
 
 ```bash
 npm install
 npm start             # build + launch
-npm test              # acceptance suite (tests/e2e), titles tagged [A1]…[D4]
-npm run test:engine   # engine contract tests (pure Node, no Electron)
+npm test              # engine contract tests + acceptance suite (tests/e2e, [A1]…[D4])
+npm run test:engine   # just the engine contract tests (pure Node, no Electron)
 npm run instruments   # fidelity metrics -> artifacts/metrics.json
 npm run screenshots   # flow contact sheet -> artifacts/screenshots/
 ```
