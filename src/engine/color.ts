@@ -769,6 +769,25 @@ export function remapIndices(indices: Uint8Array, map: ArrayLike<number>): void 
   }
 }
 
+/**
+ * How far off "equidistant" a fringe band may be and still be handed to the
+ * RARER of the two colours it separates, as a multiple of the nearer distance.
+ *
+ * The tiebreak exists because assigning a halo is not symmetric: paper has
+ * pixels to spare and a two-pixel stroke has none, so a wrong call toward the
+ * paper deletes information the picture cannot get back while a wrong call
+ * toward the stroke costs a pixel of width. 1.15 was the window for a
+ * one-pixel ramp, where a 50 %-coverage pixel really is equidistant by
+ * construction. A *band* is not one pixel: its average colour sits wherever the
+ * edge profile put it, several per cent off the midpoint, and at 1.15 the
+ * fringe collapse then reliably rounded the gold standard's mouth and eyelids
+ * toward the paper — Enhance cost the face 1.4 points of ink recall where the
+ * same run without it lost none. 1.5 is wide enough to cover that skew and
+ * still narrow enough that a band which genuinely belongs to the lighter side
+ * (nearly twice as close to it) goes there.
+ */
+const FRINGE_TIE_WINDOW = 1.5;
+
 export interface DespeckleOptions {
   /** Regions with fewer pixels than this are candidates for removal. */
   minArea: number;
@@ -1079,7 +1098,7 @@ export function despeckleIndices(
           d < nearestDist ||
           (onlyFringe &&
             nearestDist < Infinity &&
-            d <= nearestDist * 1.15 &&
+            d <= nearestDist * FRINGE_TIE_WINDOW &&
             coverage[c] < coverage[nearest]);
         if (better) {
           nearestDist = Math.min(nearestDist, d);

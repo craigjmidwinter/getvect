@@ -139,13 +139,15 @@ export const DEFAULT_SETTINGS: ResolvedSettings = {
   /**
    * Overlap stays `high` — each layer trimmed to its own pixels.
    *
-   * `full` measures better on boundary raggedness (mean layer compactness 3.67
-   * trimmed against 3.11 stacked on the gold-standard artwork), but it costs
-   * two of REFERENCE's own controls at the default: a stacked layer's mask is
-   * the union of itself and everything painted after it, so B5's circle
-   * detection can no longer see a disc as a disc, and B3's sort order stops
-   * being free. The bottom layer gets the benefit without the price — see
-   * `silhouetteLayer` below.
+   * `full` used to measure better on boundary raggedness, and it costs one of
+   * REFERENCE's own controls to get there: a stacked layer's mask is the union
+   * of itself and everything painted after it, so B5's circle detection can no
+   * longer see a disc as a disc, and every layer inherits the outline of every
+   * speck above it. The bottom layer gets the benefit without the price — see
+   * `silhouetteLayer` below, which now hands it to the INK layer, where the
+   * saving is largest (2.87 mean layer compactness against the real product's
+   * 2.67, from 3.33 when the dominant colour had it and the linework was
+   * traced as a network of ribbons).
    */
   overlap: 'high',
   circleDetection: false,
@@ -262,6 +264,65 @@ export function smoothPassesFor(smoothing: number, tolerance: number): number {
 }
 
 /**
+ * How thick a blend band may be and still be collapsed into the two regions it
+ * separates (`despeckleIndices` `onlyFringe`), in pixels.
+ *
+ * A fraction of the picture, not a fixed pixel count. Quantizing a soft edge
+ * leaves a band of an in-between colour along every seam, and how wide that
+ * band comes out depends on how wide the *edge* was — which scales with the
+ * artwork: the same drawn edge is three pixels on a 256px sticker and twelve on
+ * a 1046px illustration. The old fixed 3 therefore cleaned up small images and
+ * left big ones with a mid-tone ribbon threaded between every pair of regions,
+ * which is perimeter spent on a colour that is not in the drawing.
+ *
+ * Width alone never removes anything: `onlyFringe` also requires the band's
+ * colour to lie BETWEEN its two neighbours, so a genuine third shade — one that
+ * is not on the line joining the two it sits between — is not a fringe at any
+ * thickness.
+ */
+export function fringeThickness(width: number, height: number, smartAa: boolean): number {
+  const base = Math.max(2, Math.round(Math.min(width, height) / 60));
+  return smartAa ? base : Math.max(2, Math.round(base * 0.66));
+}
+
+/**
+ * Smoothing → how far along the boundary the pre-fit low-pass averages, in
+ * pixels of arc length (src/engine/fit.ts `lowPassClosed`).
+ *
+ * This is the length scale of the wobble it can remove, so it has to be a few
+ * pixels: the sawtooth a nearest-colour decision leaves on a soft shading
+ * gradient has a period of four to eight pixels, and a window narrower than the
+ * tooth just tracks it. At Smoothing 0 it is off — "no smoothing" has to mean
+ * the boundary the pixels drew, staircase, wobble and all.
+ */
+export function boundaryRadiusFor(smoothing: number): number {
+  const s = norm(smoothing);
+  if (s === 0) return 0;
+  return clamp(Math.round(s * 16), 1, 16);
+}
+
+/**
+ * Smoothing × Detail → how far that low-pass may move a point, in pixels.
+ *
+ * Detail is the control that means "how closely paths follow pixel edges", so
+ * it owns the amplitude: at Detail 100 the boundary is reproduced as found and
+ * this collapses to almost nothing, at low Detail a seam may be redrawn by a
+ * couple of pixels. Smoothing scales it the same way it scales everything else.
+ * Thin shapes then get their own, much smaller cap from their own thickness
+ * (src/engine/trace.ts `fitOptionsFor`), which is what keeps a hairline from
+ * being averaged into the paper.
+ */
+export function boundaryShiftFor(smoothing: number, detail: number): number {
+  const s = norm(smoothing);
+  const d = norm(detail);
+  if (s === 0) return 0;
+  // 2.0px at the defaults (Smoothing 50, Detail 60) — enough to straighten the
+  // two-to-three-pixel sawtooth a nearest-colour decision leaves on a shading
+  // gradient; 0.5px at Detail 100, where the boundary is the answer.
+  return round4(s * (1 + (1 - d) * 7.5));
+}
+
+/**
  * Minimum Area is a px² number, but the two sliders that also talk about size
  * scale it rather than fighting it:
  *
@@ -322,17 +383,38 @@ export function maxContrastFor(despeckle: number): number {
 const round4 = (v: number) => Math.round(v * 10000) / 10000;
 
 /**
+ * Enhance's region floor, as a fraction of the canvas.
+ *
+ * "Enhance image with AI" is a *simplification* bundle (REFERENCE B4, and
+ * OBSERVED-UI's record of what the real product's own version did: a busy
+ * patterned background became near-white), so its floor is proportional to the
+ * canvas rather than a pixel count — ~218px² on the 1046×833 gold-standard
+ * artwork, ~65px² on a 512px logo. That is a ~15×15 scrap: below it, a region
+ * is a piece of background texture or a lobe shed by a ragged edge, not a
+ * feature anyone drew. Line art is exempt (`keepElongated` + `protect`), which
+ * is what lets the floor be this frank without eating a mouth or an eyelid.
+ */
+const ENHANCE_FLOOR_DIVISOR = 4000;
+
+/**
  * How much of the Enhance region floor carries over to the *document* floor.
  *
  * The two floors measure different things: the index-image pass counts a
  * region's pixels, the trace-time pass measures a fitted shape's bounding box,
  * and a box overstates everything that is not a rectangle (a diagonal sliver's
- * box can be ten times its area). Half is the setting at which the document
- * floor removes the same class of shape — the 3-10px lobes a ragged edge sheds,
- * which are attached to their parent region and so invisible to any despeckle —
- * without reaching the diagonal strokes that a like-for-like number would eat.
+ * box can be ten times its area) — which is why the multiplier used to be a
+ * half: a like-for-like number reached the diagonal strokes.
+ *
+ * It can be frank now because the strokes are no longer exposed to it. The ink
+ * layers keep the plain Minimum Area (`inkTraceOptions` below) and, since the
+ * linework became the silhouette layer, the drawing's outline is ONE contour
+ * that no area test can nibble. What is left for this floor to see is the
+ * 3-10px lobes a ragged colour boundary sheds — attached to their parent
+ * region, so invisible to every despeckle — and those are pure cost: on the
+ * gold standard they carried a fifth of some layers' perimeter for a fortieth
+ * of their area.
  */
-const SHAPE_FLOOR_OF_REGION_FLOOR = 0.5;
+const SHAPE_FLOOR_OF_REGION_FLOOR = 2;
 
 /**
  * How different a small region may be from its surroundings and still be
@@ -676,7 +758,7 @@ export async function vectorize(
       minArea: 0,
       palette: clusters,
       onlyFringe: true,
-      maxThickness: smartAa ? 3 : 2,
+      maxThickness: fringeThickness(width, height, smartAa),
       transparentIndex: TRANSPARENT_INDEX,
     });
   }
@@ -706,7 +788,7 @@ export async function vectorize(
       transparentIndex: TRANSPARENT_INDEX,
     });
   }
-  const enhanceFloor = opts.enhance && opts.despeckle > 0 ? (width * height) / 10000 : 0;
+  const enhanceFloor = opts.enhance && opts.despeckle > 0 ? (width * height) / ENHANCE_FLOOR_DIVISOR : 0;
   const inkSlots = darkInkSlots(clusters);
   if (enhanceFloor > 1) {
     despeckleIndices(indices, width, height, {
@@ -786,7 +868,24 @@ export async function vectorize(
   //   - The output-groups merge threshold folds away colours that barely appear
   //     (REFERENCE B3), which is a coverage question.
   if (smartAa) computed = mergeSimilarColors(indices, computed, HALO_FOLD_PERCENT).palette;
-  const groupThreshold = Math.max(opts.mergeThreshold, opts.enhance ? 1 : 0);
+  /**
+   * The output-groups merge threshold is the ONLY thing that folds by coverage,
+   * and it is the control the panel shows (REFERENCE B3).
+   *
+   * Enhance used to force it to 1 % on top of whatever the user had set, which
+   * is how a 16-colour request came back with eight: three of the eight it took
+   * were quantization debris, and the other five were the halo fold's, but the
+   * hint could only blame "the cleanup settings" for all of them and no control
+   * on the panel could give any of them back — `merge-threshold: 0` and the
+   * default produced byte-identical documents. A fold nobody can undo is not a
+   * setting.
+   *
+   * What Enhance does about debris instead is what a simplification bundle
+   * should do: it raises the *area* floors (`enhanceFloor` above), so a colour
+   * that only ever appears in 15×15 scraps loses those scraps to their
+   * neighbours on the picture, not its seat in the palette.
+   */
+  const groupThreshold = opts.mergeThreshold;
   if (groupThreshold > 0) computed = mergeSmallGroups(indices, computed, groupThreshold);
 
   // 6. Repaint --------------------------------------------------------------
@@ -841,8 +940,11 @@ export async function vectorize(
     cornerAngle: cornerAngleFor(opts.smoothing, opts.roundness) * bias.cornerAngle,
     cornerSpan: cornerSpanFor(opts.smoothing, opts.roundness),
     smoothPasses: smoothPassesFor(opts.smoothing, tolerance),
+    boundaryRadius: boundaryRadiusFor(opts.smoothing),
+    boundaryShift: boundaryShiftFor(opts.smoothing, detail),
     straightTolerance: straightToleranceFor(opts.roundness),
     circleDetection: opts.circleDetection,
+    minArea,
     /**
      * Enhance is a simplification bundle, so its canvas-proportional floor has
      * to reach the *document*, not just the index image.
@@ -850,14 +952,20 @@ export async function vectorize(
      * The index-image pass above (`enhanceFloor`) can only merge a small region
      * into a neighbour, and it deliberately spares strokes. What it cannot
      * touch is the shape a surviving region still traces to: a ragged edge
-     * sheds dozens of 3-10px lobes that are attached to their parent region, so
-     * no despeckle sees them, and every one costs a sub-path. The real
+     * sheds dozens of small islands, and every one costs a sub-path, a scrap of
+     * perimeter and a kink a viewer reads as "posterized photo". The real
      * product's 16-colour output for the gold-standard artwork has NO sub-path
-     * with a bounding box under ~200px²; ours had 106 of them. Reusing the same
-     * floor here (a box-area test, so a long hairline with a 2px waist still
-     * clears it) is what closes that gap.
+     * with a bounding box under ~200px²; ours had 106 of them.
+     *
+     * It is `softMinArea`, not `minArea`, and the difference is a fang. A pure
+     * size test at this scale cannot tell a shed lobe from a drawn feature —
+     * the gold standard's teeth are ~140px² of bounding box, right in the
+     * middle of the debris — and deleting one now leaves a hole through which
+     * the silhouette layer, which is the INK, shows: a mouth with no teeth in
+     * it. So the floor asks about the shape too (src/engine/trace.ts
+     * `isSimpleShape`), and Minimum Area keeps the document promise on its own.
      */
-    minArea: Math.max(minArea, enhanceFloor * SHAPE_FLOOR_OF_REGION_FLOOR),
+    softMinArea: enhanceFloor * SHAPE_FLOOR_OF_REGION_FLOOR,
   };
   /**
    * ...and the ink layer keeps only the floor the user asked for.
@@ -883,7 +991,7 @@ export async function vectorize(
     inkLayers = new Uint8Array(palette.length);
     for (let i = 0; i < slots.length; i++) if (inkSlotFlags[i]) inkLayers[slotToEntry[i]] = 1;
   }
-  const inkTraceOptions: TraceOptions = { ...traceOptions, minArea };
+  const inkTraceOptions: TraceOptions = { ...traceOptions, softMinArea: 0 };
 
   const disabled = new Set(opts.disabledColors);
   const enabled: number[] = [];
@@ -934,8 +1042,8 @@ export async function vectorize(
       : -1;
 
   /**
-   * ...and the same optimisation for artwork that has an alpha channel: the
-   * dominant colour is traced as the whole SILHOUETTE, not as its own pixels.
+   * ...and the same optimisation for artwork that has an alpha channel: ONE
+   * layer is traced as the whole SILHOUETTE, not as its own pixels.
    *
    * On opaque artwork the heaviest layer is a full-bleed rect, and the reason
    * that is free is that the layers partition the canvas: whatever is painted
@@ -945,20 +1053,49 @@ export async function vectorize(
    * shape minus that part.
    *
    * What it buys is not bytes, it is shape. Trimmed to its own pixels the
-   * dominant layer is perforated by every layer above it, so its outline
-   * detours round all of them and sheds an island wherever a neighbour cuts it
-   * in two: on the gold-standard artwork its cream layer arrived as 30
-   * sub-paths, 20 of them under 400px², and those 20 carried 17 % of the
-   * layer's perimeter. As a silhouette it is one smooth shape, which is what
-   * the real product's own bottom layer is, and it also removes the hairline
-   * seams that show through wherever two trimmed layers meet.
+   * bottom layer is perforated by every layer above it, so its outline detours
+   * round all of them and sheds an island wherever a neighbour cuts it in two.
+   * As a silhouette it is one smooth shape, which is what the real product's
+   * own bottom layer is, and it also removes the hairline seams that show
+   * through wherever two trimmed layers meet.
+   *
+   * WHICH layer gets it is the INK, when the drawing has ink — not the
+   * dominant colour, which is what this used to promote. Two reasons, and the
+   * second is the one that matters:
+   *
+   *   - The linework is by far the most expensive layer to trace and the one
+   *     that gains most from not being traced: a network of thin strokes is a
+   *     compound path of dozens of long, near-zero-area contours (35 sub-paths
+   *     carrying half the document's perimeter on the gold standard), while the
+   *     same layer as a silhouette is a single smooth outline. Every pixel that
+   *     is not ink is repainted by its own layer on top, so the picture is
+   *     unchanged — swapping the two at otherwise identical settings took the
+   *     gold-standard document from 32 KB to 24 KB and its mean layer
+   *     compactness from 3.28 to 3.04.
+   *   - What shows through a seam becomes the OUTLINE colour instead of the
+   *     background one. Two trimmed layers that meet along a shared edge leave a
+   *     sub-pixel crack when they are rasterized; on line art the correct thing
+   *     to see in that crack is the line, not the paper. This is the same reason
+   *     the real product's darkest layer sits under everything.
+   *
+   * Falls back to the dominant colour when the artwork has no ink at all (a
+   * gradient sticker, a photo), which is the case this started as.
    *
    * It has to be painted first, so it is moved to the front of the emission
    * order regardless of what B3's sort order says about the rest.
    */
+  let silBase = dominant;
+  if (inkLayers) {
+    let heaviestInk = -1;
+    for (let i = 0; i < palette.length; i++) {
+      if (!inkLayers[i] || finalCoverage[i] <= 0 || disabled.has(i)) continue;
+      if (heaviestInk < 0 || finalCoverage[i] > finalCoverage[heaviestInk]) heaviestInk = i;
+    }
+    if (heaviestInk >= 0) silBase = heaviestInk;
+  }
   const silhouetteLayer =
-    opts.resultStyle === 'filled' && opaque && dominant >= 0 && !disabled.has(dominant)
-      ? dominant
+    opts.resultStyle === 'filled' && opaque && silBase >= 0 && !disabled.has(silBase)
+      ? silBase
       : -1;
   if (silhouetteLayer >= 0) {
     const at = order.indexOf(silhouetteLayer);
@@ -988,9 +1125,27 @@ export async function vectorize(
       } else {
         maskForIndex(indices, i, mask);
       }
-      layers.push(
-        traceMask(mask, width, height, i, inkLayers?.[i] ? inkTraceOptions : traceOptions),
-      );
+      const layerOptions = inkLayers?.[i] ? inkTraceOptions : traceOptions;
+      let traced = traceMask(mask, width, height, i, layerOptions);
+      /**
+       * A colour the palette promises has to appear in the drawing.
+       *
+       * The Enhance shape floor is a *simplification* — it removes the scraps a
+       * ragged boundary sheds — and simplifying a colour out of existence
+       * entirely is a different act: the palette editor would still list the
+       * swatch, the output-colour groups panel would still draw its circle, and
+       * nothing on the canvas would be that colour. So when the floor empties a
+       * layer, that layer is retraced at Minimum Area instead and keeps
+       * whatever it has.
+       *
+       * Minimum Area itself (REFERENCE B5) gets no such exemption: it is a
+       * promise about the *document* — "nothing smaller than N px² is in it" —
+       * and a promise with an escape hatch is not one.
+       */
+      if (traced.regionCount === 0 && (layerOptions.softMinArea ?? 0) > minArea) {
+        traced = traceMask(mask, width, height, i, { ...layerOptions, softMinArea: 0 });
+      }
+      layers.push(traced);
     }
     report(onProgress, 'trace', 0.45 + 0.4 * ((position + 1) / Math.max(1, order.length)));
     if (position % 4 === 3) await tick();

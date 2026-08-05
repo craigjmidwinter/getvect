@@ -390,33 +390,50 @@ test('[B3] the fold that costs the colours is one the user can turn off', async 
    * satisfies it: let `mergeThreshold` override the Enhance floor, or expose
    * the floor as its own control and make THAT one reversible. What is not
    * allowed is a documented cleanup with no off switch.
+   *
+   * HOW IT WAS FIXED, and why this reads the way it does now. The `max(...)`
+   * went away entirely: `groupThreshold` is `opts.mergeThreshold`, full stop,
+   * and Enhance deals with quantization debris by raising the *area* floors
+   * instead — a colour that only ever appears in 15×15 scraps loses the scraps
+   * on the picture, not its seat in the palette. So the original phrasing ("the
+   * default folds, mergeThreshold: 0 unfolds") can no longer be written down:
+   * `DEFAULT_SETTINGS.mergeThreshold` IS 0, so `{...S, enhance: true}` and the
+   * same object with `mergeThreshold: 0` are byte-identical requests and no
+   * engine can distinguish them. The three properties the check is actually
+   * about all survive, and are what is asserted below:
+   *
+   *   1. the default configuration folds nothing a control cannot reach — it
+   *      delivers at least what turning Enhance off delivers;
+   *   2. the merge threshold, moved off 0, observably folds (that is the
+   *      "documented cleanup" now, and it has an off switch by construction);
+   *   3. the colours that come back are colours, not near-duplicate creams.
    */
-  const folded = await engine.vectorize(artworkIn, { ...S, colorCount: 16, enhance: true });
-  const unfolded = await engine.vectorize(artworkIn, {
+  const dflt = await engine.vectorize(artworkIn, { ...S, colorCount: 16, enhance: true });
+  const merged = await engine.vectorize(artworkIn, {
     ...S,
     colorCount: 16,
     enhance: true,
-    mergeThreshold: 0,
+    mergeThreshold: 5,
   });
   const enhanceOff = await engine.vectorize(artworkIn, { ...S, colorCount: 16, enhance: false });
 
   assert.ok(
-    unfolded.palette.length > folded.palette.length,
-    `mergeThreshold: 0 delivered the same ${unfolded.palette.length} colours as the default fold ` +
-      `on a ${folded.sourceColors}-colour image — the control the hint blames does nothing`,
+    dflt.palette.length >= enhanceOff.palette.length,
+    `Enhance on delivers ${dflt.palette.length} colours where Enhance off delivers ` +
+      `${enhanceOff.palette.length} on the same ${dflt.sourceColors}-colour image — the user has ` +
+      'to abandon the whole cleanup bundle to get colours back',
   );
   assert.ok(
-    unfolded.palette.length >= enhanceOff.palette.length,
-    `with the merge threshold off, Enhance still delivers ${unfolded.palette.length} colours ` +
-      `where turning Enhance off delivers ${enhanceOff.palette.length} — the user has to abandon ` +
-      'the whole cleanup bundle to get colours back',
+    merged.palette.length < dflt.palette.length,
+    `the merge threshold moved from 0 to 5 % and the palette stayed at ` +
+      `${merged.palette.length} — the control the hint blames does nothing`,
   );
   // ...and the colours have to be colours. `maxNearDuplicateFills: 0` is the
   // standing guard against buying a palette back with near-identical creams.
   assert.equal(
-    nearDuplicateFillPairs(unfolded.svg),
+    nearDuplicateFillPairs(dflt.svg),
     0,
-    'the recovered colours are near-duplicates of ones already in the palette',
+    'the colours the default configuration keeps are near-duplicates of one another',
   );
 });
 

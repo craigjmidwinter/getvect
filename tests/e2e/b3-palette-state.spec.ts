@@ -59,6 +59,16 @@ test('[B3] the colour-count hint names the real reason the palette is short', as
    * DOM contract (docs/TESTIDS.md): `color-count-hint` carries
    * `data-shortfall` ∈ `none` | `image` | `settings`, and when it is
    * `settings` the text must not blame the image.
+   *
+   * The fold this drives used to be Enhance's. It is the MERGE THRESHOLD now,
+   * because Enhance no longer folds colour groups at all — the lap-6 finding
+   * next door (tests/engine/parity.test.mjs, "the fold that costs the colours
+   * is one the user can turn off") was fixed by taking the unreachable
+   * sub-1 % fold out of the bundle rather than by making it reversible. The
+   * contract under test is unchanged and so is every assertion: a shortfall the
+   * SETTINGS caused must not be reported as the image running out. Driving it
+   * from the control that now owns the fold is also the stricter reading — it
+   * is the one a user can actually reproduce from the panel.
    */
   await loadViaPicker(page, FIXTURE.artwork);
   await waitForReady(page);
@@ -77,14 +87,14 @@ test('[B3] the colour-count hint names the real reason the palette is short', as
   ).toBe(16);
   expect(plain.shortfall, 'nothing is short here').toBe('none');
 
-  await page.locator(tid(TESTIDS.enhanceToggle)).click();
+  await setSelect(page, TESTIDS.colorMergeThreshold, '5');
   await waitForReady(page);
   const folded = await hintOf(page);
   expect(Number(folded.actual)).toBeLessThan(16);
   expect(
     folded.shortfall,
-    `the palette fell from ${plain.actual} to ${folded.actual} because Enhance folded colour ` +
-      'groups, so the hint must attribute it to the settings, not the image',
+    `the palette fell from ${plain.actual} to ${folded.actual} because the merge threshold folded ` +
+      'colour groups, so the hint must attribute it to the settings, not the image',
   ).toBe('settings');
   expect(
     folded.text.toLowerCase(),

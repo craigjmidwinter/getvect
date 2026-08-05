@@ -24,6 +24,7 @@ import {
   countSubPaths,
   cropRegion,
   curveCommandRatio,
+  fillLayerChunks,
   foreignColorRatio,
   inkRecall,
   layerBoundaryWobble,
@@ -500,16 +501,83 @@ test('[quality] colour boundaries are smooth sweeps, not sawtooth', async () => 
    * `layerCompactness` is perimeter / (2*sqrt(pi*area)) per colour layer,
    * averaged over the layers that carry the picture: 1.0 for a disc, higher the
    * more ragged the boundary. Ours 3.73 against the exemplar's 2.67.
+   *
+   * The bar is the instruments' own (`maxLayerCompactnessRatio: 1.1` on
+   * `reference-artwork`), not the looser 1.3 it used to be: three separate
+   * changes closed that gap — the pre-fit boundary low-pass, the linework
+   * moving to the silhouette layer, and the Enhance area floors — and a bar
+   * left at 1.3 would let any one of them rot without a test noticing.
    */
   const exemplar = layerCompactness(readFileSync(fixture('reference/artwork.svg'), 'utf8'));
   const r = await engine.vectorize(artworkIn, { ...S, colorCount: 16, enhance: true });
   const ours = layerCompactness(r.svg);
   assert.ok(
-    ours.mean <= exemplar.mean * 1.3,
+    ours.mean <= exemplar.mean * 1.1,
     `mean layer compactness ${ours.mean.toFixed(2)} over ${ours.counted} layers vs the exemplar's ` +
       `${exemplar.mean.toFixed(2)} over ${exemplar.counted} ` +
-      `(${(ours.mean / exemplar.mean).toFixed(2)}x, limit 1.3x) — our colour boundaries carry ` +
+      `(${(ours.mean / exemplar.mean).toFixed(2)}x, limit 1.1x) — our colour boundaries carry ` +
       'that much more perimeter for the area they enclose',
+  );
+});
+
+test('[quality] the linework is one silhouette, not a network of thin ribbons', async () => {
+  /**
+   * The most expensive layer in a piece of line art is the ink, and trimmed to
+   * its own pixels it is the worst-shaped thing in the document: a compound
+   * path of dozens of long, near-zero-area contours that follow both sides of
+   * every stroke. Painted first as the whole drawn SILHOUETTE it is a single
+   * smooth outline, and the picture is identical because every non-ink pixel is
+   * repainted by its own layer on top — plus the sub-pixel cracks where two
+   * trimmed layers meet now show the OUTLINE colour instead of the paper, which
+   * on line art is the thing that should be there.
+   *
+   * What this pins is that the bottom layer is the ink and that it really is
+   * one shape: the alternative (bottom layer = dominant colour) costs ~2x the
+   * bytes on the gold standard and is what the layer-compactness gate above was
+   * failing on.
+   */
+  const r = await engine.vectorize(artworkIn, { ...S, colorCount: 16, enhance: true });
+  const first = /<g fill="rgb\((\d+),\s*(\d+),\s*(\d+)\)">([\s\S]*?)(?=<g fill=|<\/svg>)/.exec(r.svg);
+  assert.ok(first, 'no colour layer groups in the output');
+  const luma = 0.299 * Number(first[1]) + 0.587 * Number(first[2]) + 0.114 * Number(first[3]);
+  assert.ok(
+    luma < 60,
+    `the bottom layer is rgb(${first[1]},${first[2]},${first[3]}) (luma ${luma.toFixed(0)}) — the ` +
+      'drawing has ink and something else was painted underneath it',
+  );
+  assert.equal(
+    countSubPaths(first[4]),
+    1,
+    'the ink layer is the silhouette, so it is exactly one closed contour with no holes',
+  );
+});
+
+test('[B3] every colour the palette promises appears in the drawing', async () => {
+  /**
+   * The palette editor lists a swatch per output colour and the groups panel
+   * draws a circle for it, so a colour that survives the segmentation and then
+   * loses every one of its shapes to an area floor is a swatch that paints
+   * nothing. The Enhance floor is a *simplification*, and simplifying a colour
+   * out of existence is a different act from tidying its edges — so a layer the
+   * floor would empty is retraced at Minimum Area instead.
+   *
+   * Measured at the setting where it bites: 16 colours with Enhance on leaves
+   * two colours whose every region is under the floor.
+   */
+  const r = await engine.vectorize(artworkIn, { ...S, colorCount: 16, enhance: true });
+  const painted = new Set(
+    fillLayerChunks(r.svg)
+      .filter((layer) => countSubPaths(layer.body) > 0 || /<(rect|circle)\b/.test(layer.body))
+      .map((layer) => layer.fill.replace(/\s+/g, '')),
+  );
+  const missing = r.palette
+    .map((c) => `rgb(${c.r},${c.g},${c.b})`)
+    .filter((fill) => !painted.has(fill));
+  assert.deepEqual(
+    missing,
+    [],
+    `the palette promises ${r.palette.length} colours and ${missing.length} of them ` +
+      `(${missing.join(', ')}) are nowhere in the document`,
   );
 });
 
