@@ -271,6 +271,71 @@ test('[B3] at the app\'s own minimum window size nothing is hidden, only scrolle
   }
 });
 
+test('[B3] the output colour column is on screen at the minimum window, not sideways', async ({
+  app,
+  page,
+}) => {
+  /**
+   * The test above proves every control is *reachable* at 900x640. This one
+   * asks the question a customer asks: is it there?
+   *
+   * Measured at the documented minimum (viewport 900x608): `settings-panel`
+   * scrollWidth 863 against clientWidth 636, `merge-threshold` at x=937,
+   * `color-sort` at x=928, all ten `color-group-toggle`s starting at x=894 and
+   * three of ten `palette-swatch`es past the right edge — the whole OUTPUT
+   * COLOURS column sits outside the panel, sliced mid-word ("OI", "M", "SO").
+   * Everything hit-tests fine after `scrollIntoView`, and nothing on screen
+   * suggests there is anything to scroll to: no scrollbar, no edge fade, no cut
+   * -off row. B3's headline behaviour — disable the background colour to get a
+   * transparent background — is behind a gesture with no cue.
+   *
+   * Vertical scrolling is fine and expected (the panel is a tall column of
+   * settings and a scrollbar says so). This is about the horizontal axis, where
+   * a whole labelled column is off to the side. Either fix passes: wrap the
+   * columns to two rows below ~1100px, or give the panel a persistent
+   * horizontal scroll affordance and keep the first colour control in view.
+   *
+   * At the true default window (1280x860) everything already fits, so this is a
+   * minimum-size check only.
+   */
+  await loadViaPicker(page, FIXTURE.flat512);
+  await waitForReady(page);
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0].setSize(900, 640);
+  });
+  await page.waitForTimeout(400);
+
+  const panel = await page.evaluate(() => {
+    const el = document.querySelector('.settings-panel');
+    if (!el) return null;
+    return { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth };
+  });
+  expect(panel, 'no .settings-panel').not.toBeNull();
+  expect(
+    panel!.scrollWidth,
+    `the settings panel is ${panel!.scrollWidth}px wide inside a ${panel!.clientWidth}px box — ` +
+      `${panel!.scrollWidth - panel!.clientWidth}px of controls are off to the side at the app's ` +
+      'own minimum window size',
+  ).toBeLessThanOrEqual(panel!.clientWidth + 1);
+
+  // ...and the controls themselves, without touching a scroller first: the
+  // three that carry REFERENCE B3's output-colour behaviour must be on screen
+  // where the panel is drawn.
+  for (const id of [TESTIDS.colorGroupToggle, TESTIDS.colorMergeThreshold, TESTIDS.colorSortOrder]) {
+    const selector = `${tid(id)} >> nth=0`;
+    const box = await page.locator(selector).evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, width: window.innerWidth };
+    });
+    expect(
+      box.right,
+      `${id} is drawn at x ${Math.round(box.left)}-${Math.round(box.right)} in a ${box.width}px ` +
+        'viewport — the user has to discover a horizontal scroll to reach it',
+    ).toBeLessThanOrEqual(box.width + 0.5);
+    expect(box.left, `${id} is drawn off the left edge`).toBeGreaterThanOrEqual(-0.5);
+  }
+});
+
 /**
  * Is the whole control on screen where it is drawn, and does a click there land
  * on it?

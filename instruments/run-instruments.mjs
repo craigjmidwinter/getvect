@@ -173,6 +173,13 @@ const GATES = [
   // the sawtooth-vs-sweep difference between clipart and a posterized photo.
   ['maxLayerCompactness', 'layerCompactness', 'max', (v) => v.toFixed(2)],
   ['maxLayerCompactnessRatio', 'layerCompactnessRatio', 'max', (v) => `${v.toFixed(2)}x`],
+  // The LOCAL form of the same question (metrics.mjs `layerBoundaryWobble`):
+  // turning per unit boundary length. Compactness is a global perimeter/area
+  // ratio and cannot tell an intricate shape from a smooth one traced onto a
+  // noisy threshold; this walks both boundaries at the same step and asks how
+  // much the heading changes per unit travelled.
+  ['maxLayerWobble', 'layerWobble', 'max', (v) => v.toFixed(1)],
+  ['maxLayerWobbleRatio', 'layerWobbleRatio', 'max', (v) => `${v.toFixed(2)}x`],
   // B3: how many of the colours the user asked for — and the image actually has
   // — our own folds merged away before the palette was returned.
   ['maxPaletteShortfall', 'paletteShortfall', 'max', String],
@@ -250,6 +257,10 @@ function table(rows) {
     // mean boundary raggedness of the colour layers.
     ['sInk', (r) => fmt(r.metrics?.regionStrictInkRecall ?? r.metrics?.strictInkRecall, 3), 6],
     ['cmpct', (r) => fmt(r.metrics?.layerCompactness, 2), 6],
+    // Turning per unit boundary length: a smooth arc through a shading gradient
+    // is small, a sawtooth through the same gradient is large. The number the
+    // belly seam and the paw pad are lost on.
+    ['wobble', (r) => fmt(r.metrics?.layerWobble, 1), 7],
     // Worst region's foreign-colour leak, as a percentage of the crop: a
     // colour the source crop does not contain, painted into it.
     [
@@ -481,6 +492,7 @@ async function main() {
       cubicCount: structure.cubicCount,
       layerCount: structure.layerCount,
       layerCompactness: structure.layerCompactness,
+      layerWobble: structure.layerWobble,
       nearDuplicateFillPairs: structure.nearDuplicateFillPairs,
       paletteSize: Array.isArray(result.palette) ? result.palette.length : null,
       sourceColors: typeof result.sourceColors === 'number' ? result.sourceColors : null,
@@ -595,6 +607,10 @@ async function main() {
         if (metrics.layerCompactness != null && exemplar.layerCompactness) {
           metrics.layerCompactnessRatio = metrics.layerCompactness / exemplar.layerCompactness;
         }
+        metrics.exemplarLayerWobble = exemplar.layerWobble;
+        if (metrics.layerWobble != null && exemplar.layerWobble) {
+          metrics.layerWobbleRatio = metrics.layerWobble / exemplar.layerWobble;
+        }
         if (metrics.regions && exemplar.regions?.length) {
           for (const [i, r] of metrics.regions.entries()) {
             const e = exemplar.regions[i];
@@ -674,7 +690,9 @@ async function main() {
           `curve ratio ${fmt(r.metrics.curveCommandRatio, 3)} vs ${fmt(e.curveCommandRatio, 3)}, ` +
           `MAE ${fmt(r.metrics.meanColorError)} vs ${fmt(e.meanColorError)}, ` +
           `layer compactness ${fmt(r.metrics.layerCompactness)} vs ${fmt(e.layerCompactness)} ` +
-          `(${fmt(r.metrics.layerCompactnessRatio)}x) ` +
+          `(${fmt(r.metrics.layerCompactnessRatio)}x), ` +
+          `boundary wobble ${fmt(r.metrics.layerWobble, 1)} vs ${fmt(e.layerWobble, 1)} ` +
+          `(${fmt(r.metrics.layerWobbleRatio)}x) ` +
           `(exemplar rasterized from its ${e.contentBox?.width}x${e.contentBox?.height} content box)`,
       );
     }

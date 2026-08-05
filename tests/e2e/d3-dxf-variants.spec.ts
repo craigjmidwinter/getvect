@@ -42,6 +42,32 @@ test('[D3] the DXF curve variant is a control, not just an engine option', async
   await expect(select).toHaveValue('splines');
 });
 
+test('[D4] the DXF variant select is dead when the row it belongs to is dead', async ({ page }) => {
+  /**
+   * With no image loaded every control in the export row is correctly disabled
+   * — SVG, EPS, DXF, PDF and PNG all grey out — except this `<select>`, which
+   * stays fully interactive: `src/renderer/App.tsx` renders the sibling buttons
+   * with `disabled={!ready || exporting !== null}` and gives the select no
+   * `disabled` prop at all. It is the only live control in a dead row, and it
+   * configures an export that cannot happen.
+   *
+   * Checked before anything is loaded (the disabled case) and after (the live
+   * case), because "disable it forever" is not a fix either.
+   */
+  const select = page.locator(tid(TESTIDS.exportDxfCurves));
+  await expect(select).toHaveCount(1);
+  await expect(page.locator(tid(TESTIDS.exportDxf))).toBeDisabled();
+  await expect(
+    select,
+    'the DXF curve-encoding select is interactive with no image loaded, next to a disabled DXF ' +
+      'button — it configures an export that cannot happen',
+  ).toBeDisabled();
+
+  await loadViaPicker(page, FIXTURE.flat512);
+  await waitForReady(page);
+  await expect(select).toBeEnabled();
+});
+
 test('[D3] "splines" keeps the fitted curves and "lines" flattens them', async ({
   page,
   exportDir,
