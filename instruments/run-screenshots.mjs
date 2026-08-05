@@ -31,6 +31,7 @@ const T = {
   detail: 'detail',
   paletteEditor: 'palette-editor',
   paletteSwatch: 'palette-swatch',
+  paletteSizeOption: 'palette-size-option',
   enhanceToggle: 'enhance-toggle',
   previewToggle: 'preview-toggle',
   previewSideBySide: 'preview-side-by-side',
@@ -38,6 +39,20 @@ const T = {
   zoomFit: 'zoom-fit',
   exportSvg: 'export-svg',
   exportStatus: 'export-status',
+  // REFERENCE B2-B6 — captured so each lap's contact sheet shows whether the
+  // reference product's control surface exists yet.
+  presetClipart: 'preset-clipart',
+  presetSketch: 'preset-sketch',
+  presetDrawing: 'preset-drawing',
+  detailLevel: 'detail-level',
+  noiseReduction: 'noise-reduction',
+  antiAliasing: 'anti-aliasing',
+  roundness: 'roundness',
+  minArea: 'min-area',
+  overlap: 'overlap',
+  circleDetection: 'circle-detection',
+  resultStyleStroked: 'result-style-stroked',
+  colorGroupToggle: 'color-group-toggle',
 };
 
 const log = [];
@@ -128,6 +143,55 @@ async function main() {
   await step(page, 'palette-editor', async () => {
     await page.locator(tid(T.paletteEditor)).waitFor({ timeout: 4000 });
     await page.locator(tid(T.paletteSwatch)).first().click({ timeout: 4000 });
+  });
+
+  await step(page, 'palette-size-options', async () => {
+    await page.locator(tid(T.paletteSizeOption)).first().waitFor({ timeout: 4000 });
+    await page.locator(`${tid(T.paletteSizeOption)}[data-size="6"]`).click({ timeout: 4000 });
+    await waitReady(page);
+  });
+
+  await step(page, 'preset-sketch', async () => {
+    await click(page, T.presetSketch);
+    await waitReady(page);
+  });
+
+  await step(page, 'preset-drawing', async () => {
+    await click(page, T.presetDrawing);
+    await waitReady(page);
+  });
+
+  await step(page, 'preset-clipart-detail-level', async () => {
+    await click(page, T.presetClipart);
+    await waitReady(page);
+    await page.locator(tid(T.detailLevel)).selectOption('medium', { timeout: 4000 });
+    await waitReady(page);
+  });
+
+  await step(page, 'quality-enhancement-controls', async () => {
+    for (const id of [T.noiseReduction, T.antiAliasing]) {
+      await page.locator(tid(id)).waitFor({ timeout: 4000 });
+    }
+    await page.locator(tid(T.noiseReduction)).selectOption('high', { timeout: 4000 });
+    await waitReady(page);
+  });
+
+  await step(page, 'advanced-vectorization-controls', async () => {
+    for (const id of [T.roundness, T.minArea, T.overlap, T.circleDetection]) {
+      await page.locator(tid(id)).waitFor({ timeout: 4000 });
+    }
+    await page.locator(tid(T.minArea)).selectOption('90', { timeout: 4000 });
+    await waitReady(page);
+  });
+
+  await step(page, 'result-style-stroked', async () => {
+    await click(page, T.resultStyleStroked);
+    await waitReady(page);
+  });
+
+  await step(page, 'transparent-background', async () => {
+    await page.locator(tid(T.colorGroupToggle)).first().click({ timeout: 4000 });
+    await waitReady(page);
   });
 
   await step(page, 'second-image-noisy', async () => {

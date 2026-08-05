@@ -93,6 +93,9 @@ test('a 1024x1024 image vectorizes well under the 10s budget', async () => {
 });
 
 test('each setting observably changes the output', async () => {
+  // Necessary but NOT sufficient: a byte difference can be a geometry change no
+  // pixel can see. tests/engine/rendered.test.mjs rasterizes both sides and
+  // requires the picture itself to move.
   const cases = [
     ['colorCount', 8, 3],
     ['detail', 60, 5],
@@ -283,7 +286,12 @@ test('serialize dispatches to the right writer', async () => {
 
 test('the SVG groups paths into one <g fill> layer per colour', async () => {
   const r = await engine.vectorize(flat, S);
-  const groups = [...r.svg.matchAll(/<g fill="(#[0-9a-f]{6})"/g)].map((m) => m[1]);
+  // Notation-agnostic: REFERENCE D1 documents `rgb(r,g,b)` layer fills and
+  // tests/engine/parity.test.mjs asserts that form; the grouping rule below
+  // holds either way.
+  const groups = [...r.svg.matchAll(/<g[^>]*\bfill="(#[0-9a-f]{6}|rgb\([^)]*\))"/g)].map(
+    (m) => m[1],
+  );
   assert.ok(groups.length > 1, 'expected several colour layers');
   assert.equal(new Set(groups).size, groups.length, 'each colour gets exactly one group');
   assert.ok(!/<path[^>]*\bfill="/.test(r.svg), 'paths inherit their fill from the group');

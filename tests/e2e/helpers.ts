@@ -16,6 +16,9 @@ export const FIXTURE = {
   bmp: join(FIXTURES, 'shapes-256.bmp'),
   gif: join(FIXTURES, 'unsupported-animation.gif'),
   txt: join(FIXTURES, 'unsupported-notes.txt'),
+  /** Real artwork (1046x833) — the REFERENCE gold-standard source. Slow enough
+   *  to observe in-flight states, busy enough to exercise the quality knobs. */
+  snorlax: join(FIXTURES, 'reference', 'snorlax.png'),
 } as const;
 
 export { TESTIDS, expect };
@@ -55,6 +58,10 @@ export const test = base.extend<Fixtures>({
   page: async ({ app }, use) => {
     const page = await app.firstWindow();
     await page.waitForLoadState('domcontentloaded');
+    // playwright.config.ts's `use.actionTimeout` only reaches pages created by
+    // the browser fixtures; an Electron window needs it set explicitly, and
+    // without it a missing testid costs 30s instead of 8 (docs/HARNESS.md).
+    page.setDefaultTimeout(8_000);
     await use(page);
   },
 });
@@ -125,6 +132,116 @@ export async function waitForReady(page: Page, timeout = 25_000) {
 /** The SVG markup currently shown in the vector preview (REFERENCE C3). */
 export async function previewSvg(page: Page): Promise<string> {
   return page.locator(`${tid(TESTIDS.previewVector)} svg`).first().evaluate((el) => el.outerHTML);
+}
+
+/**
+ * Dispatch drag events (without dropping) so the app's drag-hover feedback can
+ * be asserted. `dropFiles` covers the drop half; this covers "the window must
+ * tell you it will accept the file" (REFERENCE A1).
+ */
+export async function dragOver(page: Page, testid: string, type: 'dragenter' | 'dragover' | 'dragleave') {
+  await page.evaluate(
+    ({ selector, type }) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File([new Uint8Array([1, 2, 3])], 'x.png', { type: 'image/png' }));
+      const el = document.querySelector(selector);
+      if (!el) throw new Error(`${selector} not found`);
+      el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
+    },
+    { selector: tid(testid), type },
+  );
+}
+
+// --- SVG structure helpers -------------------------------------------------
+// Mirrors of instruments/lib/metrics.mjs, kept small and dependency-free so
+// specs can assert on shape economy and layer structure. Anything heavier
+// (bounding boxes, fidelity) belongs in the instruments, not here.
+
+/** Parse `#rrggbb` or `rgb(r,g,b)` — REFERENCE D1 documents the latter. */
+export function parseColor(value: string): { r: number; g: number; b: number } | null {
+  const v = value.trim().toLowerCase();
+  const hex = /^#([0-9a-f]{6})$/.exec(v);
+  if (hex) {
+    const n = parseInt(hex[1], 16);
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  }
+  const rgb = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/.exec(v);
+  if (rgb) return { r: +rgb[1], g: +rgb[2], b: +rgb[3] };
+  return null;
+}
+
+const hex2 = (n: number) => n.toString(16).padStart(2, '0');
+
+/** Normalize any fill notation to lowercase `#rrggbb` for comparison. */
+export function normalizeColor(value: string): string | null {
+  const c = parseColor(value);
+  return c ? `#${hex2(c.r)}${hex2(c.g)}${hex2(c.b)}` : null;
+}
+
+/** Every `<g fill="…">` colour layer in document order, normalized to hex. */
+export function layerFills(svg: string): string[] {
+  return [...svg.matchAll(/<g[^>]*\bfill="([^"]+)"/g)]
+    .map((m) => normalizeColor(m[1]))
+    .filter((c): c is string => c !== null);
+}
+
+/** Every distinct fill anywhere in the document (`none` excluded). */
+export function fillsIn(svg: string): Set<string> {
+  const set = new Set<string>();
+  for (const m of svg.matchAll(/fill="([^"]+)"/g)) {
+    const c = normalizeColor(m[1]);
+    if (c) set.add(c);
+  }
+  return set;
+}
+
+/** Every `<g stroke="…">` layer, normalized to hex (REFERENCE B6 stroked style). */
+export function layerStrokes(svg: string): string[] {
+  return [...svg.matchAll(/<g[^>]*\bstroke="([^"]+)"/g)]
+    .map((m) => normalizeColor(m[1]))
+    .filter((c): c is string => c !== null);
+}
+
+/**
+ * Sub-paths (`M`/`m` starts) across every `<path d>`. A tracer that emits one
+ * compound path per colour hides every speck inside a single `<path>` element,
+ * so this — not `<path>` count — is the honest shape count (REFERENCE Economy).
+ */
+export function countSubPaths(svg: string): number {
+  let n = 0;
+  for (const m of svg.matchAll(/\sd="([^"]*)"/g)) n += (m[1].match(/[Mm]/g) ?? []).length;
+  return n;
+}
+
+/** Sub-paths that are exactly one source pixel (`h1v1h-1z` and friends). */
+export function countPixelSubPaths(svg: string): number {
+  let n = 0;
+  for (const m of svg.matchAll(/\sd="([^"]*)"/g)) {
+    n += (m[1].match(/[Mm][^MmZz]*?h1v1h-1\s*[Zz]/gi) ?? []).length;
+  }
+  return n;
+}
+
+/** Curve commands / (curve + line) commands. The exemplar scores ~0.64. */
+export function curveCommandRatio(svg: string): number {
+  let curves = 0;
+  let lines = 0;
+  for (const m of svg.matchAll(/\sd="([^"]*)"/g)) {
+    curves += (m[1].match(/[CcSsQqTtAa]/g) ?? []).length;
+    lines += (m[1].match(/[LlHhVv]/g) ?? []).length;
+  }
+  return curves + lines === 0 ? 0 : curves / (curves + lines);
+}
+
+/** Set a `<select>` by testid, firing input+change the way React expects. */
+export async function setSelect(page: Page, id: string, value: string) {
+  await page.locator(tid(id)).selectOption(value);
+}
+
+/** Set a checkbox by testid to an explicit state (click only if it differs). */
+export async function setCheckbox(page: Page, id: string, checked: boolean) {
+  const box = page.locator(tid(id));
+  if ((await box.isChecked()) !== checked) await box.click();
 }
 
 /** Set a range/number input by testid and fire input+change. */
