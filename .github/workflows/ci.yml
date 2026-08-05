@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: typecheck · engine tests · build
+    # macOS is the platform GetVect is developed and released on, and the postinstall
+    # step that de-quarantines Electron is macOS-specific.
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Engine contract tests
+        # Pure Node, no Electron, no display needed. These are the fidelity contracts:
+        # determinism, setting semantics, SVG/EPS/DXF/PDF structure, alpha handling.
+        run: npm run test:engine
+
+      - name: Build
+        run: npm run build
+
+  # ---------------------------------------------------------------------------
+  # Playwright acceptance suite (tests/e2e). Not enabled yet: driving a real
+  # Electron window on a hosted runner is flaky — window activation, GPU and
+  # code-signing all differ from a developer machine, and a red run that means
+  # "CI is CI" trains everyone to ignore the badge.
+  #
+  # To turn it on: uncomment, and expect to need a display on Linux runners
+  # (`xvfb-run -a npx playwright test`). Do NOT add `npx playwright install`;
+  # the suite uses the `_electron` launcher and needs no browser download.
+  # ---------------------------------------------------------------------------
+  # e2e:
+  #   name: acceptance suite (Playwright + Electron)
+  #   runs-on: macos-latest
+  #   timeout-minutes: 30
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 20
+  #         cache: npm
+  #     - run: npm ci
+  #     - run: npm test
+  #     - uses: actions/upload-artifact@v4
+  #       if: always()
+  #       with:
+  #         name: e2e-report
+  #         path: |
+  #           artifacts/e2e-report/
+  #           artifacts/e2e-results.json
+  #           artifacts/test-results/
