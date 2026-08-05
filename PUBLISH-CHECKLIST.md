@@ -359,20 +359,47 @@ gh browse craigjmidwinter/getvect
 
 ## 8. Post-publish (optional, not blockers)
 
-- **App icon.** `docs/assets/icon-512.png` is generated from the fox mascot (trimmed,
-  centred, 512×512, transparent). Wiring it into the Electron build is app code, so it was
-  left alone. To produce the macOS bundle icon:
+- **App icon. Done.** The fox artwork lives in `build/` (`icon.icns`, `icon.png` 512,
+  `icon-1024.png`) and is wired all the way through:
+
+  | where | what does it |
+  | --- | --- |
+  | packaged `.app` bundle icon | `mac.icon: build/icon.icns` in [`electron-builder.yml`](./electron-builder.yml) |
+  | Dock icon under `npm start` | `app.dock.setIcon()` in `src/main/main.ts` (dev only — a packaged app already has the icns, and the whole identity block is skipped under `GETVECT_E2E=1`) |
+  | window/taskbar icon on Linux + Windows | `BrowserWindow({ icon })`, resolved from `process.resourcesPath` in a packaged app via the `extraResources` entry |
+  | menu bar + About panel | `app.setName('GetVect')` + `app.setAboutPanelOptions()` |
+  | renderer favicon | `src/renderer/favicon.png` (32px, `sips`-derived from `build/icon-1024.png`), fingerprinted into `dist/renderer/assets/` by Vite |
+
+  To regenerate the icns from new artwork:
 
   ```bash
   mkdir -p /tmp/GetVect.iconset
   for s in 16 32 64 128 256 512; do
-    sips -z $s $s docs/assets/icon-512.png --out /tmp/GetVect.iconset/icon_${s}x${s}.png
-    sips -z $((s*2)) $((s*2)) docs/assets/icon-512.png --out /tmp/GetVect.iconset/icon_${s}x${s}@2x.png
+    sips -z $s $s build/icon-1024.png --out /tmp/GetVect.iconset/icon_${s}x${s}.png
+    sips -z $((s*2)) $((s*2)) build/icon-1024.png --out /tmp/GetVect.iconset/icon_${s}x${s}@2x.png
   done
   iconutil -c icns /tmp/GetVect.iconset -o build/icon.icns
   ```
 
-  Then point the packager (and `BrowserWindow`'s `icon` on Linux/Windows) at it.
+- **Signing and notarization — still to do.** `npm run dist` produces
+  `release/mac-arm64/GetVect.app` plus a dmg and a zip, and it is **unsigned on purpose**:
+  `mac.identity: null` in `electron-builder.yml`. That is fine locally (the build machine
+  runs its own output) and wrong for distribution — a downloaded unsigned app is
+  quarantined, and on Apple Silicon Gatekeeper will refuse it outright rather than offering
+  the right-click-Open escape hatch. For a real release:
+
+  1. A **Developer ID Application** certificate in the login keychain. Then drop
+     `identity: null` (electron-builder finds the cert on its own, or set `CSC_NAME`).
+  2. `hardenedRuntime: true` and an entitlements plist — the hardened runtime is a
+     prerequisite for notarization.
+  3. Notarization: `mac.notarize: true` plus `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` /
+     `APPLE_TEAM_ID` (or an App Store Connect API key) in the environment. electron-builder
+     staples the ticket for you.
+  4. Verify the result — `codesign --verify --deep --strict --verbose=2 GetVect.app` and
+     `spctl -a -vv -t install GetVect.app` — and check on a machine that has never built it.
+
+  Until that is done, say plainly in the release notes that the download is unsigned and
+  give the `xattr -dr com.apple.quarantine /Applications/GetVect.app` incantation.
 
 - **Dependency licence hygiene.** All direct dependencies are MIT-compatible:
 
