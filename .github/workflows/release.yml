@@ -80,37 +80,25 @@ jobs:
       - name: Build
         run: npm run build
 
-      # `--publish always` rather than `gh release create`, because only
-      # electron-builder writes `latest-mac.yml` — the feed file the shipped
-      # app reads, carrying each artefact's sha512 and size. A release assembled
-      # by hand would have a dmg and a zip and no way for any installed copy to
-      # ever learn about it.
+      # THE DRAFT IS CREATED HERE, NOT BY electron-builder — and that ordering is
+      # the fix for a real failure, not a preference.
       #
-      # The release is created as a draft (electron-builder.yml, `publish.releaseType`)
-      # so it is never the "latest release" while its assets are still uploading.
-      - name: Package and publish
-        run: npm run dist -- --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: The release must have all three artefacts
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          set -euo pipefail
-          ASSETS=$(gh release view "$TAG" --json assets --jq '.assets[].name')
-          echo "$ASSETS"
-          for want in '\.dmg$' '\.zip$' '^latest-mac\.yml$'; do
-            echo "$ASSETS" | grep -qE "$want" || { echo "::error::no asset matching $want"; exit 1; }
-          done
-
-      - name: Release notes
+      # electron-builder runs one publisher per target (zip, dmg). Both look for
+      # an existing release by tag, both find nothing, and both create one:
+      # GitHub happily accepts two *drafts* sharing a tag, because a draft has no
+      # tag to collide on until it is published. The first attempt at v0.1.0
+      # produced exactly that — two drafts, the dmg and latest-mac.yml in one,
+      # a lone blockmap in the other, and a release the updater could not read.
+      #
+      # A release that already exists when electron-builder starts closes the
+      # race: both publishers find it and upload into it.
+      - name: Create the draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
+          set -euo pipefail
           cat > notes.md <<EOF
           ## GetVect $VERSION
 
@@ -139,7 +127,46 @@ jobs:
 
           Full docs: <https://getvect.midwinter.io/docs.html>
           EOF
-          gh release edit "$TAG" --notes-file notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists; reusing it"
+            gh release edit "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --draft --title "GetVect $VERSION" --notes-file notes.md
+          fi
+
+      # `--publish always` rather than `gh release create`, because only
+      # electron-builder writes `latest-mac.yml` — the feed file the shipped
+      # app reads, carrying each artefact's sha512 and size. A release assembled
+      # by hand would have a dmg and a zip and no way for any installed copy to
+      # ever learn about it.
+      #
+      # The release stays a draft (electron-builder.yml, `publish.releaseType`)
+      # so it is never the "latest release" while its assets are still uploading.
+      - name: Package and publish
+        run: npm run dist -- --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Exactly one release for this tag, carrying all three artefacts. The
+      # count check is not paranoia: duplicate drafts are the specific way this
+      # has already gone wrong, and they are invisible on the releases page
+      # until one of them is published.
+      - name: The release must be one release with all three artefacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          COUNT=$(gh api repos/${{ github.repository }}/releases --jq "[.[] | select(.tag_name == \"$TAG\")] | length")
+          if [ "$COUNT" != "1" ]; then
+            echo "::error::$COUNT releases carry the tag $TAG; expected exactly 1"
+            exit 1
+          fi
+          ASSETS=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          echo "$ASSETS"
+          for want in '\.dmg$' '\.zip$' '^latest-mac\.yml$'; do
+            echo "$ASSETS" | grep -qE "$want" || { echo "::error::no asset matching $want"; exit 1; }
+          done
 
       # Last: the release goes public only once every asset is up and checked.
       - name: Publish the release
