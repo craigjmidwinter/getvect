@@ -1,0 +1,166 @@
+import { useCallback, useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
+import { TESTIDS } from '../../shared/testids';
+
+/**
+ * Preview pane — REFERENCE C.
+ *
+ * One zoom/pan state drives both views, so "synchronised" is structural rather
+ * than something that has to be kept in step: the original raster and the
+ * traced SVG read the same `zoom`/`pan` props and publish them verbatim as
+ * `data-zoom` / `data-pan-x` / `data-pan-y` (docs/TESTIDS.md C).
+ *
+ * Geometry: each view is an `overflow:hidden` window with an absolutely
+ * positioned anchor at its centre. The stage hanging off that anchor is exactly
+ * image-sized and transformed with
+ *
+ *     scale(zoom) translate(pan - imageSize / 2)
+ *
+ * so `pan` is measured in *image pixels* (the unit docs/TESTIDS.md requires for
+ * `pan-state`) and zooming keeps the pane centre fixed. Nothing here depends on
+ * the view's own pixel size, so the two views cannot drift apart.
+ */
+
+export type PreviewMode = 'original' | 'vector' | 'side-by-side';
+
+export interface PreviewImage {
+  url: string;
+  width: number;
+  height: number;
+}
+
+interface PreviewProps {
+  mode: PreviewMode;
+  zoom: number;
+  pan: { x: number; y: number };
+  /** Drag delta in CSS pixels; the pane converts to image pixels itself. */
+  onPanBy: (dxImage: number, dyImage: number) => void;
+  image: PreviewImage | null;
+  /** The exact SVG document the engine produced (REFERENCE C3). */
+  svg: string | null;
+  paneRef: React.RefObject<HTMLDivElement>;
+  busy: boolean;
+}
+
+/** Attribute-safe number formatting — both views must emit identical strings. */
+export const fmt = (n: number): string => String(Math.round(n * 1e6) / 1e6);
+
+export function Preview({ mode, zoom, pan, onPanBy, image, svg, paneRef, busy }: PreviewProps) {
+  const dragRef = useRef<{ x: number; y: number } | null>(null);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+
+  const onMouseDown = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      dragRef.current = { x: event.clientX, y: event.clientY };
+      event.preventDefault();
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const move = (event: MouseEvent) => {
+      const start = dragRef.current;
+      if (!start) return;
+      const scale = zoomRef.current || 1;
+      const dx = (event.clientX - start.x) / scale;
+      const dy = (event.clientY - start.y) / scale;
+      if (dx === 0 && dy === 0) return;
+      dragRef.current = { x: event.clientX, y: event.clientY };
+      onPanBy(dx, dy);
+    };
+    const up = () => {
+      dragRef.current = null;
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+  }, [onPanBy]);
+
+  const viewAttrs = {
+    'data-zoom': fmt(zoom),
+    'data-pan-x': fmt(pan.x),
+    'data-pan-y': fmt(pan.y),
+  } as const;
+
+  const stageStyle: CSSProperties = image
+    ? {
+        width: `${image.width}px`,
+        height: `${image.height}px`,
+        transform: `scale(${zoom}) translate(${pan.x - image.width / 2}px, ${pan.y - image.height / 2}px)`,
+      }
+    : {};
+
+  const showOriginal = mode === 'original' || mode === 'side-by-side';
+  const showVector = mode === 'vector' || mode === 'side-by-side';
+
+  return (
+    <div
+      ref={paneRef}
+      data-testid={TESTIDS.previewPane}
+      data-mode={mode}
+      className={`preview-pane mode-${mode}`}
+      onMouseDown={onMouseDown}
+    >
+      <View
+        testid={TESTIDS.previewOriginal}
+        label="Original"
+        hidden={!showOriginal}
+        attrs={viewAttrs}
+        stageStyle={stageStyle}
+      >
+        {image ? (
+          <img className="raster" src={image.url} width={image.width} height={image.height} alt="" draggable={false} />
+        ) : null}
+      </View>
+      <View
+        testid={TESTIDS.previewVector}
+        label="Vector"
+        hidden={!showVector}
+        attrs={viewAttrs}
+        stageStyle={stageStyle}
+      >
+        {svg ? (
+          <div className="svg-host" dangerouslySetInnerHTML={{ __html: svg }} />
+        ) : (
+          <div className="svg-placeholder">{busy ? 'tracing…' : ''}</div>
+        )}
+      </View>
+      {!image ? <p className="preview-empty">No image loaded yet — drop one on the left.</p> : null}
+    </div>
+  );
+}
+
+function View({
+  testid,
+  label,
+  hidden,
+  attrs,
+  stageStyle,
+  children,
+}: {
+  testid: string;
+  label: string;
+  hidden: boolean;
+  attrs: Record<string, string>;
+  stageStyle: CSSProperties;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      data-testid={testid}
+      className={`preview-view${hidden ? ' is-hidden' : ''}`}
+      {...attrs}
+    >
+      <span className="view-label">{label}</span>
+      <div className="view-anchor">
+        <div className="view-stage" style={stageStyle}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -2,9 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      `blob:` is allowed for scripts/workers only: the vectorization worker is
+      bundled inline by Vite and instantiated from a blob URL, which is what
+      keeps tracing off the UI thread (src/renderer/lib/engineClient.ts).
+      Nothing is fetched over the network — `connect-src` stays local.
+    -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'"
+      content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' data: blob:"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GetVect</title>
