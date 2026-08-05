@@ -1622,6 +1622,30 @@ export function toBlackAndWhite(image: RasterImage, threshold: number): RasterIm
  * the near-duplicates a soft edge or a gradient leaves behind, not the artwork.
  *
  * Returns the surviving palette plus the index remap, and rewrites `indices`.
+ *
+ * **The survivor is re-centred on what it ends up painting.** The obvious
+ * implementation — walk the palette in coverage order, map each entry onto the
+ * first kept entry within the window, keep that entry's colour — makes the fold
+ * a *winner-takes-all* over histogram peaks, and on soft-shaded artwork that is
+ * how a face gets painted the wrong colour. On the shaded gold standard the
+ * cream ramp across the character's face arrives here as four modes —
+ * rgb(240,228,217), rgb(224,212,201), rgb(210,198,187), rgb(198,186,179) — and
+ * whichever of them happens to cover the most of the *whole image* swallows its
+ * neighbours and repaints them with its own colour. The winner was the darkest:
+ * a band whose pixels average rgb(210,198,188) came back rgb(197,186,179), 13
+ * units too dark across 44 % of the face, which is exactly the muddy grey a
+ * person names ("why is his face dirty") and which no other instrument in this
+ * repo could see — the outline is fine, the leak is 0 %, the wobble is under the
+ * exemplar's, and the mean colour error of a 13-unit miss over half a crop is
+ * inside every bar.
+ *
+ * So the grouping decision is made on the *original* colours — unchanged, so
+ * this cannot fold differently than it did, and the colour COUNT it returns is
+ * the same one every existing gate was measured against — and only then is each
+ * survivor moved to the coverage-weighted mean of the group it absorbed. A fold
+ * that absorbs nothing does not move at all; a fold that absorbs a neighbour
+ * lands between them in proportion to how much of the picture each one is, which
+ * is the colour a person would have picked for the region they now share.
  */
 export function mergeSimilarColors(
   indices: Uint8Array,
@@ -1649,6 +1673,36 @@ export function mergeSimilarColors(
       kept.push({ ...c });
     }
     map[i] = target;
+  }
+  // Re-centre: each survivor becomes the coverage-weighted mean of its group.
+  // Computed BEFORE `remapIndices`, because after it the per-slot coverage is
+  // the group's and the members are gone.
+  {
+    const coverage = coverageOf(indices, palette.length);
+    const sumR = new Float64Array(kept.length);
+    const sumG = new Float64Array(kept.length);
+    const sumB = new Float64Array(kept.length);
+    const sumN = new Float64Array(kept.length);
+    for (let i = 0; i < palette.length; i++) {
+      const w = coverage[i];
+      if (!w) continue;
+      const g = map[i];
+      sumR[g] += palette[i].r * w;
+      sumG[g] += palette[i].g * w;
+      sumB[g] += palette[i].b * w;
+      sumN[g] += w;
+    }
+    for (let g = 0; g < kept.length; g++) {
+      // A group no pixel uses keeps the colour it came in with: there is nothing
+      // to take a mean of, and inventing one would put a colour in the palette
+      // that names no region.
+      if (sumN[g] === 0) continue;
+      kept[g] = {
+        r: clamp255(sumR[g] / sumN[g]),
+        g: clamp255(sumG[g] / sumN[g]),
+        b: clamp255(sumB[g] / sumN[g]),
+      };
+    }
   }
   remapIndices(indices, map);
   return { palette: kept, map };
