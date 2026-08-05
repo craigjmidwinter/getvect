@@ -148,6 +148,7 @@ Reported per fixture (`artifacts/metrics.json`):
 | `strokeWidth` / `sourceStrokeWidth` / `strokeWidthRatio` | per region: the trace's local stroke width on the source's own medial axis (the shorter of the horizontal and vertical ink runs through each skeleton point, 0 where the trace has no ink there), the source's, and ours over it. Only where the source is drawing a *stroke* — a point whose longer run is at least 3× its shorter one — because inside a filled region every interior pixel is on some medial axis and its "width" is the region: with blobs counted, one eye outvoted every line in the gold standard's face box | reported |
 | `strokeWidthCv` / `strokeWidthCvRatio` | the coefficient of variation of that width, and ours over the exemplar's in the crop where we are worst. **The thing REFERENCE's blind A/B is decided on, and the thing every other ink metric here reads backwards**: a line that thickens, thins and breaks recalls more ink and joins more components than an even one, so `regionStrictInkRecall` once scored us 0.967 against an exemplar's 0.755 for a mouth arc that tapered to a spindle and detached from both fangs. Gated as a ratio because the absolute cv belongs to the artwork (a drawn line genuinely varies) while "less even than the real product's trace of the same line" belongs to us | `maxStrokeWidthCvRatio` on `reference-fox`. **A ratchet, not parity**: ours is 1.64x on the muzzle crop (cv 0.455 against the exemplar's 0.277) and the bar is 1.8; the number to aim at is 1.15x |
 | `strokeWidthOverExemplar` | our fattening over the exemplar's, worst region. On the face crop the real product traces the source's stroke at 1.01x and we trace it at 1.12x, i.e. 1.11x its fattening | `maxStrokeWidthOverExemplar` 1.25 on `reference-fox` |
+| `regions[].bandFit` / `bandStep` / `bandStepExcess` / `bandSpread` / `bandCount`, and `regionBandFit` / `regionBandStep` / `regionBandStepExcess` aggregated to the worst crop | **Shading-band quality** (`metrics.mjs shadingBandQuality`) — the only metric here that is not about an edge. Every other ink/geometry number in this file was built on flat clipart with a black outline, where the interesting failures live *on* the outline; soft-shaded artwork fails somewhere else, and it fails invisibly. `bandFit` asks *is each band the colour of what it covers* — for every flat colour the trace paints in the crop, the distance from its fill to the mean **source** colour under it, area-weighted, in 0..255 units. `bandStepExcess` asks *how much of the seam did we invent* — the largest (our step between two touching bands) minus (the distance between those two bands' own mean source colours). A real colour edge scores ~0 however huge it is (the fox scores 0.0–0.2 everywhere, which is the sanity check); a seam drawn across a soft ramp scores its whole contrast. `bandStep` alone is reported but not gated: a crop big enough to hold a face also holds a real edge, and the biggest step in the shaded fixture's face box is two blues in the ear. Ink is excluded from all of it — a drawn outline is *supposed* to be a hard step — and `bandSpread` (how much source variation each band swallows) is context: it belongs to the artwork and the colour budget, not to the tracer. Bands are found as **peaks** (heaviest colour claims everything within 12 RGB units, repeat) rather than by exact pixel value, because our raster is antialiased and an exemplar in a padded viewBox is rendered at 2× and resampled — grouped exactly, the real product's face reported *one* band and a seam of zero on a picture that visibly has two | gated on `local-snorlax` (see "Local fixtures"): the face crop holds `maxBandFit` 3.5 and `maxBandStepExcess` 10 |
 | `layerCompactness` / `layerCompactnessRatio` | mean `perimeter / (2·√(π·area))` over the `<g fill>` layers covering ≥ 1 % of the drawing (1.0 = a disc), and ours over the exemplar's. The sawtooth-vs-sweep difference between clipart and a posterized photo, which MAE cannot see (both sides of a ragged seam are nearly the right colour), ink recall cannot see (no ink) and sub-path count cannot see (one region either way). Computed from path data, not by rasterizing each layer, so it stays pure and deterministic | ≤ 0.8× the exemplar's on the gold standard (its mean is 4.55; ours is 2.99, i.e. 0.66×). The bar was 1.1× when we were the ragged one; on this artwork the real product carries the extra perimeter, because two of its seven layers are near-identical browns whose boundaries interleave |
 | `layerWobble` / `layerWobbleRatio` | mean **turning per unit boundary length** over the same layers, and ours over the exemplar's. Compactness is a *global* perimeter-over-area ratio and cannot tell a genuinely intricate shape from a smooth one traced onto a noisy threshold; this walks every boundary at the same fraction of that drawing's own diagonal (so the exemplar's 10× viewBox needs no scale factor) and measures how much the heading changes per unit travelled. A soft shading gradient crossed by one arc scores low; the same gradient crossed by a sawtooth scores high **however few sub-paths it is written in and however many of its commands are cubics** — which is exactly the hole `curveCommandRatio` leaves: our commands *are* curves, and they can be curves fitted to a wobble the real product never had. Flat fixtures score 6-13, the gold-standard exemplar 80.2, ours 28.4 | ≤ 0.45× the exemplar's on `reference-fox` (ours is 0.35×; `reference-fox-default` is 0.36×, reported not gated). The bar is below 1 because on this artwork we are the smooth one — the real product spends two of its seven layers on near-identical browns whose boundaries interleave |
 | `sourceColors` / `paletteShortfall` | the palette size **before** our own folds, and `min(requested, sourceColors) − delivered`. Separates "the image ran out" from "our cleanup merged them": 8 requested, 6 found, 5 delivered is a shortfall of 1 and nothing to do with the picture | ≤ 1 on `reference-fox` and `reference-fox-default`, ≤ 2 on `reference-fox-white`, ≤ 3 on the 16-colour row. The exemplar settles what "enough" is: its capture at the 8-colour setting carries seven `<g fill>` layers, two pairs of which are inside the halo window `maxNearDuplicateFills: 0` forbids us — fold those and the real product's own answer is the five we deliver |
@@ -231,7 +232,8 @@ A fixture entry may also carry:
 
   **A box may carry its own thresholds.** `salientRegions[].thresholds` accepts
   `maxMeanColorError`, `minSsim`, `minInkRecall`, `minStrictInkRecall`,
-  `maxInkComponentRatio`, `maxForeignColorRatio` and `maxStrokeWidthCvRatio`,
+  `maxInkComponentRatio`, `maxForeignColorRatio`, `maxStrokeWidthCvRatio`,
+  `maxBandFit`, `maxBandStep`, `maxBandStepExcess` and `maxBandFitRatio`,
   checked against that crop alone and
   reported as `region "<name>" <metric> …`. The aggregate gates read the *worst* crop,
   which is the right default and the wrong tool when two crops deserve different numbers:
@@ -267,6 +269,9 @@ is a potrace-era artifact of the captured exemplar and carries no user-visible
 behaviour, whereas the fill notation is what a diff against real output trips over.
 `tests/engine/parity.test.mjs` and `tests/e2e/d5-export-formats.spec.ts` enforce the
 notation; `tests/engine/engine.test.mjs` enforces the viewBox.
+
+Local fixtures (see below) write the same four under `artifacts/local/` instead, so the
+tracked contact sheet stays reproducible from a clone.
 
 Side outputs for eyeballing: `artifacts/vector/<id>.svg`, `artifacts/raster/<id>.png`
 (the re-rasterized SVG), `artifacts/diff/<id>.png` (absolute difference, ×4 amplified),
@@ -379,6 +384,111 @@ not contain. `tests/engine/parity.test.mjs` asks the same question at the engine
 
 libvips has no BMP loader, so `instruments/lib/decode.mjs` carries a small 24/32-bit BMP
 decoder. The app itself doesn't need it — Chromium decodes BMP natively.
+
+## Local fixtures — measuring against artwork we cannot ship
+
+Some of the artwork this engine most needs to be measured against cannot be redistributed.
+This repo is public; its original gold standard was a soft-shaded character illustration
+plus the real the reference product capture of it, and both were purged from the tree **and from
+git history** for licensing before the repo went public. That purge was correct and it
+also deleted the only measurement of a whole class of failure — every fixture that
+remains is *flat* clipart with a hard outline, so nothing here could see what a soft
+gradient does to a quantizer, and the engine regressed by neglect on that class until a
+band boundary was being drawn straight through a character's face.
+
+The answer is not to re-commit the artwork. It is that **a file you may not redistribute
+is still a file you may measure against.**
+
+### The mechanism
+
+- **`fixtures/local/` is git-ignored in its entirety** (`.gitignore`). Nothing under it is
+  tracked — not the manifest, not the images, not a `.gitkeep`. That is deliberate: a
+  tracked placeholder is a directory somebody can accidentally `git add -A` into, and the
+  only safe rule for a public repo is that the path is invisible to git, full stop. Put
+  your own assets there; nothing else has to happen.
+- **The merge happens in the consumer, never in the generator.** If
+  `fixtures/local/manifest.local.json` exists, `instruments/run-instruments.mjs` appends
+  its `fixtures[]` to the tracked set at runtime (`loadFixtures()`). `npm run fixtures`
+  does not know the directory exists, so nothing local can ever be written into the
+  tracked `fixtures/manifest.json`.
+- **Absence is never a failure.** No directory, no manifest, an unreadable manifest, a
+  manifest naming an image that is not there — each of those logs at most one line and
+  runs the tracked set exactly as it would have. CI and a fresh clone see zero difference:
+  no rows, no skips, no exit code.
+- **Local rows are labelled.** They print as `[local] <id>` in the table and in every
+  stdout line, and their side outputs go to `artifacts/local/{vector,raster,diff,region}/`
+  rather than beside the tracked ones — so nobody mistakes one of these numbers for
+  something a reviewer can reproduce from a clone.
+- A local row's gates are enforced like any other, and a local **failure** does fail the
+  run. That is the point: the whole exercise is worthless if the numbers cannot go red.
+
+### The schema
+
+`manifest.local.json` is `{ "fixtures": [ … ] }` and each entry is exactly a tracked
+manifest entry — `id`, `file`, `kind`, `format`, `width`, `height`, `supported`,
+`settings`, `exemplar`, `compareTo`, `salientRegion(s)`, `thresholds`, `note` — with
+**every path relative to `fixtures/local/`** rather than to `fixtures/`. Anything the
+tracked manifest can say, this can say. Underscore-prefixed keys (`_doc`, `_note`,
+`_assets`) are ignored by the runner and are where the local set documents itself, since
+no reviewer will ever see the file.
+
+```jsonc
+{
+  "fixtures": [{
+    "id": "local-something",          // prints as "[local] local-something"
+    "file": "something.png",          // fixtures/local/something.png
+    "exemplar": "something.svg",      // fixtures/local/something.svg
+    "supported": true,
+    "settings": { "colorCount": 16, "enhance": true },
+    "salientRegions": [{ "name": "face", "x": 300, "y": 200, "width": 360, "height": 200,
+                         "thresholds": { "maxBandFit": 3.5 } }],
+    "thresholds": { "meanColorError": 7, "maxMs": 10000 }
+  }]
+}
+```
+
+### What the local set is measuring today
+
+The shaded character artwork and its real-product captures, as `local-snorlax` (16 colours
++ Enhance + Smart AA — the configuration the band defect was reported at) and
+`local-snorlax-default` (`DEFAULT_SETTINGS`, no `settings` key). Both declare the face,
+the muzzle and the paw pad. Everything they gate is a ratchet measured on the build that
+introduced them, except the two band bars on the face crop, which are aspirational — see
+`shadingBandQuality` above and the `_note` in the manifest.
+
+### The ceiling, stated plainly
+
+**The real product's "Enhance image with AI" is not a filter. It is generative
+image-to-image re-illustration.** Captured from the live product on this subject, the
+canvas it hands its own tracer has the busy background removed outright, the airbrushed
+shading repainted as clean flat bands, the outlines redrawn at uniform weight, and the
+whole thing resampled to a different size. Their tracer is then tracing art that is
+*already flat*. That is why its band placement beats histogram quantization, and why its
+own bands sit **further** from the source than ours do (`bandFit` 11.35 against our 3.30
+on the face): it is not approximating the source, it has replaced it.
+
+Ours is classical: edge-preserving smoothing, then quantization. So:
+
+- The achievable goal for our Enhance path is to approximate the **flattening**, not the
+  repaint. Get the band colours onto the mean of what they cover and stop inventing
+  contrast at the seam — both of which are measurable (`bandFit`, `bandStepExcess`) and
+  both of which moved.
+- Shaded-art parity with the real product has a **structural ceiling** without a model, and
+  chasing the last of it with classical tuning will cost flat art. The exemplar-relative
+  band ratios on this subject are therefore reported, not gated; the absolute bars are what
+  hold.
+- `fixtures/local/snorlax-enhanced-input.png` is that captured canvas, kept as the evidence
+  behind this paragraph.
+
+And one tension worth naming, because it is ours and not theirs: the only classical way to
+soften that seam further is to **keep** more of the ramp — three or four bands across the
+face instead of two. The shaded artwork's ramp steps are rgb(240,228,217), rgb(224,212,201),
+rgb(210,198,187), rgb(198,186,179), i.e. 26–31 RGB units apart, which is *inside* the
+32-unit window `maxNearDuplicateFills: 0` calls a halo. That bar was written for flat art,
+where two layers that close are one region split into a patchwork; on shaded art the same
+two layers are the gradient. Nothing here resolves that today — the flat fixtures' bar wins,
+and the seam is the price. Worth revisiting only with a fixture-kind-aware window, never by
+loosening the flat bar.
 
 ## Engine interface contract
 
@@ -556,6 +666,30 @@ Two notes for anyone tuning it:
   outwards a few pixels and flattens the rest to the mean drawn colour: a canvas hands
   back `(0,0,0,0)`, and without the bleed every sticker grows a black bruise round its
   edge where the median and anti-aliasing passes read that as artwork.
+- **A fold re-centres its survivor; it does not crown a winner.** The halo fold
+  (`mergeSimilarColors`, run by Smart anti-aliasing) collapses palette entries closer than
+  `HALO_FOLD_PERCENT`. It used to keep the *first* entry of each group — which, since the
+  palette arrives in coverage order, means the biggest histogram peak repaints everything
+  it swallowed with its own colour. On flat art that is invisible: the near-duplicates it
+  folds are a halo one unit wide. On *shaded* art it is the defect: a soft ramp arrives
+  here as four modes, whichever of them covers the most of the whole image eats the other
+  three, and a band whose pixels average rgb(210,198,188) came back rgb(197,186,179) —
+  13 units too dark across 44 % of a character's face, the muddy grey a person names
+  instantly and that no other instrument here could see (outline fine, leak 0 %, wobble
+  under the exemplar's, and a 13-unit miss over half a crop is inside every colour-error
+  bar). The grouping decision is still made on the original colours, so the fold cannot
+  fold *differently* and the colour count every existing gate was measured against is
+  unchanged; only the survivor moves, to the coverage-weighted mean of its group. Measured:
+  the shaded fixture's face went from `bandFit` 6.16 / `bandStepExcess` 16.5 to 3.30 / 8.9
+  and its region colour error from 12.54 to 10.92, while every fox crop improved or held
+  (face 4.07 → 3.91, paw 1.35 → 1.20, muzzle 6.39 → 6.34).
+
+  Perceptual-space clustering (Oklab/CIELab) was the other candidate and is the wrong tool
+  *here*, for a reason worth writing down: both compress lightness at the top of the range,
+  so a cream ramp gets **fewer** cluster centres in Lab than in RGB, not more — the
+  opposite of what this artwork needs. The existing note on `assignDist` records the other
+  half of the same finding (Lab ΔE stretches the dark end so far that ink pixels leave the
+  ink slot: whole-frame ink recall 0.989 → 0.677).
 - **Cleanups must not eat line art.** A one-pixel stroke is a *minority* in every 3×3
   window it passes through, so both the median filter and the majority filter would
   erase exactly the strokes REFERENCE's use cases are made of. Both now spare a pixel
