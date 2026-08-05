@@ -318,10 +318,20 @@ code {
   min-height: 0;
   background: repeating-conic-gradient(#1b1e26 0% 25%, #171a21 0% 50%) 50% / 22px 22px;
   overflow: hidden;
+  cursor: default;
+}
+
+/*
+ * A grab cursor is a promise that dragging will show you more of the picture.
+ * At Fit there is no more, so the drag can only push the artwork out of the
+ * view — the cursor only appears once the artwork is bigger than the pane
+ * (REFERENCE C2).
+ */
+.preview-pane[data-pannable='true'] {
   cursor: grab;
 }
 
-.preview-pane:active {
+.preview-pane[data-pannable='true']:active {
   cursor: grabbing;
 }
 

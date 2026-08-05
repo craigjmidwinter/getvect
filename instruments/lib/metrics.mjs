@@ -120,6 +120,35 @@ export function pixelMismatchRatio(a, b, tolerance = 12) {
   return bad / (a.width * a.height);
 }
 
+/**
+ * Ink recall — did the *line art* survive?
+ *
+ * MAE and SSIM are area-weighted, so a hairline can be deleted outright and
+ * barely move either: the mouth and eyelids of the 1046px reference artwork are
+ * 0.3 % of its pixels. Line art is what the reference product's headline use
+ * cases (logos, stickers, tattoo templates) are made of, so it gets its own
+ * number: of the pixels the source draws in ink, what fraction is still ink.
+ *
+ * Thresholds are deliberately asymmetric. `inkLuma` picks the *cores* of dark
+ * strokes (not their antialiased skirts, which a vector trace is entitled to
+ * drop), `keptLuma` accepts anything still clearly darker than the paper, so a
+ * stroke that got thinner or slightly greyer counts as kept and only one that
+ * was erased or repainted in the background colour counts as lost.
+ */
+export function inkRecall(reference, traced, { inkLuma = 60, keptLuma = 128 } = {}) {
+  assertSameSize(reference, traced);
+  const luma = (d, i) => 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+  let ink = 0;
+  let kept = 0;
+  for (let i = 0; i < reference.data.length; i += 4) {
+    if (luma(reference.data, i) >= inkLuma) continue;
+    ink++;
+    if (luma(traced.data, i) < keptLuma) kept++;
+  }
+  // No ink to lose: a fixture with no dark strokes passes trivially.
+  return ink === 0 ? 1 : kept / ink;
+}
+
 /** Count of `<path` elements in an SVG string (REFERENCE "Economy"). */
 export function countPaths(svg) {
   return (svg.match(/<path\b/g) ?? []).length;

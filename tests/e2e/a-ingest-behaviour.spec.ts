@@ -85,6 +85,20 @@ test('[A1] a drop anywhere in the window is accepted, not just on the sidebar', 
   await expect(page.locator(tid(TESTIDS.appRoot))).toHaveAttribute('data-dragging', 'true');
 });
 
+test('[A1] the empty preview tells you where you can drop, and it is everywhere', async ({
+  page,
+}) => {
+  // The window accepts a drop anywhere, so copy that points at the sidebar
+  // sends people to the one place they do not have to aim at.
+  const empty = page.locator('.preview-empty');
+  await expect(empty).toBeVisible();
+  const copy = ((await empty.textContent()) ?? '').toLowerCase();
+  expect(copy, `empty-state copy misdirects the drop: "${copy}"`).not.toMatch(
+    /on the left|on the right|sidebar/,
+  );
+  expect(copy).toMatch(/drop/);
+});
+
 test('[A2] the rejection toast is not wiped by an unrelated success', async ({ page }) => {
   await dropFiles(page, FIXTURE.txt);
   await expect(page.locator(tid(TESTIDS.errorToast))).toBeVisible();

@@ -212,11 +212,19 @@ export function cornerSpanFor(smoothing: number, roundness: number): number {
  * How many 1-2-1 passes centre the staircase before fitting. Smoothing 0 means
  * "polylines": the boundary is handed to the fitter exactly as the pixels drew
  * it, staircase and all.
+ *
+ * The range is what makes the control legible. `tolerance + s` only ever spans
+ * 1..2 passes at the default detail, and two passes of a 1-2-1 average move a
+ * boundary by well under a pixel — the SVG changed, the picture did not, which
+ * is the definition of a cosmetic control. Scaling the slider across the whole
+ * 0..5 range gives the top of the slider something to do: five passes visibly
+ * round a staircase, and corners stay pinned throughout (src/engine/fit.ts), so
+ * "smoother" never means "melted".
  */
 export function smoothPassesFor(smoothing: number, tolerance: number): number {
   const s = norm(smoothing);
   if (s === 0) return 0;
-  return clamp(Math.round(tolerance + s), 1, 4);
+  return clamp(Math.round(tolerance * 0.5 + s * 4.5), 1, 6);
 }
 
 /**
@@ -477,24 +485,59 @@ export async function vectorize(
   for (let i = 0; i < indexPasses; i++) {
     indices = majorityFilter(indices, width, height, clusters.length);
   }
+  /**
+   * ...and the half a 3×3 window cannot reach.
+   *
+   * A fringe two or three pixels wide is a local *majority*, so the filter
+   * above preserves it, and it can be far bigger than any speck threshold — the
+   * grey band along the reference artwork's mouth is 40×3. What marks it is
+   * that it is thin and its colour lies between the two regions it separates,
+   * so that is what gets tested. Nothing else is touched: a thin band that is
+   * not in-between is line art, and lines are the point of the picture.
+   *
+   * It also runs for Noise Reduction "high", the other setting that manufactures
+   * blend bands: simplifying to 16 colours leaves a band of an in-between colour
+   * wherever two regions meet, and a filter that creates fringes should clean up
+   * after itself.
+   */
+  const collapseFringes = indexPasses > 0 || opts.noiseReduction === 'high';
+  if (collapseFringes) {
+    despeckleIndices(indices, width, height, {
+      minArea: 0,
+      palette: clusters,
+      onlyFringe: true,
+      maxThickness: smartAa ? 3 : 2,
+    });
+  }
   report(onProgress, 'quantize', 0.32);
   await tick();
 
   // 3. Despeckle ------------------------------------------------------------
   //
-  // Two filters, deliberately different in kind:
+  // Three filters, deliberately different in kind:
   //   Minimum Area (B5) is a promise about the *document* — nothing smaller
-  //   than N px² is in it — so it merges regardless of how loud the speck is.
+  //   than N px² is in it — so it merges regardless of how loud the speck is,
+  //   and regardless of shape.
   //   The Despeckle slider is a noise filter: it also weighs contrast, because
   //   a tiny region that is wildly different from its surroundings is either
   //   deliberate detail or an impulse the viewer can see.
-  const enhanceFloor = opts.enhance && opts.despeckle > 0 ? (width * height) / 10000 : 0;
-  const minArea = Math.max(
-    opts.minArea * areaScaleFor(detailFor(opts.detail, opts.detailLevel), opts.despeckle),
-    enhanceFloor,
-  );
+  //   The Enhance floor is a canvas-proportional cleanup. Both *noise* filters
+  //   exempt strokes (`keepElongated`): line art is thin, so an area-only test
+  //   deletes it — an 87px² floor on the 1046px reference artwork ate the
+  //   character's mouth and eyelids and left dashes behind. Minimum Area does
+  //   not get the exemption, because its promise is about area, full stop.
+  const minArea =
+    opts.minArea * areaScaleFor(detailFor(opts.detail, opts.detailLevel), opts.despeckle);
   if (minArea > 1) {
     despeckleIndices(indices, width, height, { minArea, palette: clusters });
+  }
+  const enhanceFloor = opts.enhance && opts.despeckle > 0 ? (width * height) / 10000 : 0;
+  if (enhanceFloor > 1) {
+    despeckleIndices(indices, width, height, {
+      minArea: enhanceFloor,
+      palette: clusters,
+      keepElongated: true,
+    });
   }
   const noiseArea = minAreaFor(opts.despeckle, width, height);
   if (noiseArea > 1) {
@@ -502,6 +545,7 @@ export async function vectorize(
       minArea: noiseArea,
       palette: clusters,
       maxContrast: maxContrastFor(opts.despeckle),
+      keepElongated: true,
     });
   }
   report(onProgress, 'simplify', 0.4);
