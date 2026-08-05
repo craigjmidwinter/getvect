@@ -49,6 +49,16 @@ type Fixtures = {
    * (src/main/aiEnhance.ts, `keyStoreDir`).
    */
   aiDir: string;
+  /**
+   * Directory the update check's dismissal store uses while GETVECT_E2E=1.
+   *
+   * Same reasoning as `aiDir`: `app.getPath('userData')` is the developer's own
+   * state, and a suite that dismissed an update banner there would silently
+   * suppress it on their machine (src/main/updater.ts, `storeDir`). Specs read
+   * `update-state.json` out of this directory to prove the dismissal is
+   * main-process state and not localStorage.
+   */
+  updateDir: string;
 };
 
 type Options = {
@@ -75,7 +85,13 @@ export const test = base.extend<Fixtures & Options>({
     await fs.rm(dir, { recursive: true, force: true });
   },
 
-  app: async ({ exportDir, aiDir, extraEnv }, use) => {
+  updateDir: async ({}, use) => {
+    const dir = mkdtempSync(join(tmpdir(), 'getvect-update-'));
+    await use(dir);
+    await fs.rm(dir, { recursive: true, force: true });
+  },
+
+  app: async ({ exportDir, aiDir, updateDir, extraEnv }, use) => {
     const app = await electron.launch({
       args: [REPO_ROOT],
       cwd: REPO_ROOT,
@@ -84,6 +100,7 @@ export const test = base.extend<Fixtures & Options>({
         GETVECT_E2E: '1',
         GETVECT_EXPORT_DIR: exportDir,
         GETVECT_AI_DIR: aiDir,
+        GETVECT_UPDATE_DIR: updateDir,
         NODE_ENV: 'test',
         ...extraEnv,
       },
