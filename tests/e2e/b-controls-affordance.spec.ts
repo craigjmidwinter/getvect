@@ -15,7 +15,16 @@
  *    so they are reachable, but the thing that stays in view is a checkbox
  *    list rather than the controls.
  */
-import { FIXTURE, TESTIDS, expect, loadViaPicker, test, tid, waitForReady } from './helpers';
+import {
+  FIXTURE,
+  TESTIDS,
+  expect,
+  loadViaPicker,
+  setSlider,
+  test,
+  tid,
+  waitForReady,
+} from './helpers';
 
 test('[B2] the Drawing preset does not leave dead colour controls live', async ({ page }) => {
   await loadViaPicker(page, FIXTURE.flat512);
@@ -53,6 +62,51 @@ test('[B2] leaving the Drawing preset gives the colour controls back', async ({ 
 
   await expect(page.locator(tid(TESTIDS.settingColorCount))).toBeEnabled();
   await expect(page.locator(tid(TESTIDS.paletteSizeOption)).first()).toBeEnabled();
+});
+
+test('[B2] the Photo preset never shows a colour count it will not use', async ({ page }) => {
+  /**
+   * `presetColorCount()` returns `min(64, max(colorCount, 16))` for 'photo', so
+   * every slider position from 2 to 16 delivers the same sixteen colours while
+   * the control sits there enabled, normally styled, reading 8 — and the panel
+   * next to it reads "16 colours in the result" with sixteen swatches under it.
+   * That is the same class of dishonesty the Drawing preset was fixed for two
+   * tests above: a control that cannot affect the result must not claim to.
+   *
+   * Either fix satisfies this check: clamp the slider's `min` to 16 under Photo
+   * (so its readout is always a number the engine uses), or disable it with the
+   * dimmed treatment Drawing already uses. What is not allowed is a live slider
+   * reading N while the result carries more than N colours.
+   */
+  await loadViaPicker(page, FIXTURE.artwork);
+  await waitForReady(page);
+  await page.locator(tid(TESTIDS.presetPhoto)).click();
+  await waitForReady(page);
+
+  const slider = page.locator(tid(TESTIDS.settingColorCount));
+  if ((await slider.count()) === 0 || !(await slider.isEnabled())) return; // Drawing's treatment.
+
+  for (const want of [4, 8, 12]) {
+    await setSlider(page, TESTIDS.settingColorCount, want);
+    await waitForReady(page);
+    // A clamped `min` is one of the two acceptable fixes: the control simply
+    // refuses the value, so it never displays one the engine ignores.
+    const shown = Number(await slider.inputValue());
+    if (shown !== want) continue;
+
+    const hint = page.locator(tid(TESTIDS.settingColorCountHint));
+    const actual = Number(await hint.getAttribute('data-actual'));
+    const swatches = await page.locator(tid(TESTIDS.paletteSwatch)).count();
+    expect(
+      actual,
+      `the COLORS slider reads ${shown} under the Photo preset and the result carries ${actual} ` +
+        'colours — the control is displaying a number the engine will not use',
+    ).toBeLessThanOrEqual(shown);
+    expect(
+      swatches,
+      `the palette shows ${swatches} swatches for a ${actual}-colour result`,
+    ).toBe(actual);
+  }
 });
 
 test('[B3] every output-colour control is on screen at the default window size', async ({
@@ -366,6 +420,75 @@ test('[B3] every output colour group is visible at the default palette size', as
     hidden,
     `${hidden.length} of ${count} output colour groups cannot be seen at the default window ` +
       `size: ${hidden.join(' · ')}`,
+  ).toEqual([]);
+});
+
+test('[B3] the output colour groups are legible, not cut off mid-hex', async ({ page }) => {
+  /**
+   * The toggles are reachable (the checks above prove that) and the labels
+   * beside them are shredded: at the default window size the second column's
+   * hex labels read "#1B3A", "#E457:", "#F2C1" — cut off mid-string — and a
+   * horizontal scrollbar appears under the panel. The list's grid columns
+   * (`repeat(auto-fill, minmax(88px, 1fr))`) are narrower than a checkbox plus
+   * a swatch plus seven characters of `#rrggbb`, so a control whose entire job
+   * is to say *which colour* this is cannot say it.
+   *
+   * Two independent statements, because either one alone can be gamed: no text
+   * inside a group row may overflow its own box, and the list must not scroll
+   * horizontally.
+   */
+  await loadViaPicker(page, FIXTURE.artwork);
+  await waitForReady(page);
+
+  const groups = page.locator(tid(TESTIDS.colorGroups));
+  await expect(groups).toHaveCount(1);
+  const count = await page.locator(tid(TESTIDS.colorGroupToggle)).count();
+  expect(count, 'no output colour groups at all').toBeGreaterThan(1);
+
+  const clipped = await page.locator(tid(TESTIDS.colorGroupToggle)).evaluateAll((nodes) => {
+    const out: string[] = [];
+    for (const node of nodes) {
+      const row = node.closest('label') ?? node.parentElement;
+      if (!row) continue;
+      const color = node.getAttribute('data-color') ?? '?';
+      for (const el of row.querySelectorAll('*')) {
+        const text = (el.textContent ?? '').trim();
+        if (!text || el.children.length) continue;
+        if (el.scrollWidth > el.clientWidth + 1) {
+          out.push(`${color}: "${text}" needs ${el.scrollWidth}px in a ${el.clientWidth}px box`);
+        }
+      }
+      // ...and the row itself must fit inside the box that paints it, so a
+      // label cannot be "not overflowing" simply because its cell runs off the
+      // edge of the list.
+      const list = row.parentElement;
+      if (list) {
+        const rect = row.getBoundingClientRect();
+        const box = list.getBoundingClientRect();
+        const right = box.left + list.clientLeft + list.clientWidth;
+        if (rect.right > right + 0.5) {
+          out.push(
+            `${color}: its row ends at x=${Math.round(rect.right)}, past the list's ` +
+              `x=${Math.round(right)} edge`,
+          );
+        }
+      }
+    }
+    return out;
+  });
+  expect(clipped, `output colour labels are clipped: ${clipped.join(' · ')}`).toEqual([]);
+
+  const scrolls = await groups.evaluate((el) => {
+    const worst = [el, ...el.querySelectorAll('*')]
+      .map((n) => ({ name: `${n.tagName.toLowerCase()}.${n.className}`, over: n.scrollWidth - n.clientWidth }))
+      .filter((n) => n.over > 1);
+    return worst;
+  });
+  expect(
+    scrolls,
+    `the output colour groups scroll horizontally: ${scrolls
+      .map((s) => `${s.name} by ${s.over}px`)
+      .join('; ')}`,
   ).toEqual([]);
 });
 

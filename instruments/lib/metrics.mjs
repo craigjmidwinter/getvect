@@ -197,6 +197,70 @@ export function strictInkRecall(reference, traced, { inkLuma = 60 } = {}) {
   return inkRecall(reference, traced, { inkLuma, keptLuma: inkLuma });
 }
 
+/**
+ * Colour leak — what fraction of a crop is painted a colour the source never
+ * had *anywhere in that crop*.
+ *
+ * Every other fidelity number here is a distance: a cream face that gains 123
+ * teal pixels moves mean colour error by hundredths, moves SSIM not at all
+ * (the specks are inside a flat region, so the local variance term barely
+ * blinks) and moves ink recall not at all (teal is not ink). But it is the one
+ * defect a person names instantly — "why is there blue in his mouth" — and it
+ * is a *categorical* error rather than a metric one: the palette slot that
+ * painted it belongs to a region on the other side of the picture, and a
+ * fringe/anti-aliasing pass handed an in-between pixel to a colour that is not
+ * one of the two regions the fringe separates.
+ *
+ * So this asks a categorical question. Quantize every colour the source crop
+ * contains — including its antialiased in-betweens, which are legitimately
+ * there — into `bin`-sized cells; a traced pixel is FOREIGN when its nearest
+ * source colour is further than `tolerance` in RGB. A trace that only ever
+ * picks colours off the source's own ramp scores 0 however blurry it is; a
+ * trace that invents a hue scores the area of the invention.
+ *
+ * Verdicts are memoized per quantized traced colour, so this stays linear in
+ * pixels and quadratic only in the (small) number of distinct cells.
+ */
+export function foreignColorRatio(reference, traced, { tolerance = 40, bin = 4 } = {}) {
+  assertSameSize(reference, traced);
+  const key = (r, g, b) =>
+    ((Math.min(255, r) / bin) | 0) * 65536 + ((Math.min(255, g) / bin) | 0) * 256 + ((Math.min(255, b) / bin) | 0);
+  const centre = (k) => [
+    (((k / 65536) | 0) + 0.5) * bin,
+    ((((k / 256) | 0) % 256) + 0.5) * bin,
+    ((k % 256) + 0.5) * bin,
+  ];
+
+  const sourceCells = new Set();
+  for (let i = 0; i < reference.data.length; i += 4) {
+    sourceCells.add(key(reference.data[i], reference.data[i + 1], reference.data[i + 2]));
+  }
+  const sourceColors = [...sourceCells].map(centre);
+  const limit = tolerance * tolerance;
+  const verdict = new Map();
+  let foreign = 0;
+  let total = 0;
+  for (let i = 0; i < traced.data.length; i += 4) {
+    total++;
+    const k = key(traced.data[i], traced.data[i + 1], traced.data[i + 2]);
+    let isForeign = verdict.get(k);
+    if (isForeign === undefined) {
+      const [r, g, b] = centre(k);
+      isForeign = true;
+      for (const [sr, sg, sb] of sourceColors) {
+        const d = (r - sr) ** 2 + (g - sg) ** 2 + (b - sb) ** 2;
+        if (d <= limit) {
+          isForeign = false;
+          break;
+        }
+      }
+      verdict.set(k, isForeign);
+    }
+    if (isForeign) foreign++;
+  }
+  return total === 0 ? 0 : foreign / total;
+}
+
 /** One byte per pixel, 1 where luma is below `inkLuma` — the ink field. */
 export function inkMask(image, inkLuma = 60) {
   const mask = new Uint8Array(image.width * image.height);

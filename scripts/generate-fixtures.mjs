@@ -518,6 +518,19 @@ async function main() {
         // it comes back a light teal. Region gates read the worst crop.
         salientRegions: [
           { name: 'face', x: 300, y: 200, width: 360, height: 200 },
+          // The muzzle, with its own leak bar — this configuration is the one
+          // that gets it RIGHT (0.000 % foreign colour, same as the exemplar),
+          // while the default configuration paints teal into the fangs. Pinned
+          // here so the fix for `reference-artwork-default` has to be a fix and
+          // not a redistribution.
+          {
+            name: 'muzzle',
+            x: 420,
+            y: 290,
+            width: 220,
+            height: 90,
+            thresholds: { maxForeignColorRatio: 0.0005 },
+          },
           { name: 'paw-pad', x: 60, y: 670, width: 110, height: 80 },
         ],
         thresholds: {
@@ -533,8 +546,15 @@ async function main() {
           // reads 0.943x of the exemplar.
           minRegionStrictInkRecallRatio: 0.98,
           // Boundary raggedness: our mid-tone layers sawtooth through the
-          // shading where the exemplar sweeps. Ours 3.73 mean vs its 2.67.
-          maxLayerCompactnessRatio: 1.3,
+          // shading where the exemplar sweeps. Ours 3.35 mean vs its 2.67 —
+          // 1.25x, i.e. passing a 1.3 bar by four hundredths while a designer
+          // looking at artifacts/raster/reference-artwork.png beside the
+          // exemplar still sees our belly seam wobble where theirs is one arc
+          // (and our paw pad split along a hard diagonal where theirs is a
+          // clean ellipse). A gate that a visible difference passes is a gate
+          // set in the wrong place: 1.1 is "the same class of edge", which is
+          // what REFERENCE's blind A/B actually asks for.
+          maxLayerCompactnessRatio: 1.1,
           // B3: 16 requested, 16 found in the image, 8 delivered.
           //
           // The bar is 8, not 1, because the exemplar settles it: the SVG
@@ -684,7 +704,69 @@ async function main() {
         height: 833,
         supported: true,
         distinctColors: null,
-        salientRegions: [{ name: 'paw-pad', x: 60, y: 670, width: 110, height: 80 }],
+        // Report-only (no ratio gates on this row): it is what makes the stdout
+        // print the real product's own score for each crop beside ours at the
+        // default settings, which is where the face bar below comes from.
+        exemplar: 'reference/artwork.svg',
+        salientRegions: [
+          /**
+           * The face, at the settings a user gets.
+           *
+           * It was declared on all three *pinned* rows and on none of the
+           * default one, so the crop that decides REFERENCE's blind A/B was
+           * unmeasured at exactly the configuration the app opens with — and
+           * the default output paints 123 teal pixels inside the mouth/fang box
+           * (x 420..640, y 290..380) where the source has none, while the row
+           * still reported pass. Its own gates, because the paw-pad bar below
+           * is deliberately looser (see there) and the aggregate reads the
+           * worst crop.
+           */
+          {
+            name: 'face',
+            x: 300,
+            y: 200,
+            width: 360,
+            height: 200,
+            thresholds: {
+              // The real product's own 16-colour output scores 19.13 here.
+              maxMeanColorError: 19.13,
+            },
+          },
+          /**
+           * The mouth and both fangs, on their own.
+           *
+           * The face box above cannot ask this question: the head's own outline
+           * is a dark teal, so teal is a colour the *face crop* legitimately
+           * contains and 123 stray teal pixels inside the cream muzzle are not
+           * foreign to it. Cropped to the muzzle the source has no teal at all,
+           * and the leak is unmissable — measured on this build: default 0.50 %
+           * of the crop painted rgb(38,90,108) (palette slot #265a6c) against
+           * 0.000 % for our own 16-colour + Enhance run and 0.000 % for the real
+           * the reference product exemplar. MAE is not gated here (the exemplar scores
+           * 25.13 to our 13.64 — it paints a fatter outline); the leak is.
+           */
+          {
+            name: 'muzzle',
+            x: 420,
+            y: 290,
+            width: 220,
+            height: 90,
+            thresholds: { maxForeignColorRatio: 0.0005 },
+          },
+          {
+            name: 'paw-pad',
+            x: 60,
+            y: 670,
+            width: 110,
+            height: 80,
+            // The same slot leaking into the same place: 0.38 % of this crop is
+            // that dark teal, where both real exemplars score 0.000 %. Region
+            // MAE alone stopped seeing it once the pad's *average* colour came
+            // back close enough; a hue that is not in the picture is still a
+            // hue that is not in the picture.
+            thresholds: { maxForeignColorRatio: 0.0005 },
+          },
+        ],
         thresholds: {
           // Anchored on the exemplars, not invented. The real product's own
           // 16-colour output scores 14.46 on this exact crop and its 6-colour
