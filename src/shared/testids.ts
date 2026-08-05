@@ -43,6 +43,20 @@ export const TESTIDS = {
   settingNoiseReduction: 'noise-reduction', // <select> off|low|high
   settingAntiAliasing: 'anti-aliasing', // <select> off|smart|mid
 
+  // --- B4b. AI Enhance, bring your own key ---------------------------------
+  // Optional, off by default, and the only feature in the app that can send
+  // anything anywhere. The key never reaches the renderer: `ai-key-status`
+  // reports a boolean, never a value (src/main/aiEnhance.ts).
+  aiEnhanceGroup: 'ai-enhance-group', // + data-provider, data-has-key, data-enabled
+  aiProviderSelect: 'ai-provider-select', // <select>, values = EnhanceProviderId
+  aiKeyInput: 'ai-key-input', // <input type="password">, never pre-filled
+  aiKeySaveButton: 'ai-key-save',
+  aiKeyClearButton: 'ai-key-clear',
+  aiKeyStatus: 'ai-key-status', // + data-has-key "true"|"false"
+  aiEnhanceToggle: 'ai-enhance-toggle', // checkbox, disabled until a key is saved
+  aiEnhanceNotice: 'ai-enhance-notice', // the privacy sentence, always visible
+  aiEnhanceStatus: 'ai-enhance-status', // + data-ai-state off|idle|running|done|failed
+
   // --- B5. Advanced vectorization (REFERENCE B5) ---------------------------
   settingRoundness: 'roundness', // <select> 0|1|2 (three curve-fitting levels)
   settingMinArea: 'min-area', // <select> 0|5|90 (px²)

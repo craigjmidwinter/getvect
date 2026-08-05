@@ -21,10 +21,17 @@ import {
   type VectorizeResult,
   type VectorizeSettings,
 } from '../engine';
+import {
+  DEFAULT_ENHANCE_PROVIDER,
+  ENHANCE_PROVIDERS,
+  describeEnhanceError,
+  enhanceProvider,
+  type EnhanceProviderId,
+} from '../shared/aiEnhance';
 import { api } from './api';
 import { basename, decodeBlob, mimeForName, stemOf } from './lib/decode';
 import { vectorizeImage } from './lib/engineClient';
-import { svgToPngBase64 } from './lib/raster';
+import { hasMeaningfulAlpha, rasterToPngBytes, svgToPngBase64 } from './lib/raster';
 import { Preview, fmt, type PreviewMode } from './components/Preview';
 
 /**
@@ -38,6 +45,16 @@ import { Preview, fmt, type PreviewMode } from './components/Preview';
  */
 
 type ImageStatus = 'loading' | 'vectorizing' | 'ready' | 'error';
+
+/**
+ * Where this image is in the AI Enhance pass (src/main/aiEnhance.ts).
+ *
+ * `failed` is a terminal state on purpose: a provider that just refused the key
+ * will refuse it again, and re-asking on every settings change would burn the
+ * user's quota to keep showing them the same error. Toggling AI Enhance off and
+ * on again is the retry.
+ */
+type AiState = 'idle' | 'running' | 'done' | 'failed';
 
 interface ImageEntry {
   id: string;
@@ -62,6 +79,19 @@ interface ImageEntry {
   job: number;
   /** Debounce for this job, in ms — see `DEBOUNCE_*`. */
   delay: number;
+
+  /**
+   * The AI-enhanced bitmap, once a provider has returned one. It *replaces*
+   * `raster` as the working image while AI Enhance is on — at the provider's
+   * own dimensions, which is what the real product does: the enhanced
+   * re-illustration is the picture being traced, not an overlay on the source.
+   * Cached for the life of the image so toggling the feature off and on again
+   * does not buy a second call.
+   */
+  aiRaster: RasterImage | null;
+  /** Object URL of that PNG, so the ORIGINAL pane shows the working image. */
+  aiUrl: string | null;
+  aiState: AiState;
 }
 
 /**
@@ -172,6 +202,23 @@ export function App() {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [paneSize, setPaneSize] = useState({ w: 0, h: 0 });
 
+  /**
+   * AI Enhance (optional, bring your own key) — app-level, not per-image, and
+   * deliberately *not* part of `VectorizeSettings`: the engine stays a pure
+   * function of (bitmap, settings) and never learns that a provider exists.
+   *
+   * `aiKeyDraft` is the only place key material appears in the renderer, it is
+   * a `type="password"` field, and it is cleared the moment the key is handed
+   * to the main process. Whether a key exists is a boolean that comes *back*
+   * from there; the value never does (src/main/preload.ts).
+   */
+  const [aiProvider, setAiProvider] = useState<EnhanceProviderId>(DEFAULT_ENHANCE_PROVIDER);
+  const [aiHasKey, setAiHasKey] = useState(false);
+  const [aiKeyDraft, setAiKeyDraft] = useState('');
+  const [aiEnabled, setAiEnabled] = useState(false);
+  /** False when the OS cannot encrypt at rest, in which case we refuse to store. */
+  const [aiStorageAvailable, setAiStorageAvailable] = useState(true);
+
   const [swatchIndex, setSwatchIndex] = useState(0);
   const [mergeTarget, setMergeTarget] = useState(0);
   const [lastExportPath, setLastExportPath] = useState<string | null>(null);
@@ -275,6 +322,9 @@ export function App() {
       error: null,
       job: 0,
       delay: DEBOUNCE_DISCRETE,
+      aiRaster: null,
+      aiUrl: null,
+      aiState: 'idle',
     }));
 
     setImages((prev) => [...prev, ...entries]);
@@ -361,12 +411,131 @@ export function App() {
 
   const removeImage = useCallback((id: string) => {
     const target = imagesRef.current.find((image) => image.id === id);
-    if (target) URL.revokeObjectURL(target.url);
+    if (target) {
+      URL.revokeObjectURL(target.url);
+      if (target.aiUrl) URL.revokeObjectURL(target.aiUrl);
+    }
     const next = imagesRef.current.filter((image) => image.id !== id);
     setImages(next);
     setSelectedId((current) => (current === id ? (next[0]?.id ?? null) : current));
     setLastExportPath(null);
   }, []);
+
+  // --- AI Enhance ----------------------------------------------------------
+  //
+  // Upstream of everything: the provider hands back a bitmap, that bitmap
+  // becomes the working image, and the engine below is untouched by any of it.
+
+  const providerInfo = enhanceProvider(aiProvider) ?? ENHANCE_PROVIDERS[0];
+  /** The feature is only *on* when it can actually run. */
+  const aiOn = aiEnabled && aiHasKey;
+
+  /** Does this machine already hold a key for the selected provider? */
+  useEffect(() => {
+    const bridge = api();
+    if (!bridge) return;
+    let live = true;
+    void bridge.aiEnhance.hasKey(aiProvider).then((value) => {
+      if (live) setAiHasKey(value);
+    });
+    void bridge.aiEnhance.available().then((value) => {
+      if (live) setAiStorageAvailable(value);
+    });
+    return () => {
+      live = false;
+    };
+  }, [aiProvider]);
+
+  // Losing the key turns the feature off rather than leaving a live switch that
+  // silently does nothing.
+  useEffect(() => {
+    if (!aiHasKey) setAiEnabled(false);
+  }, [aiHasKey]);
+
+  /**
+   * Run one image through the provider, then re-trace it either way.
+   *
+   * "Either way" is the contract: a bad key, a dead network, a timeout or a
+   * reply with no image in it all end with the *un-enhanced* raster being
+   * traced and a specific message on screen. The one outcome that is not
+   * allowed is nothing happening.
+   */
+  const enhanceImageWithAi = useCallback(
+    async (id: string) => {
+      const bridge = api();
+      const image = imagesRef.current.find((entry) => entry.id === id);
+      if (!image?.raster) return;
+      if (!bridge) {
+        patchImage(id, { aiState: 'failed' });
+        setToast('AI Enhance is only available in the desktop app.');
+        requestVectorize(id);
+        return;
+      }
+
+      patchImage(id, { aiState: 'running' });
+      try {
+        const png = await rasterToPngBytes(image.raster);
+        const outcome = await bridge.aiEnhance.run({
+          provider: aiProvider,
+          image: png,
+          // A cut-out subject must come back cut out: the prompt asks for a
+          // transparent background instead of a white one when the source has
+          // real alpha (src/main/aiEnhance.ts `promptFor`).
+          transparent: hasMeaningfulAlpha(image.raster),
+        });
+        if (!outcome.ok) {
+          throw new Error(describeEnhanceError(outcome.code, providerInfo.label));
+        }
+        // Copied into a plain ArrayBuffer: what arrives over IPC is a view
+        // whose backing buffer TypeScript will not promise is not shared.
+        const buffer = new ArrayBuffer(outcome.image.byteLength);
+        new Uint8Array(buffer).set(outcome.image);
+        const blob = new Blob([buffer], { type: 'image/png' });
+        const raster = await decodeBlob(blob);
+        const url = URL.createObjectURL(blob);
+        setImages((prev) =>
+          prev.map((entry) => {
+            if (entry.id !== id) return entry;
+            if (entry.aiUrl) URL.revokeObjectURL(entry.aiUrl);
+            return { ...entry, aiRaster: raster, aiUrl: url, aiState: 'done' };
+          }),
+        );
+      } catch (error) {
+        patchImage(id, { aiState: 'failed' });
+        setToast(
+          `${error instanceof Error ? error.message : String(error)} Tracing the original image instead.`,
+        );
+      }
+      requestVectorize(id);
+    },
+    [aiProvider, providerInfo.label, patchImage, requestVectorize],
+  );
+
+  /**
+   * One enhancement per image, for the selected image only — the same rule the
+   * trace queue follows, and a stronger one here because every run costs the
+   * user money.
+   */
+  const aiJobKey =
+    selected && aiOn && selected.raster && !selected.aiRaster && selected.aiState === 'idle'
+      ? selected.id
+      : null;
+
+  useEffect(() => {
+    if (!aiJobKey) return;
+    void enhanceImageWithAi(aiJobKey);
+  }, [aiJobKey, enhanceImageWithAi]);
+
+  /**
+   * The bitmap the engine actually gets. This is the whole integration: swap
+   * the input, change nothing else.
+   */
+  const workingRaster = selected ? (aiOn && selected.aiRaster ? selected.aiRaster : selected.raster) : null;
+
+  /** True while the image is waiting on (or inside) the provider call. */
+  const aiBusy = Boolean(
+    selected && aiOn && selected.raster && !selected.aiRaster && selected.aiState !== 'failed',
+  );
 
   // --- the job runner ------------------------------------------------------
   //
@@ -376,7 +545,7 @@ export function App() {
   // "select image 2, export image 2" honest (REFERENCE A3 / D4).
 
   const jobKey =
-    selected && selected.raster && selected.status === 'vectorizing'
+    selected && workingRaster && selected.status === 'vectorizing' && !aiBusy
       ? `${selected.id}:${selected.job}`
       : null;
 
@@ -390,9 +559,9 @@ export function App() {
   const queueRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
-    if (!jobKey || !selected || !selected.raster) return;
+    if (!jobKey || !selected || !workingRaster) return;
     const id = selected.id;
-    const raster = selected.raster;
+    const raster = workingRaster;
     const settings = selected.settings;
     const delay = selected.delay;
     let cancelled = false;
@@ -478,13 +647,21 @@ export function App() {
     return () => observer.disconnect();
   }, []);
 
-  const previewImage = useMemo(
-    () =>
-      selected && selected.width > 0
-        ? { url: selected.url, width: selected.width, height: selected.height }
-        : null,
-    [selected],
-  );
+  /**
+   * The ORIGINAL pane shows the *working* image, which under AI Enhance is the
+   * re-illustration rather than the file on disk — otherwise the side-by-side
+   * compares the vector against an image it was not traced from, at a different
+   * resolution, and the C2 sync maths is fed the wrong dimensions.
+   */
+  const previewImage = useMemo(() => {
+    if (!selected) return null;
+    if (aiOn && selected.aiRaster && selected.aiUrl) {
+      return { url: selected.aiUrl, width: selected.aiRaster.width, height: selected.aiRaster.height };
+    }
+    return selected.width > 0
+      ? { url: selected.url, width: selected.width, height: selected.height }
+      : null;
+  }, [selected, aiOn]);
 
   /** Zoom that makes the whole image fit the visible view (REFERENCE C2). */
   const fitZoom = useMemo(() => {
@@ -785,6 +962,51 @@ export function App() {
     [disabledColors, setSetting],
   );
 
+  // --- AI Enhance controls -------------------------------------------------
+
+  const saveAiKey = useCallback(async () => {
+    const bridge = api();
+    if (!bridge) return;
+    const outcome = await bridge.aiEnhance.setKey(aiProvider, aiKeyDraft);
+    if (!outcome.ok) {
+      setToast(outcome.error ?? 'The API key could not be saved.');
+      return;
+    }
+    // The field never holds the key after it has been handed over; from here
+    // on the renderer's entire knowledge of it is `aiHasKey`.
+    setAiKeyDraft('');
+    setAiHasKey(true);
+  }, [aiProvider, aiKeyDraft]);
+
+  const clearAiKey = useCallback(async () => {
+    const bridge = api();
+    if (!bridge) return;
+    await bridge.aiEnhance.clearKey(aiProvider);
+    setAiKeyDraft('');
+    setAiHasKey(false);
+    setAiEnabled(false);
+  }, [aiProvider]);
+
+  /**
+   * Turning the feature on or off changes the working image, so it re-traces
+   * exactly like any other setting. Turning it *on* also clears a previous
+   * failure, which is what makes the switch the retry gesture.
+   */
+  const toggleAiEnhance = useCallback(
+    (checked: boolean) => {
+      setAiEnabled(checked);
+      if (checked) {
+        setImages((prev) =>
+          prev.map((image) =>
+            image.aiRaster || image.aiState !== 'failed' ? image : { ...image, aiState: 'idle' },
+          ),
+        );
+      }
+      if (selected) requestVectorize(selected.id);
+    },
+    [selected, requestVectorize],
+  );
+
   // --- export (REFERENCE D) ------------------------------------------------
 
   /**
@@ -834,6 +1056,11 @@ export function App() {
   );
 
   // --- render --------------------------------------------------------------
+
+  /** In-flight provider call for the image on screen — a distinct busy state. */
+  const aiRunning = Boolean(selected && aiOn && selected.aiState === 'running');
+  /** What `ai-enhance-status` reports (docs/TESTIDS.md B4b). */
+  const aiStateAttr: 'off' | AiState = !aiOn ? 'off' : (selected?.aiState ?? 'idle');
 
   const status: 'idle' | ImageStatus = selected ? selected.status : 'idle';
   const busy = status === 'loading' || status === 'vectorizing';
@@ -983,7 +1210,7 @@ export function App() {
       <section data-testid={TESTIDS.workspace} className="workspace" data-image-id={selected?.id ?? ''}>
         <div className="toolbar">
           <span data-testid={TESTIDS.statusText} data-status={status} className={`status status-${status}`}>
-            {statusLabel(status, selected?.error ?? null, selected?.phase ?? null)}
+            {statusLabel(status, selected?.error ?? null, selected?.phase ?? null, aiRunning)}
           </span>
 
           {busy ? (
@@ -1302,6 +1529,122 @@ export function App() {
                 <span>Enhance image (Beta)</span>
               </label>
 
+              {/*
+                AI Enhance — the one feature in GetVect that can send anything
+                anywhere, so it is its own labelled group, off by default, inert
+                without a key, and carries the privacy sentence in the open
+                rather than in a tooltip.
+
+                It is deliberately independent of the classical Enhance switch
+                above: that one is a local denoise/simplify bundle in the engine
+                and keeps its name and its behaviour. With both on, the AI pass
+                runs first (it produces the working image) and the classical
+                bundle runs second, inside `vectorize()`.
+              */}
+              <div
+                data-testid={TESTIDS.aiEnhanceGroup}
+                className="ai-enhance"
+                data-provider={aiProvider}
+                data-has-key={String(aiHasKey)}
+                data-enabled={String(aiOn)}
+              >
+                <div className="panel-title">AI Enhance — bring your own key</div>
+
+                <Field label="Provider">
+                  <select
+                    data-testid={TESTIDS.aiProviderSelect}
+                    aria-label="AI Enhance provider"
+                    value={aiProvider}
+                    onChange={(event) => setAiProvider(event.target.value as EnhanceProviderId)}
+                  >
+                    {ENHANCE_PROVIDERS.map((provider) => (
+                      <option key={provider.id} value={provider.id}>
+                        {provider.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <input
+                  data-testid={TESTIDS.aiKeyInput}
+                  className="ai-key-input"
+                  type="password"
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-label={`${providerInfo.label} API key`}
+                  placeholder={aiHasKey ? 'Saved — type to replace' : `${providerInfo.label} API key`}
+                  value={aiKeyDraft}
+                  onChange={(event) => setAiKeyDraft(event.target.value)}
+                />
+
+                <div className="control-row">
+                  <button
+                    data-testid={TESTIDS.aiKeySaveButton}
+                    type="button"
+                    disabled={!aiKeyDraft.trim()}
+                    title={`Encrypt and store the key on this machine (${providerInfo.keyUrl})`}
+                    onClick={() => void saveAiKey()}
+                  >
+                    Save key
+                  </button>
+                  <button
+                    data-testid={TESTIDS.aiKeyClearButton}
+                    type="button"
+                    disabled={!aiHasKey}
+                    title="Delete the stored key from this machine"
+                    onClick={() => void clearAiKey()}
+                  >
+                    Clear
+                  </button>
+                  {/* A boolean, never a value: the renderer has never seen the key. */}
+                  <span
+                    data-testid={TESTIDS.aiKeyStatus}
+                    className={`hint${aiHasKey ? ' is-ok' : ''}`}
+                    data-has-key={String(aiHasKey)}
+                  >
+                    {aiHasKey ? 'Key saved' : 'No key saved'}
+                  </span>
+                </div>
+
+                {aiStorageAvailable ? null : (
+                  <span className="hint is-warn">
+                    This machine has no OS keystore, so GetVect will not store a key at all.
+                  </span>
+                )}
+
+                <label
+                  className={`switch${aiHasKey ? '' : ' is-disabled'}`}
+                  title={aiHasKey ? undefined : 'Save an API key first'}
+                >
+                  <input
+                    data-testid={TESTIDS.aiEnhanceToggle}
+                    type="checkbox"
+                    checked={aiOn}
+                    disabled={!aiHasKey}
+                    onChange={(event) => toggleAiEnhance(event.target.checked)}
+                  />
+                  <span>Enhance with AI before tracing</span>
+                </label>
+
+                {/*
+                  REQUIRED and deliberately not a tooltip: the trade this
+                  feature makes is the one thing the rest of the product exists
+                  to avoid, so it is stated where the switch is.
+                */}
+                <span data-testid={TESTIDS.aiEnhanceNotice} className="hint ai-notice">
+                  Sends this image to {providerInfo.destination} using your key. Everything else in
+                  GetVect stays on your machine.
+                </span>
+
+                <span
+                  data-testid={TESTIDS.aiEnhanceStatus}
+                  className="hint"
+                  data-ai-state={aiStateAttr}
+                >
+                  {aiStatusLabel(aiStateAttr, providerInfo.label)}
+                </span>
+              </div>
+
               <Field label="Noise reduction">
                 <select
                   data-testid={TESTIDS.settingNoiseReduction}
@@ -1603,6 +1946,7 @@ function statusLabel(
   status: 'idle' | ImageStatus,
   error: string | null,
   phase: VectorizePhase | null,
+  aiRunning: boolean,
 ): string {
   switch (status) {
     case 'idle':
@@ -1610,11 +1954,30 @@ function statusLabel(
     case 'loading':
       return 'Decoding…';
     case 'vectorizing':
-      return `${phaseLabel(phase)}…`;
+      // The provider round-trip is seconds long and is not tracing: saying
+      // "Tracing…" while an image is on its way to a server is the one moment
+      // the status line must not be vague.
+      return aiRunning ? 'Enhancing with AI…' : `${phaseLabel(phase)}…`;
     case 'ready':
       return 'Ready';
     case 'error':
       return error ? `Error: ${error}` : 'Error';
+  }
+}
+
+/** One line describing where the AI pass is, for `ai-enhance-status`. */
+function aiStatusLabel(state: 'off' | AiState, providerLabel: string): string {
+  switch (state) {
+    case 'off':
+      return 'Off — nothing leaves this machine.';
+    case 'idle':
+      return 'On — the next trace will be enhanced.';
+    case 'running':
+      return `Sending to ${providerLabel}…`;
+    case 'done':
+      return 'Enhanced image traced.';
+    case 'failed':
+      return 'Enhancement failed — tracing the original.';
   }
 }
 

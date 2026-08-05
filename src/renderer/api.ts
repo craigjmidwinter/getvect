@@ -4,6 +4,13 @@
  * Declared locally rather than imported from the main-process source so the
  * renderer tsconfig never has to pull in Electron's typings.
  */
+import type {
+  EnhanceKeyResult,
+  EnhanceProviderId,
+  EnhanceRunRequest,
+  EnhanceRunResult,
+} from '../shared/aiEnhance';
+
 export interface GetVectApi {
   openImages(): Promise<string[]>;
   readFile(filePath: string): Promise<Uint8Array>;
@@ -15,6 +22,18 @@ export interface GetVectApi {
     encoding?: 'utf8' | 'base64';
   }): Promise<{ canceled: boolean; filePath: string | null }>;
   appInfo(): Promise<{ version: string; electron: string; e2e: boolean }>;
+  /**
+   * AI Enhance (optional, bring your own key). The key lives only in the main
+   * process (src/main/aiEnhance.ts); this side can save one, clear one and ask
+   * whether one exists — there is no way to read it back.
+   */
+  aiEnhance: {
+    setKey(provider: EnhanceProviderId, key: string): Promise<EnhanceKeyResult>;
+    clearKey(provider: EnhanceProviderId): Promise<EnhanceKeyResult>;
+    hasKey(provider: EnhanceProviderId): Promise<boolean>;
+    available(): Promise<boolean>;
+    run(request: EnhanceRunRequest): Promise<EnhanceRunResult>;
+  };
 }
 
 declare global {
