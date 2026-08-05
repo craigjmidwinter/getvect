@@ -285,6 +285,7 @@ function smallRegionMask(
  * small circle disappears — the case REFERENCE B5's circle detection is
  * measured on at radii down to 4. `minRegionArea` is that limit, expressed in
  * window areas so it moves with `radius`.
+
  */
 export function regularizeBoundaries(
   indices: Uint8Array,
@@ -572,6 +573,63 @@ const RAMP_INK_LUMA = 60;
 const INK_RAMP_BIAS = 3;
 /** How many pixels of its own colour a 3×3 window needs to be a real region. */
 const SUPPORT_MIN = 3;
+/**
+ * How far past a light pixel we look for a SECOND stroke before dropping the ink
+ * bias, in pixels.
+ *
+ * `INK_RAMP_BIAS` resolves the whole skirt of an outline to ink, which is right
+ * for a stroke with paper on the other side of it and catastrophic for two
+ * strokes drawn close together: each one eats about a pixel of the light gap
+ * from its own side, and the artwork stops having a gap. On the reported case —
+ * a character's claws, four white triangles whose outlines are separated by two
+ * to three pixels of lighter pixels — one pass of this welded two of them and
+ * the majority filter then removed what was left of the seam, so four claws
+ * arrived as a lumpy black chain with rounded holes in it. It grew the ink field
+ * of that drawing by 7561 pixels, 13 %.
+ *
+ * So the bias is a claim about what is on the *other* side of the light pixel,
+ * and the claim is checkable: walk away from the ink and see whether more ink
+ * turns up within a few pixels. If it does, this is not a skirt with paper
+ * behind it, it is the corridor between two strokes, and the ramp resolves the
+ * symmetric way — nearest end wins — so each side keeps its own half and the
+ * gap survives.
+ *
+ * 2, and the number was measured rather than reasoned. It is the shortest reach
+ * that protects the case in the contract — the *first* light pixel of a two-pixel
+ * gap sees the far stroke's skirt two steps away — and reach is not free: at 3
+ * the guard also spares the skirt between strokes that are merely near each
+ * other, those mid-tones survive quantization as their own histogram mode, and
+ * the gold standard's `sourceColors` went 6 -> 7 with the extra one immediately
+ * folded back out as a near-duplicate (`paletteShortfall` 1 -> 2). Protecting
+ * the gap is the job; leaving quantization debris behind is not.
+ */
+const INK_GAP_GUARD = 2;
+
+/**
+ * Walking away from the dark end of a ramp, is there another stroke close by?
+ *
+ * True means the centre pixel sits in a narrow light corridor between two dark
+ * strokes rather than on the outside skirt of one (see `INK_GAP_GUARD`).
+ */
+function inkWithin(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  sx: number,
+  sy: number,
+  reach: number,
+): boolean {
+  for (let k = 1; k <= reach; k++) {
+    const nx = x + sx * k;
+    const ny = y + sy * k;
+    if (nx < 0 || ny < 0 || nx >= width || ny >= height) return false;
+    const i = (ny * width + nx) * 4;
+    if (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2] < RAMP_INK_LUMA) return true;
+  }
+  return false;
+}
 
 /**
  * How many of a pixel's eight neighbours share its colour.
@@ -741,9 +799,13 @@ function deAntialiasPass(image: RasterImage): RasterImage {
       // detail) is farther from the segment than the segment is long.
       if (da + db > best * 1.35) continue;
       // A ramp into ink resolves toward the ink (see `INK_RAMP_BIAS`): the
-      // skirt of a stroke belongs to the stroke, not half to the paper.
+      // skirt of a stroke belongs to the stroke, not half to the paper — unless
+      // there is no paper behind it, only the next stroke (`INK_GAP_GUARD`), in
+      // which case the two strokes would each eat their half of the gap between
+      // them and meet in the middle.
       const inkRamp = lo < RAMP_INK_LUMA;
-      const src = (inkRamp ? da <= db * INK_RAMP_BIAS : da <= db) ? ai : bi;
+      const inkBias = inkRamp && !inkWithin(data, width, height, x, y, sx, sy, INK_GAP_GUARD);
+      const src = (inkBias ? da <= db * INK_RAMP_BIAS : da <= db) ? ai : bi;
       out[o] = data[src];
       out[o + 1] = data[src + 1];
       out[o + 2] = data[src + 2];
