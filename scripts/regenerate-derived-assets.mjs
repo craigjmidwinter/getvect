@@ -180,7 +180,7 @@ const CLAIMS = [
 /**
  * Numbers that are NOT ours and must never be "corrected": the reference product's own
  * output on the same source. They are the comparator the whole project is
- * graded against, and they only change when the real product is re-measured.
+ * graded against, and they only change when the reference product is re-measured.
  */
 const FOREIGN_CLAIMS = ['21.7 KB', '40 paths'];
 

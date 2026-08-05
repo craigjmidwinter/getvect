@@ -21,7 +21,7 @@ stat:
 ```compare
 before: media/mouth-real.png
 after: media/mouth-ours.png
-caption: The residue at 100% zoom: real product (before) vs ours (after) on the mouth. Every number says we win; the fangs say otherwise
+caption: The residue at 100% zoom: reference product (before) vs ours (after) on the mouth. Every number says we win; the fangs say otherwise
 ```
 
 Laps six and seven closed out the run. Lap six fixed the palette-identity blocker
@@ -31,9 +31,9 @@ numeric bar for the first time. Lap seven's fresh critic pulled it back to 8.3, 
 the way it did that is the most instructive thing in the whole run.
 
 Every instrument now says we beat the reference: bytes 0.83x, curve ratio 0.986 vs
-0.639, MAE 5.96 vs 13.50, whole-image error less than half the real product's. The
+0.639, MAE 5.96 vs 13.50, whole-image error less than half the reference product's. The
 critic conceded all of it, then zoomed to 100% on the mouth and wrote the sentence
-the numbers couldn't: the real product draws two white fangs and one continuous
+the numbers couldn't: the reference product draws two white fangs and one continuous
 even-weight arc; we draw cream holes ringed by ink, a tapered spindle that detaches
 from both fangs, and a jaw line that turns teal for 21% of its length. T-shirt and
 tattoo customers — the reference's own named use cases — live at that zoom level.

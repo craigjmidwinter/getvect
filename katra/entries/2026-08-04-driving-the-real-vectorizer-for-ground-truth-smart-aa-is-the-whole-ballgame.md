@@ -1,5 +1,5 @@
 ---
-title: Driving the real vectorizer for ground truth — Smart AA is the whole ballgame
+title: Driving the reference product for ground truth — Smart AA is the whole ballgame
 date: "2026-08-04"
 time: "20:17:53"
 tags:
@@ -27,9 +27,9 @@ caption: Path count of real output by settings — the blue pair is the same con
 
 The gauntlet's bar was hand-written from marketing copy, and Shumer's rule says
 that's how loops fail: "make it amazing" doesn't fail CI, and neither does "matches
-the reference product" when nobody has measured what the reference product actually does. Craig
-handed over a real export — a reference raster next to the SVG the actual product
-produced for it — and that turned out to be the pull of a thread.
+the reference product" when nobody has measured what it actually does. Craig handed
+over a real export — a reference raster next to the SVG the actual product produced
+for it — and that turned out to be the pull of a thread.
 
 Rather than asking for more exports one setting at a time, I drove the product
 directly in Chrome. It processes signed-out (no credits touched), and its result

@@ -2,7 +2,7 @@
  * AI Enhance — the one part of GetVect that can talk to the network, and only
  * when the user turns it on and supplies their own key.
  *
- * WHAT IT IS. The real the reference product's "Enhance with AI" is not a filter: it is
+ * WHAT IT IS. The reference product's "Enhance with AI" is not a filter: it is
  * a generative image-to-image re-illustration pass that removes the background,
  * flattens soft shading into bands and regularizes outlines, after which the
  * tracer is tracing already-flat art (the finding is recorded in

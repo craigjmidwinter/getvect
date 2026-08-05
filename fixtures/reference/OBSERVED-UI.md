@@ -1,8 +1,8 @@
-# the reference product — observed ground truth (captured live, 2026-08-04 / 2026-08-05)
+# The reference product — observed ground truth (captured live, 2026-08-04 / 2026-08-05)
 
-Recorded by driving the real product at  with real
-artwork uploaded (processing worked signed-out; per-image editor page at
-/images/<id>/<name>.html). Three subjects have been driven; two have their
+Recorded by driving the reference product — a leading online vectorizer we
+benchmark against — in a browser with real artwork uploaded (processing worked
+signed-out; one editor page per image). Three subjects have been driven; two have their
 captures checked in — `fixtures/reference/frankie-sticker.png` (the current
 mascot and primary demo fixture) and `fixtures/reference/fox-sticker.png` (its
 predecessor, retained). See "Exemplars in this directory" immediately below.
@@ -47,7 +47,7 @@ it measured **758 paths / 132.7KB / 8 layers** at AA-off and **41 paths /
 
 `fox-sticker.png` is an original generated mascot (chroma-keyed to real alpha;
 1024×1024, **76.5% transparent** pixels) with `fox-sticker-white.png` as the
-white-flattened variant. Run through the real product signed-out:
+white-flattened variant. Run through the reference product signed-out:
 
 - **Transparency is preserved**: both panes render on a checkerboard; the output
   SVG has NO background-covering path (the first path starts mid-canvas at
@@ -63,7 +63,7 @@ white-flattened variant. Run through the real product signed-out:
 - Same settings with **AA Off**: 637 paths, 189KB (measured, not checked in) —
   the same ~90% path reduction the parameter table below records on the other
   subject, replicated on a second one.
-- The fox's cyan eyes, `rgb(72,182,210)`, are **dropped by the real product too**
+- The fox's cyan eyes, `rgb(72,182,210)`, are **dropped by the reference product too**
   (0.0% of them survive into its capture) — unlike Frankie's, where it keeps a
   distinct eye colour. Ours drops them in every configuration. Both observations
   are in issue #2.
@@ -96,7 +96,7 @@ around the panes: ① model preset, ② input color palette, ③ quality enhance
   colour bands, outlines redrawn uniform, and the image resampled to a new working
   resolution (observed 1152×928 for a 1046×833 upload; dimensions divisible by 8,
   consistent with a diffusion-style model). The tracer then traces already-flat art.
-  This is the real product's structural advantage on shaded artwork; GetVect's
+  This is the reference product's structural advantage on shaded artwork; GetVect's
   Enhance is classical (denoise + quantization), which flat-art fixtures don't
   distinguish but soft-shaded art does. Side effect consistent with a generative
   pass: small distinct features (e.g. a mascot's small coloured eyes) can be
@@ -152,7 +152,7 @@ relative coordinates at 10× scale. Layers stack: later/lighter layers sit on to
 
 ## Parameter-response measurements (1045×833 flat-color character, Enhance ON)
 
-The numbers are the real product's, measured live at the settings named. They are
+The numbers are the reference product's, measured live at the settings named. They are
 kept because the *response* is what matters and it is not subject-specific — the
 Smart-AA finding below replicates on the fox (637 paths → 63). The image they were
 taken on is not checked in.

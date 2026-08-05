@@ -20,7 +20,7 @@ stat:
     d: 939
 ---
 
-![The mascot that replaced the exemplar we couldn't ship: our engine's own trace, 29 sub-paths and 13.6 KB against the real product's 63 and 35.5 KB](media/fox-before-after.png)
+![The mascot that replaced the exemplar we couldn't ship: our engine's own trace, 29 sub-paths and 13.6 KB against the reference product's 63 and 35.5 KB](media/fox-before-after.png)
 
 The last mile was legal, not technical. The gold-standard exemplar that steered five
 laps of critics was Nintendo artwork — perfect for a private quality bar, impossible
@@ -31,7 +31,7 @@ rewritten history leaves the old blobs fetchable by SHA on GitHub until garbage
 collection — so the remote had to be deleted and recreated, not force-pushed.
 
 The replacement had a nice symmetry to it. A generated fox sticker — chroma-keyed to
-real alpha, 76.5% transparent — went through the real the reference product the same way the
+real alpha, 76.5% transparent — went through the reference product the same way the
 original exemplar had, and came back a *stronger* fixture than the one it replaced:
 more transparency to guard the alpha path, fully-known capture settings, and the
 Smart-AA finding replicated on a second subject (637 paths to 63). The cutover also

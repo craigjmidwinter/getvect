@@ -189,7 +189,7 @@ export function inkRecall(reference, traced, { inkLuma = 60, keptLuma = 128 } = 
  * pixel renders as a grey smear at luma 90-120 and scores a perfect 1.0, and a
  * contour broken into dashes scores whatever fraction of it is still painted at
  * all. Measured loosely on the gold standard's paw the engine read 0.978
- * against the real product's 1.000 — a 2 % gap for an outline a critic could
+ * against the reference product's 1.000 — a 2 % gap for an outline a critic could
  * see was dashed. Measured strictly (source ink < 60 must come back < 60) the
  * same crop reads 0.946 vs 0.983, which is a gap a threshold can hold.
  */
@@ -328,7 +328,7 @@ export function foreignColorRatio(reference, traced, { tolerance = 32, bin = 4 }
  * Measured identically on the source crop, on our trace and on the real
  * product's, so the number that decides anything is a RATIO — the absolute share
  * belongs to the artwork (how big are the eyes), while "we kept a third of what
- * the source has and the real product kept all of it" belongs to the tracer.
+ * the source has and the reference product kept all of it" belongs to the tracer.
  *
  * `tolerance` is 40 by default, wider than `foreignColorRatio`'s 32: this is a
  * survival test, not a fidelity test, and a green that came back a shade off is
@@ -432,7 +432,7 @@ export function shadingBandQuality(
    * comes back from resvg antialiased, and an exemplar whose artwork sits inside
    * a padded viewBox is rendered at 2x, trimmed and resized (see
    * `rasterizeExemplarContent`), which leaves almost no two pixels exactly
-   * equal. Grouped exactly, the real product's face reported ONE band and a seam
+   * equal. Grouped exactly, the reference product's face reported ONE band and a seam
    * of zero on a picture that visibly has two: the metric would have scored the
    * thing it exists to measure at zero for the reference and non-zero for us.
    *
@@ -639,10 +639,10 @@ export function inkMask(image, inkLuma = 60) {
  *
  * The one thing that decided REFERENCE's blind A/B and that no other instrument
  * here could see. Measured on the gold standard's lower jaw, the source stroke
- * is 3.94px mean (cv 0.33), the real product's is 5.69px (cv 0.20) and ours was
+ * is 3.94px mean (cv 0.33), the reference product's is 5.69px (cv 0.20) and ours was
  * 6.93px (cv 0.28) — a 1.76x fattening against the exemplar's 1.44x, with an
  * upper mouth arc that tapered to a spindle and detached from both fangs. Every
- * ink metric in this file read that as *better* than the real product:
+ * ink metric in this file read that as *better* than the reference product:
  * `strictInkRecall` scored us 0.967 against its 0.755 and `inkComponentRatio`
  * 0.43x, because a fatter line recalls more ink and joins more components.
  * Recall answers "is the stroke still there"; this answers "is it still a
@@ -1307,7 +1307,7 @@ function polylineAreaPerimeter(points) {
  * colour), nothing in ink recall (no ink involved) and nothing in sub-path
  * count (it is one big region either way) — and it is the single most visible
  * difference between "clipart" and "posterized photo". Measured on the gold
- * standard, our mid-tone layers score 5.65 / 5.36 against the real product's
+ * standard, our mid-tone layers score 5.65 / 5.36 against the reference product's
  * 4.35 / 2.87 for the equivalent cream and blue.
  *
  * Computed from the path data rather than by rasterizing each layer alone, so
@@ -1388,7 +1388,7 @@ export function layerGeometry(svg, { curveSamples = 8 } = {}) {
  * Mean compactness over the layers that carry the picture.
  *
  * `minCoverage` is a share of the **drawing's bounding box**, not of the
- * declared viewBox. A real-product capture may draw inside a corner of a padded
+ * declared viewBox. A reference-product capture may draw inside a corner of a padded
  * viewBox (the retired exemplar used the top-left quarter of an 11520x9280
  * box), and viewBox-relative coverage would then drop every one of its layers
  * under the bar and the exemplar side of the comparison would measure nothing.
@@ -1544,7 +1544,7 @@ export function featureCornerAngles(
  * belly seam and the paw pad ("a jagged mountain range in ours where the source
  * has a soft gradient and the exemplar draws one smooth arc") and what
  * `curveCommandRatio` 0.872 could not see: our commands ARE curves, they are
- * just fitted to a wobble the real product never had.
+ * just fitted to a wobble the reference product never had.
  *
  * Scale-invariant by construction: every coordinate is divided by the drawing's
  * own bounding-box diagonal before the walk, so the exemplar's 10x viewBox and

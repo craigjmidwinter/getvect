@@ -467,14 +467,14 @@ const FRANKIE_NOSE = {
   /**
    * Judged on its own bars, not folded into the fixture's worst-region
    * aggregates (instruments/run-instruments.mjs `aggregate`). A fifth of this
-   * crop is outline — the REAL PRODUCT scores mean colour error 14.7 on it —
+   * crop is outline — the REFERENCE PRODUCT scores mean colour error 14.7 on it —
    * so aggregating it would not tighten `maxRegionMeanColorError`, it would
    * force that bar from 8 up to 18 and loosen the face and the chest with it.
    * Everything the aggregate would have asked is asked here instead.
    */
   aggregate: false,
   /**
-   * THE BAR IS THE REAL PRODUCT'S, AND WE DO NOT MEET IT. Its own trace spends
+   * THE BAR IS THE REFERENCE PRODUCT'S, AND WE DO NOT MEET IT. Its own trace spends
    * 1.09x the source's ink on this crop — a vector trace of an antialiased
    * outline is entitled to a little — and we spend 1.29x at the defaults.
    *
@@ -556,7 +556,7 @@ const FRANKIE_CHEEK = {
    * greys — rgb(206,206,206) and neighbours, 33-37 units off the nearest colour
    * the source crop contains — laid down by resvg antialiasing our outline
    * against the white ground when the SVG is rendered back to pixels for
-   * measurement. The real product's trace of the same crop scores 1.27 % on the
+   * measurement. The reference product's trace of the same crop scores 1.27 % on the
    * same question, 3.4x ours. Folding that into `maxRegionForeignColorRatio`
    * would have forced the row's bar from 0.05 % to 0.4 % and taken the face, the
    * chest and the eyes — where 0.05 % is a real guard — up with it.
@@ -926,30 +926,30 @@ async function main() {
         thresholds: {
           // Absolutes. 76.5 % of this canvas is transparent (white, once
           // flattened) and both drawings get that part right, so the whole-frame
-          // MAE is small for everyone: ours 1.80, the real product's 1.03. It is
+          // MAE is small for everyone: ours 1.80, the reference product's 1.03. It is
           // gated anyway because it is the number that moves if the alpha path
           // ever paints a backdrop again.
           meanColorError: 3,
           ssim: 0.95,
           minInkRecall: 0.95,
           // The salient half of the same question, aggregated to the worst crop
-          // (the muzzle, 0.909). The real product scores 0.995 there — this is a
+          // (the muzzle, 0.909). The reference product scores 0.995 there — this is a
           // ratchet on ours, not parity with theirs.
           minRegionInkRecall: 0.88,
-          // Continuity against the real product, in the crop where we are worst
+          // Continuity against the reference product, in the crop where we are worst
           // relative to it. Loosely (`inkRecall`, luma < 128 counts as kept) a
           // thinned or dashed contour still scores ~1; strictly (source ink must
           // come back as ink) the muzzle reads 0.903x of the exemplar's score.
-          // The number to aim at is 1.0 — the real product's mouth arcs and
+          // The number to aim at is 1.0 — the reference product's mouth arcs and
           // whiskers come back solid where ours taper.
           minRegionStrictInkRecallRatio: 0.87,
           // Worst-crop colour error. Ours 10.37 on the muzzle against the
           // exemplar's 4.36 — the fatter our outline sits over an antialiased
           // source, the more of this we pay, so it is a ratchet.
           maxRegionMeanColorError: 12,
-          // Boundary raggedness against the real product's, globally
+          // Boundary raggedness against the reference product's, globally
           // (perimeter over area per colour layer). Ours 2.99 against its 4.55,
-          // i.e. 0.66x: on this artwork the real product spends its layers on
+          // i.e. 0.66x: on this artwork the reference product spends its layers on
           // two near-identical browns and a doubled black, and we do not. The
           // bar is 0.8 because 1.1 ("the same class of edge", which is what it
           // meant when we were the ragged one) is 1.7x reality here, and a gate
@@ -961,7 +961,7 @@ async function main() {
           // genuinely intricate shape from a smooth one traced onto a noisy
           // threshold. Ours 28.4 against the exemplar's 80.2 (0.35x).
           maxLayerWobbleRatio: 0.45,
-          // Stroke-width UNIFORMITY against the real product's, in the crop
+          // Stroke-width UNIFORMITY against the reference product's, in the crop
           // where we are worst (metrics.mjs `strokeWidthProfile`). This is the
           // thing REFERENCE's blind A/B is actually decided on and the thing
           // every other ink metric in this repo reads BACKWARDS: a line that
@@ -969,7 +969,7 @@ async function main() {
           // components than an even one. Ours is 1.64x the exemplar's cv on the
           // muzzle (0.455 against 0.277); 1.15x is the number to aim at.
           maxStrokeWidthCvRatio: 1.8,
-          // ...and how much fatter our line is than the real product's trace of
+          // ...and how much fatter our line is than the reference product's trace of
           // the same line. 1.11x on the face, worst crop.
           maxStrokeWidthOverExemplar: 1.25,
           // B3: 8 requested, 6 found in the image after Enhance, 5 delivered.
@@ -991,7 +991,7 @@ async function main() {
           // still look survivable. Categorical, not a ratchet — 0.05 today, and
           // anything approaching 8 means a backdrop came back.
           maxTransparentAreaColorError: 8,
-          // Economy against the real product. REFERENCE asks for "within ~3x
+          // Economy against the reference product. REFERENCE asks for "within ~3x
           // paths, ~5x bytes"; we are at 0.08x, 0.22x and 0.42x, so the product
           // floor would gate nothing. These are the measured numbers with
           // headroom. (Path count is the weakest of the three — we emit one
@@ -1004,7 +1004,7 @@ async function main() {
           // Anchored on the exemplar's own 0.671: runs of h/v/l are a staircase
           // however few <path> elements they hide in. Ours is 1.000.
           minCurveCommandRatio: 0.65,
-          // The real product ships two near-duplicate pairs on this artwork
+          // The reference product ships two near-duplicate pairs on this artwork
           // (10.9 and 8.0 RGB units apart). We ship none, and that is the bar:
           // layers that close are one region split into a patchwork, not two
           // colours a user asked for.
@@ -1091,7 +1091,7 @@ async function main() {
          * identical except the alpha channel, so a divergence between this row
          * and `reference-fox` is attributable: it is the ingest, not the tracer.
          *
-         * There is no real-product capture of the flattened variant, so every
+         * There is no reference-product capture of the flattened variant, so every
          * bar here is ABSOLUTE and measured on this build rather than a ratio
          * against something. The one that earns the row: the paw crop comes back
          * with 0.46 % of its pixels painted a colour the source crop does not
@@ -1140,7 +1140,7 @@ async function main() {
         },
         note:
           'The white-flattened counterpart of reference-fox: same artwork, same settings, no ' +
-          'alpha. Absolute bars only — there is no real-product capture of the flattened variant ' +
+          'alpha. Absolute bars only — there is no reference-product capture of the flattened variant ' +
           'to ratio against. It earns its keep by being the control that attributes a difference ' +
           'to the ingest rather than the tracer.',
       },
@@ -1156,7 +1156,7 @@ async function main() {
          * gets measured.
          *
          * On this fixture the defaults differ from `reference-fox` by exactly
-         * one tick — Enhance off — because the real product's own capture was
+         * one tick — Enhance off — because the reference product's own capture was
          * taken at Clipart / 8 colours / Smart AA / min-area 5, which is what
          * `DEFAULT_SETTINGS` already ships. So this row does double duty: it is
          * both "the configuration a user gets" and "the ENHANCE-OFF economy
@@ -1181,7 +1181,7 @@ async function main() {
             y: 350,
             width: 380,
             height: 200,
-            // The real product's own capture scores 4.75 on this exact crop and
+            // The reference product's own capture scores 4.75 on this exact crop and
             // ours scores 8.09. A ratchet, not parity — 4.75 is the number to
             // aim at, and this bar only holds that the default configuration
             // cannot quietly get worse at the crop that decides the blind A/B.
@@ -1195,7 +1195,7 @@ async function main() {
             height: 90,
             // The head is orange and the muzzle is white, so this is the only
             // crop where "a hue the source does not contain" is a question with
-            // an answer. Both the real product and our default score 0.000 %.
+            // an answer. Both the reference product and our default score 0.000 %.
             thresholds: { maxForeignColorRatio: 0.0005 },
           },
           {
@@ -1208,12 +1208,12 @@ async function main() {
           },
         ],
         thresholds: {
-          // Worst crop, which is the muzzle at 10.91 against the real product's
+          // Worst crop, which is the muzzle at 10.91 against the reference product's
           // 4.36 — the mouth arcs and the whisker curls are thin dark line art
           // over white, and every pixel of outline we paint fatter than the
           // source is mean colour error against an antialiased edge.
           maxRegionMeanColorError: 12,
-          // The real product keeps this crop's outlines at 0.957 strict ink
+          // The reference product keeps this crop's outlines at 0.957 strict ink
           // recall; ours is 0.848. Held as both an absolute floor and a ratio,
           // because the absolute one alone would let the exemplar improve out
           // from under us.
@@ -1251,7 +1251,7 @@ async function main() {
       },
       {
         /**
-         * FRANKIE — the mascot, and the second real-product exemplar.
+         * FRANKIE — the mascot, and the second reference-product exemplar.
          *
          * Same construction as `reference-fox` (original artwork, MIT, plus the
          * SVG the reference product actually produced for it, captured live and recorded
@@ -1269,7 +1269,7 @@ async function main() {
          * The answer here, measured: at these settings **our engine loses the
          * eye colour completely** — 0.6 % of the source's olive survives, and
          * the palette comes back 6 of 8 with the eye pixels repainted in the
-         * nose/ear PINK slot, rgb(227,139,105). The real product keeps a
+         * nose/ear PINK slot, rgb(227,139,105). The reference product keeps a
          * distinct eye colour on the same upload (its generative Enhance
          * repaints the olive as rgb(121,176,89) and spends a whole output layer
          * on it, 22.9 % of the crop). So the eye bar here is an ASPIRATION, not
@@ -1319,7 +1319,7 @@ async function main() {
              * orange onto pixels that belong to three colours.
              */
             /**
-             * ...and the same question against the real product, which was the
+             * ...and the same question against the reference product, which was the
              * aspiration on this crop and is now a GATE: it keeps 0.976 of the
              * stripe-orange, we keep 0.980, and 1.004x is the first time
              * anything in this harness has said we match it on a small-feature
@@ -1335,11 +1335,11 @@ async function main() {
              * The demo defect, with a number on it. Before the fringe collapse
              * learned what "between" means (`FRINGE_BLEND_CORRIDOR`), this crop
              * kept 0.525 of the source's stripe-orange — the middle stripe gone
-             * outright and the others thinned — against the real product's
-             * 1.006. It keeps 0.960 now, 0.955x the real product's.
+             * outright and the others thinned — against the reference product's
+             * 1.006. It keeps 0.960 now, 0.955x the reference product's.
              */
             thresholds: { ...FRANKIE_CHEEK.thresholds, minColorPresenceRatio: 0.94 },
-            // The real product loses none of it. Neither should we.
+            // The reference product loses none of it. Neither should we.
             aspirations: { minColorPresenceOverExemplar: 1.0 },
           },
           {
@@ -1349,7 +1349,7 @@ async function main() {
             width: 258,
             height: 84,
             // The source's own eye colour, and — separately — the colour the
-            // real product's generative Enhance repaints it as. Measuring the
+            // reference product's generative Enhance repaints it as. Measuring the
             // exemplar against the olive would score it 1.9 % against our 0.6 %
             // and read as a photo finish, when in fact its eyes are green and
             // ours are gone.
@@ -1368,7 +1368,7 @@ async function main() {
              * Enhance spent the eyes' palette slot on a second orange. The
              * hue-distinct slot reservation (src/engine/color.ts
              * `reserveChromatic`) gives it back: 1.032 of the source's olive
-             * survives and 1.024x of what the real product's generative repaint
+             * survives and 1.024x of what the reference product's generative repaint
              * puts in the same crop. The bars stay at the 0.9 they were written
              * at rather than being ratcheted onto today's number — the point of
              * this pair is "the eyes are the right colour", not "they are within
@@ -1391,10 +1391,10 @@ async function main() {
           ssim: 0.94,
           minInkRecall: 0.95,
           // Worst crop, which is the face at 0.966 loose / 0.935 strict against
-          // the real product's 0.997 / 0.983.
+          // the reference product's 0.997 / 0.983.
           minRegionInkRecall: 0.95,
           minRegionStrictInkRecall: 0.9,
-          // ...and the same question as a ratio to the real product's trace of
+          // ...and the same question as a ratio to the reference product's trace of
           // the same pixels, in the crop where we are worst relative to it:
           // 0.951 today.
           minRegionStrictInkRecallRatio: 0.9,
@@ -1405,7 +1405,7 @@ async function main() {
           // colour the source does not have.
           maxRegionMeanColorError: 14,
           /**
-           * A colour the crop does not contain, anywhere. The real product
+           * A colour the crop does not contain, anywhere. The reference product
            * scores 22.96 % in the eyes box because its generative Enhance
            * repaints them; ours is a trace, so ours has no excuse.
            *
@@ -1428,23 +1428,23 @@ async function main() {
           // 8 requested, 8 found in the image, 6 delivered. Two folds, and one
           // of them is the eyes — pinned so it cannot become three.
           maxPaletteShortfall: 2,
-          // Economy against the real product, which ships 40 paths / 55
+          // Economy against the reference product, which ships 40 paths / 55
           // sub-paths / 21.7 KB here. We are at 0.15x paths and 0.87x bytes but
-          // 1.20x SUB-PATHS — the one economy number on which the real product
+          // 1.20x SUB-PATHS — the one economy number on which the reference product
           // beats us, and it is not a surprise: its Enhance is a generative
           // flatten, so its tracer is tracing already-simplified art. Recorded
           // at 1.35 rather than argued away.
           maxPathRatio: 0.3,
           maxSubPathRatio: 1.35,
           maxBytesRatio: 0.95,
-          // Boundary quality against the real product's: compactness 0.96x,
+          // Boundary quality against the reference product's: compactness 0.96x,
           // local wobble 1.49x. The wobble ratio is the honest one — on this
-          // artwork the real product's Enhance hands its tracer flat bands,
+          // artwork the reference product's Enhance hands its tracer flat bands,
           // so its boundaries are smoother than ours and this is the number
           // that says so.
           maxLayerCompactnessRatio: 1.1,
           maxLayerWobbleRatio: 1.7,
-          // Stroke geometry against the real product's, worst crop: our line is
+          // Stroke geometry against the reference product's, worst crop: our line is
           // 1.20x less even (cv) and 0.96x its width, i.e. not fatter.
           maxStrokeWidthCvRatio: 1.35,
           maxStrokeWidthOverExemplar: 1.15,
@@ -1472,7 +1472,7 @@ async function main() {
          * turns the eyes finding from an observation into a bar.
          *
          * These two rows differ by exactly one tick: `reference-frankie` pins
-         * Enhance ON (because that is what the real product's capture was taken
+         * Enhance ON (because that is what the reference product's capture was taken
          * at) and this one takes `DEFAULT_SETTINGS`, which ships Enhance OFF and
          * is otherwise the same Clipart / 8 colours / Smart AA / min-area 5.
          *
@@ -1496,7 +1496,7 @@ async function main() {
         supported: true,
         distinctColors: null,
         /**
-         * No exemplar. The real product's capture of this artwork was taken with
+         * No exemplar. The reference product's capture of this artwork was taken with
          * Enhance ON, and its Enhance is a generative re-illustration — it is
          * not a trace of these pixels at all. `reference-frankie` carries the
          * exemplar-relative economy bars for that reason; this row is gated
@@ -1517,7 +1517,7 @@ async function main() {
             ...FRANKIE_FOREHEAD,
             // A ratchet at what the default settings keep today (0.967).
             thresholds: { minColorPresenceRatio: 0.96 },
-            // ...and the real product's 0.976 as the target, because the stripe
+            // ...and the reference product's 0.976 as the target, because the stripe
             // is thinned rather than lost and the distance is small enough that
             // only a measured number keeps it honest. Still unmet here, and met
             // on the Enhance-on row: the last 1 % of this crop is Enhance's
@@ -1528,7 +1528,7 @@ async function main() {
           {
             ...FRANKIE_CHEEK,
             // 0.567 before the fringe-collapse fix, 0.967 after it. No
-            // exemplar on this row, so the bar is absolute; the real product's
+            // exemplar on this row, so the bar is absolute; the reference product's
             // 1.006 is recorded on `reference-frankie`.
             thresholds: { ...FRANKIE_CHEEK.thresholds, minColorPresenceRatio: 0.95 },
             aspirations: { minColorPresenceRatio: 1.0 },
@@ -1592,7 +1592,7 @@ async function main() {
           maxSubPaths: 300,
           maxBytes: 64 * 1024,
           maxTinySubPathRatio: 0.02,
-          // Anchored on the real product's 0.647 on this artwork, even though
+          // Anchored on the reference product's 0.647 on this artwork, even though
           // this row carries no exemplar ratio. Ours is 0.984.
           minCurveCommandRatio: 0.65,
           maxNearDuplicateFills: 0,

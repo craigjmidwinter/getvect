@@ -119,7 +119,7 @@ export const DEFAULT_SETTINGS: ResolvedSettings = {
   // correction nobody asked for is a surprise.
   noiseReduction: 'off',
   /**
-   * Anti-aliasing defaults to Smart, because that is what the real product
+   * Anti-aliasing defaults to Smart, because that is what the reference product
    * does: `fixtures/reference/OBSERVED-UI.md` records "Smart AA was ON by
    * default here" for a plain clipart upload, and its measured effect at
    * otherwise identical settings is 354 paths -> 67 (-81 %). Ours is the same
@@ -145,7 +145,7 @@ export const DEFAULT_SETTINGS: ResolvedSettings = {
    * longer see a disc as a disc, and every layer inherits the outline of every
    * speck above it. The bottom layer gets the benefit without the price — see
    * `silhouetteLayer` below, which now hands it to the INK layer, where the
-   * saving is largest (2.87 mean layer compactness against the real product's
+   * saving is largest (2.87 mean layer compactness against the reference product's
    * 2.67, from 3.33 when the dominant colour had it and the linework was
    * traced as a network of ribbons).
    */
@@ -386,7 +386,7 @@ const round4 = (v: number) => Math.round(v * 10000) / 10000;
  * Enhance's region floor, as a fraction of the canvas.
  *
  * "Enhance image with AI" is a *simplification* bundle (REFERENCE B4, and
- * OBSERVED-UI's record of what the real product's own version did: a busy
+ * OBSERVED-UI's record of what the reference product's own version did: a busy
  * patterned background became near-white), so its floor is proportional to the
  * canvas rather than a pixel count — ~218px² on the 1046×833 gold-standard
  * artwork, ~65px² on a 512px logo. That is a ~15×15 scrap: below it, a region
@@ -697,7 +697,7 @@ export async function vectorize(
   source = reduceNoise(source, opts.noiseReduction);
   /**
    * "Enhance image with AI" is a bundle, not a filter (REFERENCE B4, and
-   * OBSERVED-UI's record of what it did to the real product's output: a busy
+   * OBSERVED-UI's record of what it did to the reference product's output: a busy
    * patterned background became near-white). On top of the denoise +
    * colour-simplification pass it adds a minimum shape area proportional to the
    * canvas — one ten-thousandth of it, ~87px² on the 1046x833 reference
@@ -760,7 +760,7 @@ export async function vectorize(
    * A sawtooth two pixels deep is a local majority in every 3×3 window it
    * appears in, so `majorityFilter` preserves it and the tracer faithfully
    * reproduces every spike. That is the difference between our 16-colour output
-   * and the real product's: same colours, same silhouettes, but our shading
+   * and the reference product's: same colours, same silhouettes, but our shading
    * boundaries arrive as a saw and theirs as a single sweep. See
    * `regularizeBoundaries`.
    */
@@ -1102,7 +1102,7 @@ export async function vectorize(
    * What it buys is not bytes, it is shape. Trimmed to its own pixels the
    * bottom layer is perforated by every layer above it, so its outline detours
    * round all of them and sheds an island wherever a neighbour cuts it in two.
-   * As a silhouette it is one smooth shape, which is what the real product's
+   * As a silhouette it is one smooth shape, which is what the reference product's
    * own bottom layer is, and it also removes the hairline seams that show
    * through wherever two trimmed layers meet.
    *
@@ -1123,7 +1123,7 @@ export async function vectorize(
    *     background one. Two trimmed layers that meet along a shared edge leave a
    *     sub-pixel crack when they are rasterized; on line art the correct thing
    *     to see in that crack is the line, not the paper. This is the same reason
-   *     the real product's darkest layer sits under everything.
+   *     the reference product's darkest layer sits under everything.
    *
    * Falls back to the dominant colour when the artwork has no ink at all (a
    * gradient sticker, a photo), which is the case this started as.

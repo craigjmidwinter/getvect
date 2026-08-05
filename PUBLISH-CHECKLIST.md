@@ -23,7 +23,7 @@ Order matters. The history rewrite is the last thing before flipping visibility.
 `fixtures/reference/snorlax.*` is Nintendo/Game Freak artwork. It was the gold-standard
 blind-A/B exemplar during the build and it cannot ship in a public repo — not in the tree
 and not in history. `fixtures/reference/fox-*` is the license-clean replacement: original
-generated mascot art, run through the real the reference product signed-out, with fully-known
+generated mascot art, run through the reference product signed-out, with fully-known
 settings recorded in `fixtures/reference/OBSERVED-UI.md`.
 
 The fox numbers are already documented (OBSERVED-UI.md, "Fox exemplar" section):
@@ -72,8 +72,8 @@ git rm fixtures/reference/snorlax.png \
        fixtures/reference/snorlax-clipart-18colors-min90-smartAA.svg
 ```
 
-**Also `katra/media/screenshot-1785892659092-2.jpg`.** It is a screenshot of the
-the reference product editor with the Snorlax artwork loaded in both panes — same problem, different
+**Also `katra/media/screenshot-1785892659092-2.jpg`.** It is a screenshot of the reference
+product's editor with the Snorlax artwork loaded in both panes — same problem, different
 file type, and it is easy to miss because it does not have "snorlax" in its name. Either
 delete it and drop the `![...]` line that references it from
 `katra/entries/2026-08-04-driving-the-real-vectorizer-for-ground-truth-smart-aa-is-the-whole-ballgame.md`,
@@ -122,11 +122,11 @@ npm run instruments     # re-tune thresholds against real numbers, do not guess 
 | `tests/e2e/d5-export-formats.spec.ts:91` | comment naming `snorlax.svg` as the fill-notation source → name the fox exemplar |
 | `tests/engine/alpha.test.mjs:86,88` | `loadPair('reference/snorlax.png')` → `'reference/fox-sticker.png'`; the "33% transparent" comment becomes 76.5% |
 | `tests/engine/parity.test.mjs:39,153-155,328` | `load('reference/snorlax.png')` → fox; the AA off/smart/mid comparison at `colorCount: 16` should move to `8` to match the exemplar |
-| `tests/engine/rendered.test.mjs` (13 refs, incl. 44, 98, 116-118, 163-165, 178, 190-191, 201-202, 210-212) | the exemplar A/B block. `readFileSync(fixture('reference/snorlax.svg'))` → the fox exemplar; curve-ratio baseline `0.639` needs re-measuring on the fox exemplar; the 6-colour test at line 210 ("the real product keeps snorlax's black outline") needs re-basing on the fox or deleting with the 6c fixture |
+| `tests/engine/rendered.test.mjs` (13 refs, incl. 44, 98, 116-118, 163-165, 178, 190-191, 201-202, 210-212) | the exemplar A/B block. `readFileSync(fixture('reference/snorlax.svg'))` → the fox exemplar; curve-ratio baseline `0.639` needs re-measuring on the fox exemplar; the 6-colour test at line 210 ("the reference product keeps snorlax's black outline") needs re-basing on the fox or deleting with the 6c fixture |
 | `REFERENCE.md:75-89` | the "Gold-standard exemplar" section — rewrite around the fox, keeping the 3×/5× economy language |
 | `docs/HARNESS.md` (5 refs) | fixture table row, the `inkRecall` bar (`≥ 0.94 (snorlax)`), the `sourceTransparentRatio` context values (`0.33 for snorlax` → `0.765 for the fox`), and the decode-contract war story — that story is worth keeping, just rename the fixture |
 | `docs/TESTIDS.md:295` | comment citing `snorlax.svg` for the inherited-fill notation → fox exemplar |
-| `fixtures/reference/OBSERVED-UI.md` (9 refs) | the parameter-response table and exemplar list are *measurements of the real product on that image*. Keep the Smart-AA finding (it is the headline), drop the per-image identification, and promote the "Fox exemplar" section to the top |
+| `fixtures/reference/OBSERVED-UI.md` (9 refs) | the parameter-response table and exemplar list are *measurements of the reference product on that image*. Keep the Smart-AA finding (it is the headline), drop the per-image identification, and promote the "Fox exemplar" section to the top |
 | `katra/media/paths-by-settings.html`, `katra/media/pitcrew-loop.html` | one label each |
 | `katra/entries/2026-08-04-driving-...md` | "one sleepy Pokémon" and the screenshot reference |
 | `README.md` | already fox-only — verify with the grep in step 6 |

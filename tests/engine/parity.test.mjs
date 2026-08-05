@@ -37,7 +37,7 @@ const S = engine.DEFAULT_SETTINGS;
 /**
  * Defaults with every optional cleanup off.
  *
- * `DEFAULT_SETTINGS` ships Smart anti-aliasing on (the real product does too —
+ * `DEFAULT_SETTINGS` ships Smart anti-aliasing on (the reference product does too —
  * fixtures/reference/OBSERVED-UI.md — and it is what keeps the default output
  * economical). Its index-image majority pass is also a very effective impulse
  * remover, so on the speckled fixture the noise-removal controls have nothing
@@ -62,7 +62,7 @@ const foxIn = canvasIngest(await decodeImageFile(fixture('reference/fox-sticker.
  * The settings the checked-in exemplar was captured at
  * (fixtures/reference/OBSERVED-UI.md): Clipart, 8 colours, Smart anti-aliasing,
  * Enhance on. Colour-budget questions are asked here rather than at 16, because
- * 8 is the budget there is a real-product capture to argue with.
+ * 8 is the budget there is a reference-product capture to argue with.
  */
 const EXEMPLAR_COLORS = 8;
 
@@ -295,7 +295,7 @@ test('[B3] the sort order reorders layers without changing the colour set', asyn
 test('[B3] the colour budget is spent on colours the user can tell apart', async () => {
   /**
    * `colorCount` is the headline control of the product, so a shortfall has to
-   * be *earned*. The bar this check enforces is the one the real product's own
+   * be *earned*. The bar this check enforces is the one the reference product's own
    * output can be held to, because it is read off that output:
    *
    *   - `fixtures/reference/fox-sticker-clipart-8colors-smartAA.svg` — real,
@@ -306,7 +306,7 @@ test('[B3] the colour budget is spent on colours the user can tell apart', async
    * halo window `nearDuplicateFillPairs` calls a duplicate — rgb(125,64,29)
    * beside rgb(116,58,28) (10.9) and rgb(8,0,0) beside rgb(0,0,0) (8.0), two
    * browns and a doubled black. Fold those the way `maxNearDuplicateFills: 0`
-   * makes us fold them and the real product's own capture is FIVE
+   * makes us fold them and the reference product's own capture is FIVE
    * distinguishable colours: white, pink, orange, brown, black. That is the
    * floor, and it is the number we deliver.
    *
@@ -314,14 +314,14 @@ test('[B3] the colour budget is spent on colours the user can tell apart', async
    * every budget. That bar is not reachable together with the repo's own
    * `maxNearDuplicateFills: 0` gate: the clusters this image yields at a large
    * budget contain pairs inside the halo window, so a palette of all-but-one of
-   * them ships duplicates. The real product resolves the tension by shipping
+   * them ships duplicates. The reference product resolves the tension by shipping
    * the duplicates; we resolve it by folding them, which is what every other
    * check in this repo asks for. Only one of the two bars can stand, and this
    * is the one with an exemplar behind it.
    */
   const euclid = (a, b) => Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
   const HALO = 32;
-  // Real-product group count at the captured budget, deduped at HALO — see above.
+  // Reference-product group count at the captured budget, deduped at HALO — see above.
   const floors = { [EXEMPLAR_COLORS]: 5 };
   /**
    * What the quantizer itself finds before any fold, measured on this artwork.
@@ -528,7 +528,7 @@ test('[B4] an explicit anti-aliasing choice survives the Enhance bundle', async 
    * *ignoring* `settings.antiAliasing`: with Enhance ticked, `off` and `smart`
    * produced byte-identical documents and only `mid` differed. The UI still shows whatever the user chose, so "Anti-aliasing:
    * Off" with Enhance on tells the reader the opposite of what the engine did —
-   * and `fixtures/reference/OBSERVED-UI.md` step ③ records the real product
+   * and `fixtures/reference/OBSERVED-UI.md` step ③ records the reference product
    * exposing Enhance and Anti-aliasing as independent controls.
    *
    * Either the explicit value wins, or the renderer must stop offering it while

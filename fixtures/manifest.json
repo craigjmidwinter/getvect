@@ -358,7 +358,7 @@
         "maxNearDuplicateFills": 0,
         "maxMs": 10000
       },
-      "note": "The white-flattened counterpart of reference-fox: same artwork, same settings, no alpha. Absolute bars only — there is no real-product capture of the flattened variant to ratio against. It earns its keep by being the control that attributes a difference to the ingest rather than the tracer."
+      "note": "The white-flattened counterpart of reference-fox: same artwork, same settings, no alpha. Absolute bars only — there is no reference-product capture of the flattened variant to ratio against. It earns its keep by being the control that attributes a difference to the ingest rather than the tracer."
     },
     {
       "id": "reference-fox-default",

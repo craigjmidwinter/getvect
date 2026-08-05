@@ -112,7 +112,7 @@ interface ImageEntry {
   /**
    * The AI-enhanced bitmap, once a provider has returned one. It *replaces*
    * `raster` as the working image while AI Enhance is on — at the provider's
-   * own dimensions, which is what the real product does: the enhanced
+   * own dimensions, which is what the reference product does: the enhanced
    * re-illustration is the picture being traced, not an overlay on the source.
    * Cached for the life of the image so toggling the feature off and on again
    * does not buy a second call.
@@ -1505,7 +1505,7 @@ export function App() {
                   label="Colors"
                   /**
                    * Drawing is two-tone by construction (REFERENCE B2), so the
-                   * colour budget has nothing to decide. The real product swaps
+                   * colour budget has nothing to decide. The reference product swaps
                    * these controls out entirely under that preset; disabling
                    * them is the same promise: a live control that cannot change
                    * the result is a lie about the product.
