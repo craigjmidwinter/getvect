@@ -282,6 +282,18 @@ code {
   letter-spacing: 0.02em;
 }
 
+/* Each format is a button plus (for DXF) its variant picker, kept together. */
+.export-format {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.export-variant {
+  padding: 3px 4px;
+  font-size: 11px;
+}
+
 .export-group button.is-busy {
   border-color: var(--accent);
   color: var(--accent);
@@ -354,8 +366,19 @@ code {
   font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-dim);
-  background: rgba(0, 0, 0, 0.35);
+  /*
+   * Opaque enough to read over ANY artwork.
+   *
+   * The chip used to be rgba(0,0,0,0.35) with dim text: composited over a white
+   * preview that is a mid grey chip carrying mid grey text — 1.07:1, i.e. the
+   * label vanishes on exactly the light artwork this product is aimed at
+   * (t-shirt designs, decals, logos on paper). Nobody saw it because the
+   * screenshot fixture happens to be dark. At 0.88 alpha over white the chip
+   * still sits at luma ~40 and the full-strength ink on it clears 11:1, while
+   * over the app's own dark pane it is indistinguishable from the old badge.
+   */
+  color: var(--ink);
+  background: rgba(9, 12, 18, 0.88);
   padding: 2px 6px;
   border-radius: 4px;
   pointer-events: none;
@@ -480,8 +503,15 @@ code {
    * downward: splitting the pair costs no preview height and leaves both
    * blocks shorter than the column they sit in.
    */
+  /*
+   * OUTPUT COLOURS is the widest of the four because its content is the widest:
+   * a two-column list of `[x] [chip] #RRGGBB` rows needs 222px of track before
+   * padding, and a column narrower than that either shreds every hex label or
+   * drops to a single column and pushes the last output group below the fold.
+   * Both were shipped in turn; the column is now sized to the control.
+   */
   grid-template-columns:
-    minmax(215px, 1.15fr) minmax(165px, 0.85fr) minmax(185px, 1fr) minmax(165px, 0.85fr);
+    minmax(215px, 1.1fr) minmax(165px, 0.8fr) minmax(185px, 0.95fr) minmax(238px, 1.15fr);
   gap: 12px;
   overflow-y: hidden;
   /* A window narrow enough to squeeze the columns scrolls them instead of
@@ -697,6 +727,17 @@ button.toggle.is-on,
   gap: 10px;
 }
 
+/*
+ * "Auto palette" is an escape hatch, not a footnote: it carries the same
+ * border/background/padding as Merge and Remove a few pixels below it, only
+ * smaller, so the way back from an edit looks as pressable as the edits did.
+ */
+.palette-auto {
+  padding: 2px 8px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .palette-title em {
   font-style: normal;
   color: var(--ink);
@@ -793,11 +834,16 @@ button.toggle.is-on,
  * is indistinguishable from "there are six". The reference product draws the
  * output colour groups as a wrapping row of circles for the same reason: the
  * whole point of the control is to see the set at a glance. Each cell is wide
- * enough for a checkbox, a chip and a six-digit hex.
+ * enough for a checkbox, a chip and a six-digit hex — 88px was not: the row
+ * needs 106px, so every hex in the second column was shredded ("#1B3A", "#E457:")
+ * and the list grew a horizontal scrollbar. A track that cannot hold the label
+ * is not a narrower control, it is a control that cannot say which colour it is,
+ * so the track is sized to the row and the list drops to one column when the
+ * panel is too narrow for two.
  */
 .group-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(106px, 1fr));
   align-content: start;
   gap: 2px 10px;
   min-height: 44px;
