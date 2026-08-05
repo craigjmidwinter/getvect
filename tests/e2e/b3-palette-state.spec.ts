@@ -1,5 +1,14 @@
 import type { Page } from '@playwright/test';
-import { test, expect, tid, TESTIDS, FIXTURE, loadViaPicker, waitForReady } from './helpers';
+import {
+  test,
+  expect,
+  tid,
+  TESTIDS,
+  FIXTURE,
+  loadViaPicker,
+  setSelect,
+  waitForReady,
+} from './helpers';
 
 /**
  * REFERENCE B3 — palette state the panel reports about itself.
@@ -54,6 +63,12 @@ test('[B3] the colour-count hint names the real reason the palette is short', as
   await loadViaPicker(page, FIXTURE.snorlax);
   await waitForReady(page);
 
+  // Every cleanup off first — Smart anti-aliasing is on by default (it is what
+  // the real product does, and what keeps the default output economical), and
+  // its near-duplicate colour fold is itself a settings-shortfall. The baseline
+  // this check needs is the one with nothing folding.
+  await setSelect(page, TESTIDS.settingAntiAliasing, 'off');
+  await waitForReady(page);
   await pickSize(page, 16);
   const plain = await hintOf(page);
   expect(

@@ -50,6 +50,19 @@ const load = async (name) => flattenOnWhite(await decodeImageFile(fixture(name))
 const loadIngest = async (name) => canvasIngest(await decodeImageFile(fixture(name)));
 const S = engine.DEFAULT_SETTINGS;
 
+/**
+ * Defaults with every optional cleanup off.
+ *
+ * `DEFAULT_SETTINGS` ships Smart anti-aliasing on (the real product does too —
+ * fixtures/reference/OBSERVED-UI.md — and it is what keeps the default output
+ * economical). Its index-image majority pass is also a very effective impulse
+ * remover, so on the speckled fixture the noise-removal controls have nothing
+ * left to remove and cannot be observed at all. Checks that ask "does THIS
+ * control move the picture" isolate it here; checks about the shipped
+ * configuration use `S`.
+ */
+const RAW = { ...S, antiAliasing: 'off' };
+
 const flat = await load('logo-flat-512.png');
 const noisy = await load('logo-noisy-512.png');
 const photo = await load('photo-gradient-512x384.jpg');
@@ -79,8 +92,8 @@ test('[B2] every slider changes the rendered picture, not just the bytes', async
     ['despeckle', 0, 90],
   ];
   for (const [key, from, to] of cases) {
-    const a = await engine.vectorize(noisy, { ...S, [key]: from });
-    const b = await engine.vectorize(noisy, { ...S, [key]: to });
+    const a = await engine.vectorize(noisy, { ...RAW, [key]: from });
+    const b = await engine.vectorize(noisy, { ...RAW, [key]: to });
     const mismatch = pixelMismatchRatio(renderResult(a), renderResult(b));
     assert.ok(
       mismatch > 0.01,

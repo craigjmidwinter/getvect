@@ -199,7 +199,9 @@ function View({
       className={`preview-view${hidden ? ' is-hidden' : ''}`}
       {...attrs}
     >
-      <span className="view-label">{label}</span>
+      <span data-testid={TESTIDS.previewViewLabel} className="view-label">
+        {label}
+      </span>
       <div className="view-anchor">
         <div className="view-stage" style={stageStyle}>
           {children}

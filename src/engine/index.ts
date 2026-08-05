@@ -114,10 +114,23 @@ export const DEFAULT_SETTINGS: ResolvedSettings = {
   preset: 'clipart',
   detailLevel: 'high',
   bwThreshold: 128,
-  // B4 — off by default: they are corrections, and a correction nobody asked
-  // for is a surprise. The Enhance toggle is the one-click bundle.
+  // B4 — Noise Reduction is off by default: it is a correction, and a
+  // correction nobody asked for is a surprise.
   noiseReduction: 'off',
-  antiAliasing: 'off',
+  /**
+   * Anti-aliasing defaults to Smart, because that is what the real product
+   * does: `fixtures/reference/OBSERVED-UI.md` records "Smart AA was ON by
+   * default here" for a plain clipart upload, and its measured effect at
+   * otherwise identical settings is 354 paths -> 67 (-81 %). Ours is the same
+   * shape of win — 1747 sub-paths -> 603, 396 KB -> 160 KB on the gold-standard
+   * artwork — so shipping it off by default meant the configuration a user
+   * actually gets was the one nothing was tuned for.
+   *
+   * It is a *default*, not a bundle member: `enhance` no longer forces it on
+   * (see `smartAa` below), so "Anti-aliasing: Off" means off whatever else is
+   * ticked.
+   */
+  antiAliasing: 'smart',
   // B5 — the reference product's own defaults: middle roundness, 5px² specks
   // dropped. Overlap `high` keeps each layer trimmed to its own region, which
   // is the economical half of the pair.
@@ -311,6 +324,59 @@ const round4 = (v: number) => Math.round(v * 10000) / 10000;
 const SHAPE_FLOOR_OF_REGION_FLOOR = 0.5;
 
 /**
+ * How different a small region may be from its surroundings and still be
+ * cleaned up by the Enhance floor (L1 over RGB, 0..765).
+ *
+ * The floor exists to flatten a busy background, and area alone cannot tell a
+ * scrap of background pattern from a feature: both are ~60px². A blind
+ * 87px² floor therefore ate the gold-standard artwork's face — both white
+ * fangs, one eye, the mouth broken into blobs — while every whole-frame gate
+ * stayed green, because the face is 8 % of the canvas (ink recall inside it:
+ * 0.865 against 0.912 with the bundle off). The linework the floor destroyed is
+ * exactly the linework that is *loud*: white teeth inside a black mouth, a
+ * black eye on a cream face.
+ *
+ * So the floor gets the same two-sided test the despeckle noise filter has had
+ * all along (`maxContrastFor`): small AND quiet. 255 is a third of the L1
+ * range — a region a third of the colour space away from everything it touches
+ * is a feature of the drawing, whatever its area. Measured on the gold-standard
+ * artwork this moves face ink recall 0.865 -> 0.959 and whole-frame 0.942 ->
+ * 0.977, for eight extra sub-paths out of 153.
+ */
+const ENHANCE_FLOOR_MAX_CONTRAST = 255;
+
+/**
+ * Luma below which a palette entry is the drawing's ink rather than one of its
+ * colours. Same number `reserveDarkest` uses to decide a palette slot is worth
+ * spending on the outline (src/engine/color.ts).
+ */
+const INK_LUMA = 60;
+
+/**
+ * Which palette slots hold dark ink — the line art the cleanup passes must not
+ * simplify.
+ *
+ * Only the *darkest* qualifying entry counts: on a dark-heavy picture half the
+ * palette can sit under the luma bar, and exempting half the palette from every
+ * floor is not a protection, it is switching the floor off.
+ */
+function darkInkSlots(palette: RgbColor[]): Uint8Array | undefined {
+  let darkest = -1;
+  let bestLuma = INK_LUMA;
+  for (let i = 0; i < palette.length; i++) {
+    const luma = 0.299 * palette[i].r + 0.587 * palette[i].g + 0.114 * palette[i].b;
+    if (luma < bestLuma) {
+      bestLuma = luma;
+      darkest = i;
+    }
+  }
+  if (darkest < 0) return undefined;
+  const flags = new Uint8Array(palette.length);
+  flags[darkest] = 1;
+  return flags;
+}
+
+/**
  * Path-data precision. One decimal is *exact* here, not a compromise: the
  * tracer places every node on a pixel corner or on the midpoint between two of
  * them, so every coordinate it can produce is a multiple of 0.5. A second
@@ -459,13 +525,18 @@ export async function vectorize(
    * "Enhance image with AI" is a bundle, not a filter (REFERENCE B4, and
    * OBSERVED-UI's record of what it did to the real product's output: a busy
    * patterned background became near-white). On top of the denoise +
-   * colour-simplification pass it turns on the two cleanups that make a busy
-   * source legible: smart anti-aliasing, and a minimum shape area proportional
-   * to the canvas — one ten-thousandth of it, ~87px² on the 1046x833 reference
+   * colour-simplification pass it adds a minimum shape area proportional to the
+   * canvas — one ten-thousandth of it, ~87px² on the 1046x833 reference
    * artwork, ~26px² on a 512px logo. A checkbox that only nudges the output is
    * not the control the reference product has.
+   *
+   * What it deliberately does NOT do any more is reach into Anti-aliasing.
+   * It used to force Smart on whenever the control read "Off", so the two
+   * settings produced byte-identical documents and the UI reported a state the
+   * engine was not in. OBSERVED-UI step ③ has them as independent controls, so
+   * they are independent controls: Smart is simply the *default* (above).
    */
-  const smartAa = opts.antiAliasing === 'smart' || (opts.enhance && opts.antiAliasing === 'off');
+  const smartAa = opts.antiAliasing === 'smart';
   if (smartAa || opts.antiAliasing === 'mid') {
     source = deAntialias(source, smartAa ? 2 : 1);
   }
@@ -573,11 +644,14 @@ export async function vectorize(
     });
   }
   const enhanceFloor = opts.enhance && opts.despeckle > 0 ? (width * height) / 10000 : 0;
+  const inkSlots = darkInkSlots(clusters);
   if (enhanceFloor > 1) {
     despeckleIndices(indices, width, height, {
       minArea: enhanceFloor,
       palette: clusters,
       keepElongated: true,
+      maxContrast: ENHANCE_FLOOR_MAX_CONTRAST,
+      protect: inkSlots,
       transparentIndex: TRANSPARENT_INDEX,
     });
   }
@@ -636,17 +710,28 @@ export async function vectorize(
     remapIndices(indices, indexMap);
   }
   if (palette.length === 0) palette = [{ r: 0, g: 0, b: 0 }];
+  /**
+   * What the image had to give, measured before the folds below. Everything
+   * after this point is a choice we made, not a limit of the artwork, and the
+   * UI has to be able to say which is which.
+   */
+  const sourceColors = palette.length;
 
   // Two different collapses, both switched off by default and both skipped when
   // the user has hand-picked the palette (their table is authoritative):
   //   - Smart anti-aliasing folds away halo layers, which ARE near-duplicates
-  //     of the colour they hug, so it merges by colour distance. 5.5 % of the
-  //     RGB range is chosen so that no two surviving layers can be within the
-  //     24-unit distance the halo metric looks for.
+  //     of the colour they hug, so it merges by colour distance. 8 % of the L1
+  //     range is 61 units, and even in the worst case (an equal split across
+  //     all three channels) that leaves survivors >35 apart in the Euclidean
+  //     distance the halo metric uses — outside its 32-unit window. At 5.5 %
+  //     the gold-standard output shipped rgb(213,202,193) beside
+  //     rgb(197,186,179) (26.6 apart) and rgb(94,149,169) beside
+  //     rgb(115,162,180) (27.0): one cream region split into a speckled mosaic
+  //     of two creams, which is what a user sees when they recolour a swatch.
   //   - The output-groups merge threshold folds away colours that barely appear
   //     (REFERENCE B3), which is a coverage question.
   if (!override) {
-    if (smartAa) palette = mergeSimilarColors(indices, palette, 5.5).palette;
+    if (smartAa) palette = mergeSimilarColors(indices, palette, 8).palette;
     const groupThreshold = Math.max(opts.mergeThreshold, opts.enhance ? 1 : 0);
     if (groupThreshold > 0) palette = mergeSmallGroups(indices, palette, groupThreshold);
   }
@@ -681,6 +766,18 @@ export async function vectorize(
      */
     minArea: Math.max(minArea, enhanceFloor * SHAPE_FLOOR_OF_REGION_FLOOR),
   };
+  /**
+   * ...and the ink layer keeps only the floor the user asked for.
+   *
+   * The shape floor is a bounding-box test, and a bounding box is the worst
+   * possible measure of a stroke: the box round the gap between two teeth, or
+   * round a comma-shaped eyelid, is mostly not the shape. Simplifying a
+   * background region away is a simplification; doing it to the linework is a
+   * hole. Minimum Area (B5) still applies — that promise is about the document,
+   * full stop.
+   */
+  const inkLayers = darkInkSlots(palette);
+  const inkTraceOptions: TraceOptions = { ...traceOptions, minArea };
 
   const disabled = new Set(opts.disabledColors);
   const enabled: number[] = [];
@@ -741,7 +838,9 @@ export async function vectorize(
       } else {
         maskForIndex(indices, i, mask);
       }
-      layers.push(traceMask(mask, width, height, i, traceOptions));
+      layers.push(
+        traceMask(mask, width, height, i, inkLayers?.[i] ? inkTraceOptions : traceOptions),
+      );
     }
     report(onProgress, 'trace', 0.45 + 0.4 * ((position + 1) / Math.max(1, order.length)));
     if (position % 4 === 3) await tick();
@@ -767,6 +866,7 @@ export async function vectorize(
     width,
     height,
     durationMs: Math.max(0, now() - started),
+    sourceColors,
   };
 }
 
