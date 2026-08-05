@@ -8,17 +8,17 @@
   },
   "sources": {
     "mascot": "785227fed6a2880ffaf4233c1038efda4b6f6ac5f56d5e1cfdb4a8c4450fc29f",
-    "engine": "6adc3fc0d2cf84658cc09982cdc58b2b654dc4fdfb30194c5a82c213b627ed62",
+    "engine": "55dd0adaacdc680f1ce0f9e0d2a3b022afffb1562907a67a2fdbca59012df07d",
     "script": "cbafc7fd22d38a99e99472f1c7babdbaa957c337ca81104b6d5d9dbcfe98b868"
   },
   "measured": {
     "sourceBytes": 568678,
-    "svgBytes": 19022,
+    "svgBytes": 19745,
     "sourceKB": 568,
     "svgKB": 19,
-    "layers": 6,
-    "shapes": 56,
-    "paths": 6,
+    "layers": 7,
+    "shapes": 59,
+    "paths": 7,
     "colorCount": 8,
     "zoomPct": 200,
     "width": 1195,
