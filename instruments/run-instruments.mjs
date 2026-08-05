@@ -226,6 +226,24 @@ async function main() {
 
     const filePath = join(fixturesDir, fixture.file);
     const source = flattenOnWhite(await decodeImageFile(filePath));
+    /**
+     * What fidelity is judged against.
+     *
+     * Normally the source itself. A fixture may name a different image with
+     * `compareTo`, and exactly one kind of fixture needs to: a *noisy* one.
+     * Speckle removal is a feature (REFERENCE B5 Minimum Area, B4 Noise
+     * Reduction, the despeckle slider), and SSIM's variance term punishes it
+     * hard — the clean artwork scores 0.35 against the speckled version of
+     * itself, so measuring a denoised trace against the noise rewards
+     * reproducing every speck and calls recovering the drawing a failure.
+     * Pointing the noisy fixture at the clean original asks the question the
+     * fixture exists to ask: did the artwork come back?
+     */
+    const referenceFile = fixture.compareTo ?? fixture.file;
+    const reference =
+      referenceFile === fixture.file
+        ? source
+        : flattenOnWhite(await decodeImageFile(join(fixturesDir, referenceFile)));
     // A fixture may pin the settings it is judged at (the reference exemplar
     // was produced at ~16 colours, so measuring it at the 8-colour default
     // would compare two different pictures).
@@ -286,21 +304,22 @@ async function main() {
     }
     await fs.writeFile(join(artifactsDir, 'raster', `${fixture.id}.png`), rendered.png);
     const traced = flattenOnWhite(rendered.image);
-    await writeDiff(source, traced, join(artifactsDir, 'diff', `${fixture.id}.png`));
+    await writeDiff(reference, traced, join(artifactsDir, 'diff', `${fixture.id}.png`));
 
     const structure = svgStructure(result.svg);
     const metrics = {
       width: source.width,
       height: source.height,
-      meanColorError: meanColorError(source, traced),
-      rmsColorError: rmsColorError(source, traced),
-      psnrDb: psnr(source, traced),
-      ssim: ssim(source, traced),
-      pixelMismatchRatio: pixelMismatchRatio(source, traced),
+      comparedTo: referenceFile,
+      meanColorError: meanColorError(reference, traced),
+      rmsColorError: rmsColorError(reference, traced),
+      psnrDb: psnr(reference, traced),
+      ssim: ssim(reference, traced),
+      pixelMismatchRatio: pixelMismatchRatio(reference, traced),
       // How much each palette colour's area drifted between source and trace:
       // catches half-pixel erosion of hairlines that MAE/SSIM average away.
       perColorCoverageDelta: Array.isArray(result.palette)
-        ? perColorCoverageDelta(source, traced, result.palette)
+        ? perColorCoverageDelta(reference, traced, result.palette)
         : null,
       pathCount: structure.pathCount,
       shapeCount: structure.shapeCount,

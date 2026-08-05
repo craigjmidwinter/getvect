@@ -140,7 +140,7 @@ the flat fixture's exactly six colours).
 
 | testid | element | required attributes / behaviour |
 | --- | --- | --- |
-| `palette-editor` | container | Visible when `data-status` is `ready`. |
+| `palette-editor` | container | Mounted for the whole life of an image, not only once a result exists — it must not appear and disappear around a trace (B1). |
 | `palette-swatch` | one per palette entry | **Required:** `data-color` = `#rrggbb` lowercase-or-uppercase hex, `data-index` = position. Clicking selects it for editing. Count must equal the palette size. |
 | `palette-color-input` | `<input type="color">` | Edits the selected swatch. Setting it re-vectorizes with the overridden palette. |
 | `palette-merge-target` | `<select>` | Options = the other palette entries; option `value` = target index. |
@@ -153,14 +153,16 @@ the flat fixture's exactly six colours).
 
 | testid | element | required attributes / behaviour |
 | --- | --- | --- |
-| `color-groups` | container | Visible when `data-status` is `ready`. |
+| `color-groups` | container | Mounted for the whole life of an image (see `palette-editor`). |
 | `color-group-toggle` | checkbox per output colour | **Required:** `data-index`, `data-color`. One per palette entry. Unchecking removes that colour's layer from the SVG — and unchecking the dominant (index 0) colour must leave a genuinely **transparent** background: no full-bleed backdrop `<rect>`, and the corner pixels render with alpha 0. Re-checking restores the previous document exactly. |
-| `merge-threshold` | `<select>` | Percentage thresholds (the real product defaults to 5 %). Raising it must not increase the layer count. |
+| `merge-threshold` | `<select>` | Percentage thresholds (the real product defaults to 5 %). Read as *coverage*: a colour group covering less than this share of the image is merged into its nearest surviving colour. Raising it must not increase the layer count. |
 | `color-sort` | `<select>` | Layer sort order. Changing it reorders `<g>` layers without changing which colours exist. |
 
 The palette editor and colour groups must not crowd out the artwork: at the app's
 minimum window size with a 64-colour palette, `settings-panel` must stay under 45 % of
-the window height and `preview-pane` must keep more than 40 %.
+the window height and `preview-pane` must keep more than 40 %. The implementation gives
+`settings-panel` a fixed height and scrolls each column inside it, which also satisfies
+B1: nothing above it moves when a palette gains a swatch or a result lands.
 
 `palette-editor` also carries `data-palette-size` (entry count) and `data-stale`
 (`"true"` while a re-trace is in flight, so the swatches on screen describe the SVG in the

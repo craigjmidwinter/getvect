@@ -37,10 +37,10 @@ function colorOps(fill: string, stroked: boolean): string[] {
 }
 
 function shapeOps(shape: Shape, out: string[]): void {
-  const stroked = shape.strokeWidth > 0;
+  const stroked = shape.strokeWidth > 0 || Boolean(shape.unfilled);
   const mark = out.length; // rollback point if the shape turns out to be empty
   out.push(...colorOps(shape.fill, stroked));
-  if (stroked) out.push(`${num(shape.strokeWidth, 3)} w 1 J 1 j`);
+  if (stroked) out.push(`${num(shape.strokeWidth || 1, 3)} w 1 J 1 j`);
 
   let emitted = false;
   for (const sp of shape.subpaths) {
@@ -71,9 +71,10 @@ function shapeOps(shape: Shape, out: string[]): void {
     out.length = mark; // nothing was drawn — drop the colour setup again
     return;
   }
-  // `B*` fills and strokes in one go; `f*` is fill only. Both use the even-odd
-  // rule so holes stay holes.
-  out.push(stroked ? 'B*' : 'f*');
+  // `B*` fills and strokes in one go; `f*` is fill only; `S` is the stroked
+  // result style (B6), which must not fill at all. The starred operators use
+  // the even-odd rule so holes stay holes.
+  out.push(shape.unfilled ? 'S' : stroked ? 'B*' : 'f*');
 }
 
 export function resultToPdf(result: VectorizeResult, creator = 'GetVect'): string {

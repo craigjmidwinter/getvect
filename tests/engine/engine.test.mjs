@@ -33,11 +33,34 @@ const flat = await load('logo-flat-512.png');
 const noisy = await load('logo-noisy-512.png');
 const big = await load('logo-flat-1024.png');
 
+/**
+ * Distinct paint colours in a document, as `#rrggbb`.
+ *
+ * Notation-agnostic on purpose: REFERENCE D1 documents `rgb(r, g, b)` layer
+ * fills (and the engine writes them), while the palette API speaks hex. An
+ * assertion about *which colours* are in the picture must not quietly become an
+ * assertion about spelling — a hex-only matcher would let "the removed colour is
+ * gone" pass on a document where it is still there under another notation.
+ */
 const fillsIn = (svg) => {
-  const set = new Set([...svg.matchAll(/fill="([^"]+)"/g)].map((m) => m[1].toLowerCase()));
-  set.delete('none');
+  const set = new Set();
+  for (const m of svg.matchAll(/fill="([^"]+)"/g)) {
+    const hex = normalizeColor(m[1]);
+    if (hex) set.add(hex);
+  }
   return set;
 };
+
+const normalizeColor = (value) => {
+  const v = String(value).trim().toLowerCase();
+  if (/^#[0-9a-f]{6}$/.test(v)) return v;
+  const rgb = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/.exec(v);
+  if (!rgb) return null;
+  return `#${[rgb[1], rgb[2], rgb[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('')}`;
+};
+
+/** True when `hex` is painted anywhere in the document, in either notation. */
+const paints = (svg, hex) => fillsIn(svg).has(String(hex).toLowerCase());
 
 test('vectorize is deterministic', async () => {
   const a = await engine.vectorize(flat, S);
@@ -154,7 +177,7 @@ test('palette override: changing a colour repaints its region', async () => {
   const base = await engine.vectorize(flat, S);
   const palette = base.palette.map((c, i) => (i === 0 ? { r: 255, g: 0, b: 255 } : c));
   const r = await engine.vectorize(flat, { ...S, palette });
-  assert.ok(r.svg.toLowerCase().includes('#ff00ff'), 'the new colour must appear in the output');
+  assert.ok(paints(r.svg, '#ff00ff'), 'the new colour must appear in the output');
   assert.equal(r.palette.length, base.palette.length, 'palette length must be stable');
   assert.equal(engine.hexOf(r.palette[0]), '#ff00ff');
 });
@@ -165,10 +188,7 @@ test('palette override: removing a colour drops it from the output', async () =>
   const palette = base.palette.filter((_, i) => i !== 1);
   const r = await engine.vectorize(flat, { ...S, palette });
   assert.equal(r.palette.length, base.palette.length - 1);
-  assert.ok(
-    !r.svg.toLowerCase().includes(removed),
-    `removed colour ${removed} still appears in the SVG`,
-  );
+  assert.ok(!paints(r.svg, removed), `removed colour ${removed} still appears in the SVG`);
 });
 
 test('palette override: merging two colours collapses them', async () => {
@@ -177,7 +197,7 @@ test('palette override: merging two colours collapses them', async () => {
   // "Merge 1 into 0" is expressed as the palette without entry 1.
   const r = await engine.vectorize(flat, { ...S, palette: base.palette.filter((_, i) => i !== 1) });
   assert.equal(r.palette.length, base.palette.length - 1);
-  assert.ok(!r.svg.toLowerCase().includes(merged));
+  assert.ok(!paints(r.svg, merged), `merged colour ${merged} still appears in the SVG`);
 });
 
 test('palette override ignores duplicates and malformed entries', async () => {
