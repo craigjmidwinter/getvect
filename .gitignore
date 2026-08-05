@@ -5,6 +5,10 @@ dist/
 
 # generated, fully reproducible from the scripts (see docs/HARNESS.md)
 artifacts/
+# The local fixture overlay: assets we may MEASURE against but may never
+# redistribute. Nothing under it is ever tracked — not a .gitkeep, not the
+# manifest. Its absence must change nothing (docs/HARNESS.md "Local fixtures").
+fixtures/local/
 test-results/
 playwright-report/
 nanobanana-output/
