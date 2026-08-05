@@ -41,6 +41,11 @@ interface PreviewProps {
   svg: string | null;
   paneRef: React.RefObject<HTMLDivElement>;
   busy: boolean;
+  /**
+   * True only when the artwork is larger than the view, i.e. when a drag can
+   * actually reveal something. Drives the grab cursor and `data-pannable`.
+   */
+  pannable: boolean;
 }
 
 /** Attribute-safe number formatting — both views must emit identical strings. */
@@ -56,6 +61,7 @@ export function Preview({
   svg,
   paneRef,
   busy,
+  pannable,
 }: PreviewProps) {
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const zoomRef = useRef(zoom);
@@ -135,6 +141,7 @@ export function Preview({
       ref={paneRef}
       data-testid={TESTIDS.previewPane}
       data-mode={mode}
+      data-pannable={String(pannable)}
       className={`preview-pane mode-${mode}`}
       onMouseDown={onMouseDown}
     >
@@ -164,7 +171,9 @@ export function Preview({
           <span>Vectorizing…</span>
         </div>
       ) : null}
-      {!image ? <p className="preview-empty">No image loaded yet — drop one on the left.</p> : null}
+      {!image ? (
+        <p className="preview-empty">Drop an image anywhere — PNG, JPEG or BMP.</p>
+      ) : null}
     </div>
   );
 }
