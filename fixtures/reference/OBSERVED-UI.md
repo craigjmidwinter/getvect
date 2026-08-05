@@ -87,13 +87,24 @@ relative coordinates at 10× scale. Layers stack: later/lighter layers sit on to
 | Clipart (Max detail) | 6  | 90px² | 6  | 93  | 91 KB  |
 | Photo   | 16 | 90px² | 16 | 620 | 275 KB |
 | Drawing | B/W | 90px² | 2 (black, white) | 37 | 30 KB |
+| Clipart (Max detail), AA Off   | 18 | 90px² | 15 | 354 | 186 KB |
+| Clipart (Max detail), **AA Smart** | 18 | 90px² | 15 | **67** | **42 KB** |
+
+**Smart anti-aliasing is the highest-leverage control observed**: at identical other
+settings it collapsed 354 paths → 67 (-81%) and 186KB → 42KB. It is evidently a
+pre-trace edge cleanup (edge-aware smoothing of the quantized regions), not a
+post-render effect. The engine's analog matters more than any tracer parameter.
 
 Saved exemplars in this directory:
 - `artwork.png` — source raster
-- `artwork.svg` — user-captured real output (34 paths, 31KB — profile matches a
-  low-detail or Drawing-adjacent setting)
+- `artwork.svg` — user-captured real output (34 paths, 31KB). User recalls settings
+  were ~16 colors with **Smart anti-aliasing enabled** — consistent with the measured
+  Smart-AA profile below.
 - `artwork-clipart-6colors-min90.svg` — DOM-extracted real output at Clipart /
-  6-color palette / Minimum Area 90px² / Enhance ON (93 paths, 91KB)
+  6-color palette / Minimum Area 90px² / AA Off / Enhance ON (93 paths, 91KB)
+- `artwork-clipart-18colors-min90-smartAA.svg` — DOM-extracted real output at
+  Clipart / 18-color palette / Minimum Area 90px² / **AA Smart** / Enhance ON
+  (67 paths, 42KB) — the primary smoothness/economy exemplar
 
 ## Parity scope note for GetVect
 
