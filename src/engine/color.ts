@@ -356,17 +356,411 @@ export function computePaletteSync(
   const hist = buildHistogram(image, mask);
   if (hist.distinct === 0) return [{ r: 0, g: 0, b: 0 }];
 
-  const clusters = medianCut(hist, k);
-  let palette = clusters.map((m) => centroid(m, hist));
+  /*
+   * The two ends of the tonal range get their slot before median cut runs, and
+   * the rest of the budget is clustered on what is left over. See
+   * `reserveExtremes`. Reserved centres come first in the array, the pinned one
+   * (the highlight) first of all.
+   */
+  /*
+   * Only when we are actually approximating. With no more distinct colours than
+   * slots, median cut reproduces every one of them exactly — that is the branch
+   * "enhance cannot introduce a colour absent from the source" depends on — and
+   * a reserved centre there is an *invented* colour: on the flat fixture, whose
+   * six colours include a navy rgb(27,58,92) and a near-black rgb(43,43,43),
+   * reserving put their mean rgb(32,53,75) in the palette and folded two of the
+   * artwork's own colours into one.
+   */
+  const approximating = hist.distinct > k;
+  const { bands, pinned, inkReserved } = approximating
+    ? reserveExtremes(hist, supportedHighlight(image, mask, hist.total), k, separateSlots)
+    : { bands: [] as ReservedBand[], pinned: 0, inkReserved: false };
+  const rest = bands.length ? withoutBands(hist, bands) : hist;
+  /*
+   * A reserved slot comes out of the budget when the budget is a promise — the
+   * user asked for k colours and gets k, one of which is the highlight. Inside
+   * the cleanup passes `colorCount` is not a promise but a simplification
+   * strength (`SIMPLIFY_COLORS`, src/engine/preprocess.ts), and spending one of
+   * its sixteen on white costs the picture a colour family for no one's
+   * benefit: on the gold standard it put the paw pad's region error from 10.0
+   * to 21.7. There the highlight is an extra centre, not a spent one.
+   */
+  const budget = separateSlots ? k - bands.length : k;
 
-  // Lloyd refinement only matters when we are actually approximating.
+  let palette = bands.map((band) => ({ ...band.centre }));
+  if (budget > 0 && rest.distinct > 0) {
+    palette = palette.concat(medianCut(rest, budget).map((m) => centroid(m, rest)));
+  }
+
+  /*
+   * Lloyd refinement only matters when we are actually approximating, and the
+   * reserved centres are held out of it.
+   *
+   * Lloyd is the same least-squares fit the reservation exists to overrule, and
+   * left free it undoes both halves. The highlight slot walks straight back
+   * down into the cream it was pulled out of — measured on the gold standard,
+   * the reserved rgb(253,249,242) came back as rgb(245,240,233) and not one
+   * output pixel was white. And withholding the ink band from median cut is not
+   * enough on its own to keep the ink slot exclusive, because the band still
+   * holds 4.5 % of that image's pixels against one centre: Lloyd answers the
+   * error that leaves by dragging a neighbouring cluster down into it, and
+   * rgb(27,48,54) — the cold teal that painted a fifth of the lower jaw — came
+   * back every time. Pinning both makes the dark band a place only one centre
+   * can be.
+   */
   if (hist.distinct > palette.length) {
-    palette = refine(hist, palette, 6);
-    if (separateSlots) palette = separate(hist, palette);
+    palette = refine(hist, palette, 6, pinned);
+    if (separateSlots) palette = separate(hist, palette, 8, pinned);
   }
   palette = reserveDarkest(hist, palette);
+  /*
+   * The backstop behind the ink reservation, and only where one was made: with
+   * no reserved ink centre there is no claim that the dark end is one colour,
+   * and folding anyway merges artwork. On `fixtures/logo-noisy-512.png` — whose
+   * dark quarter is a navy AND a near-black, which is why it is not reserved at
+   * all (`INK_MAX_COVERAGE`) — folding took those two colours down to one.
+   */
+  if (separateSlots && approximating && inkReserved) {
+    palette = refillToBudget(hist, foldNearInk(palette), k, pinned);
+  }
 
   return orderByCoverage(hist, palette);
+}
+
+/**
+ * Luma at or above which a pixel is a *highlight* rather than one of the
+ * drawing's light colours.
+ *
+ * Pure white is not a colour a coverage optimizer will ever spend a slot on. On
+ * the gold-standard artwork the two fangs and the eye glints are 382 pixels —
+ * 0.05 % of the drawn area — sitting inside a cream face, so median cut folds
+ * them into the cream and Lloyd never pulls a centre back out. Measured on that
+ * fixture, our 16-colour + Enhance output returned ZERO pixels above luma 230
+ * where the source has 382 above 245, and the real product returned 291: the
+ * fangs came back as grey holes ringed by ink instead of white triangles.
+ *
+ * That is not a fidelity rounding error, it is the loss of a feature. REFERENCE's
+ * own use cases — stickers, decals, tattoo templates — are exactly the artwork
+ * where a white highlight is load-bearing, and white is also the one colour a
+ * user cannot recover by editing the palette afterwards, because no slot holds
+ * the pixels to repaint.
+ */
+const HIGHLIGHT_LUMA = 245;
+
+/**
+ * Share of the drawn area a band has to cover to be worth a slot.
+ *
+ * Ink is held to 0.5 % (`reserveDarkest`'s own bar) because a handful of stray
+ * dark pixels is JPEG mosquito noise, not an outline. Highlights are held to
+ * 0.02 %, two orders of magnitude lower, because that is the size a highlight
+ * *is*: the gold standard's fangs and eye glints together are 0.05 % of the
+ * drawn area and they are the first thing a person looks at.
+ */
+const INK_MIN_COVERAGE = 0.005;
+const HIGHLIGHT_MIN_COVERAGE = 0.0002;
+
+/**
+ * Share of the drawn area above which the dark end is not ink at all.
+ *
+ * Ink is line art: a few per cent of the pixels and the whole picture. When a
+ * quarter of the drawn area is dark, dark is one of the picture's *colours*,
+ * there is no thin thing to protect, and a coverage optimizer is exactly the
+ * right tool for it. Reserving anyway does real damage, because a picture that
+ * dark usually has more than one dark colour and the reservation hands them one
+ * slot between them: measured on `fixtures/logo-noisy-512.png` (25.6 % dark,
+ * against the gold standard's 4.5 %) it merged the artwork's navy rgb(27,58,92)
+ * and its near-black rgb(43,43,43) into rgb(31,49,70), and the two slots that
+ * freed were re-spent on speckle — 13 sub-paths became 106.
+ */
+const INK_MAX_COVERAGE = 0.12;
+
+/**
+ * How many slots the drawing's own colour families keep before a highlight may
+ * take one.
+ *
+ * A reserved slot is not a free slot — it is taken out of the budget the user
+ * asked for — and at a small budget that trade goes the other way: on the gold
+ * standard at six colours, spending one on the fangs cost the paw pads their
+ * brown and put the region's mean colour error up from 18.1 to 29.8. The real
+ * product draws the same line in the same place: its 16-colour capture of this
+ * artwork carries rgb(254,254,254) as its own layer and its six-colour capture
+ * stops at rgb(247,243,238) — no white at all.
+ *
+ * Ink is not held to this, because ink at two colours is still the drawing.
+ */
+const HIGHLIGHT_MIN_PICTURE_SLOTS = 5;
+
+interface ReservedBand {
+  centre: RgbColor;
+  /** Whether a histogram colour of this luma belongs to the band. */
+  holds: (luma: number) => boolean;
+}
+
+/**
+ * Give the drawing's ink and its highlights a cluster centre each, before the
+ * coverage optimizer gets to spend the budget.
+ *
+ * Median cut plus Lloyd is a least-squares fit, and both ends of the tonal
+ * range are where least squares is systematically wrong about a *drawing*:
+ *
+ *  - **Ink** is a few per cent of the pixels and the whole picture.
+ *    `reserveDarkest` already moved a slot onto it after the fact, but only
+ *    when no slot had landed there at all — and at a large colour budget
+ *    several do. On the gold standard at 16 colours the single source ink
+ *    split into rgb(32,24,10) (warm brown) and rgb(28,47,53) (cold teal), 70
+ *    L1 units apart, so `separate` left them alone and 21 % of the lower-jaw
+ *    stroke came back teal: the outline visibly changed colour mid-line, and
+ *    raising the colour count made the linework *worse*.
+ *  - **Highlights** are too few pixels to win a slot at any budget
+ *    (`HIGHLIGHT_LUMA`).
+ *
+ * Reserving is done by *withholding the band from the clustering* rather than
+ * by patching the result afterwards. Both give the band a centre; only this one
+ * also stops a second centre landing in it, which is the half that fixes the
+ * split ink. The slots left over are spent on the colours that remain, so the
+ * palette is still `k` entries — a reserved slot is not an extra slot.
+ */
+function reserveExtremes(
+  hist: Histogram,
+  /** The image's *drawn* highlights, or null if it has none — `supportedHighlight`. */
+  light: { centre: RgbColor; share: number } | null,
+  k: number,
+  /**
+   * Whether this is the palette the user is shown and the layers are cut from,
+   * as opposed to one of the internal quantizations the cleanup passes run
+   * (`separateSlots`). Only the INK half of the reservation is held back from
+   * the cleanups, and the asymmetry is not arbitrary: withholding the sub-60
+   * band takes mass out of the clustering, so inside Enhance's colour
+   * simplification the outline's skirt joins the mid-tone above it instead and
+   * the gold standard's paw pad went from 18.1 mean colour error to 29.5. The
+   * highlight reservation only pins a centre on colours the image already has
+   * at the far end of its range, and it MUST run in the cleanups too: at 16
+   * colours Enhance hands the quantizer exactly 16 distinct colours, so the
+   * simplification's palette IS the delivered one (see `SIMPLIFY_COLORS`,
+   * src/engine/preprocess.ts) and a white the cleanup merged away can never
+   * come back.
+   */
+  reserveInk: boolean,
+): { bands: ReservedBand[]; pinned: number; inkReserved: boolean } {
+  const bands: ReservedBand[] = [];
+  let pinned = 0;
+  let inkReserved = false;
+
+  // The highlight goes first because `refine`/`separate` take a count of
+  // leading entries to hold rather than a set.
+  if (k - 1 >= HIGHLIGHT_MIN_PICTURE_SLOTS + 1 && light && light.share >= HIGHLIGHT_MIN_COVERAGE) {
+    bands.push({ centre: light.centre, holds: (l) => l >= HIGHLIGHT_LUMA });
+    pinned = 1;
+  }
+  // Never spend the whole budget on the extremes: there has to be a slot left
+  // for the picture between them.
+  const ink = reserveInk ? bandMean(hist, (l) => l < INK_LUMA) : null;
+  if (
+    bands.length < k - 1 &&
+    ink &&
+    ink.share >= INK_MIN_COVERAGE &&
+    ink.share <= INK_MAX_COVERAGE
+  ) {
+    bands.push({ centre: ink.centre, holds: (l) => l < INK_LUMA });
+    pinned = bands.length;
+    inkReserved = true;
+  }
+  return { bands, pinned, inkReserved };
+}
+
+/**
+ * How many of a pixel's eight neighbours a highlight needs to be a drawn one.
+ *
+ * The highlight bar is two orders of magnitude below the ink bar, because a
+ * highlight really is that small — and a bar that low is a bar impulse noise
+ * clears without trying. On `fixtures/logo-noisy-512.png` the seeded speckle
+ * puts scattered pixels above luma 245 on paper that is rgb(242,239,230), and
+ * a slot spent on them is a slot spent on grain: it took the RAW trace from 26
+ * sub-paths to 31 and made "noise reduction: low" noisier than "off".
+ *
+ * Area cannot separate the two — the fangs and the speckle are the same number
+ * of pixels — but shape can, and it is the same test `supportMap` uses one
+ * module over (src/engine/preprocess.ts): an impulse stands alone, a drawn
+ * feature has company. Half the neighbourhood is the bar; the interior of any
+ * feature wider than a pixel clears it and no isolated pixel can.
+ */
+const HIGHLIGHT_SUPPORT_MIN = 4;
+
+/**
+ * The mean and drawn-area share of the image's *drawn* highlights: pixels above
+ * `HIGHLIGHT_LUMA` that are part of a region rather than standing alone.
+ */
+function supportedHighlight(
+  image: RasterImage,
+  mask: Uint8Array | null | undefined,
+  drawn: number,
+): { centre: RgbColor; share: number } | null {
+  const { width, height, data } = image;
+  const bright = (x: number, y: number): boolean => {
+    const p = y * width + x;
+    if (mask && !mask[p]) return false;
+    const i = p * 4;
+    return lumaOf({ r: data[i], g: data[i + 1], b: data[i + 2] }) >= HIGHLIGHT_LUMA;
+  };
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!bright(x, y)) continue;
+      let support = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= height) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          if ((dx === 0 && dy === 0) || nx < 0 || nx >= width) continue;
+          if (bright(nx, ny)) support++;
+        }
+      }
+      if (support < HIGHLIGHT_SUPPORT_MIN) continue;
+      const i = (y * width + x) * 4;
+      r += data[i];
+      g += data[i + 1];
+      b += data[i + 2];
+      n++;
+    }
+  }
+  if (n === 0) return null;
+  return {
+    centre: { r: clamp255(r / n), g: clamp255(g / n), b: clamp255(b / n) },
+    share: n / Math.max(1, drawn),
+  };
+}
+
+/** Coverage-weighted mean of every histogram colour in a luma band. */
+function bandMean(
+  hist: Histogram,
+  accept: (luma: number) => boolean,
+): { centre: RgbColor; share: number } | null {
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  for (let i = 0; i < hist.distinct; i++) {
+    const c = hist.colors[i];
+    const cr = (c >> 16) & 255;
+    const cg = (c >> 8) & 255;
+    const cb = c & 255;
+    if (!accept(lumaOf({ r: cr, g: cg, b: cb }))) continue;
+    const w = hist.counts[i];
+    r += cr * w;
+    g += cg * w;
+    b += cb * w;
+    n += w;
+  }
+  if (n === 0) return null;
+  return {
+    centre: { r: clamp255(r / n), g: clamp255(g / n), b: clamp255(b / n) },
+    share: n / Math.max(1, hist.total),
+  };
+}
+
+/** The histogram with every reserved band's colours removed. */
+function withoutBands(hist: Histogram, bands: ReservedBand[]): Histogram {
+  const colors: number[] = [];
+  const counts: number[] = [];
+  let total = 0;
+  for (let i = 0; i < hist.distinct; i++) {
+    const c = hist.colors[i];
+    const luma = lumaOf({ r: (c >> 16) & 255, g: (c >> 8) & 255, b: c & 255 });
+    if (bands.some((band) => band.holds(luma))) continue;
+    colors.push(c);
+    counts.push(hist.counts[i]);
+    total += hist.counts[i];
+  }
+  return {
+    colors: Uint32Array.from(colors),
+    counts: Uint32Array.from(counts),
+    distinct: colors.length,
+    total,
+  };
+}
+
+/**
+ * One ink slot, at every k.
+ *
+ * The backstop behind `reserveExtremes`: withholding the ink band keeps median
+ * cut out of it, but `refine` and `separate` are free to walk a centre back in
+ * afterwards. A palette with two near-black entries paints one stroke in two
+ * colours, which is a defect no amount of geometry accuracy makes up for, so
+ * any entry that ends up under the ink bar other than the darkest one is folded
+ * into it. (It costs a palette entry when it fires — that is the point: the
+ * entry was a second name for a colour the drawing has once.)
+ */
+/**
+ * Put back whatever `foldNearInk` took, somewhere the picture can use it.
+ *
+ * The fold is not allowed to cost the user a colour: `[B3] the colour budget is
+ * spent on colours the user can tell apart` asks that a k-colour request come
+ * back with k clusters, and "we merged your second near-black into your first"
+ * is a reason to re-spend the slot, not to hand back k-1. So the freed slot is
+ * split off the worst-fitting cluster — `separate`'s own move — and never off
+ * the ink, which is the split this exists to undo.
+ */
+function refillToBudget(
+  hist: Histogram,
+  palette: RgbColor[],
+  k: number,
+  pinned: number,
+): RgbColor[] {
+  let current = palette;
+  for (let round = 0; round < k && current.length < k; round++) {
+    const { owner, error } = assign(hist, current);
+    // Candidates in descending fit error, ink excluded — splitting the ink is
+    // the move this exists to undo. The list is walked rather than just its
+    // head because a split can settle back under the ink bar and be folded
+    // again, and the answer to that is the next cluster, not giving up.
+    const candidates = [];
+    for (let j = pinned; j < current.length; j++) {
+      if (lumaOf(current[j]) >= INK_LUMA) candidates.push(j);
+    }
+    candidates.sort((a, b) => error[b] - error[a]);
+    let grew: RgbColor[] | null = null;
+    for (const target of candidates) {
+      const members: number[] = [];
+      for (let i = 0; i < hist.distinct; i++) if (owner[i] === target) members.push(i);
+      const halves = splitCluster(hist, members);
+      if (!halves) continue;
+      const next: RgbColor[] = [];
+      for (let j = 0; j < current.length; j++) {
+        if (j === target) next.push(halves[0], halves[1]);
+        else next.push(current[j]);
+      }
+      const settled = foldNearInk(refine(hist, next, 3, pinned));
+      if (settled.length > current.length) {
+        grew = settled;
+        break;
+      }
+    }
+    if (!grew) break;
+    current = grew;
+  }
+  return current;
+}
+
+function foldNearInk(palette: RgbColor[]): RgbColor[] {
+  if (palette.length < 2) return palette;
+  let darkest = -1;
+  let bestLuma = INK_LUMA;
+  for (let i = 0; i < palette.length; i++) {
+    const l = lumaOf(palette[i]);
+    if (l < bestLuma) {
+      bestLuma = l;
+      darkest = i;
+    }
+  }
+  if (darkest < 0) return palette;
+  const ink = palette[darkest];
+  return palette.filter(
+    (c, i) => i === darkest || lumaOf(c) >= INK_LUMA,
+  );
 }
 
 /**
@@ -421,7 +815,13 @@ function reserveDarkest(hist: Histogram, palette: RgbColor[]): RgbColor[] {
   return out;
 }
 
-function refine(hist: Histogram, palette: RgbColor[], iterations: number): RgbColor[] {
+function refine(
+  hist: Histogram,
+  palette: RgbColor[],
+  iterations: number,
+  /** Leading entries that keep their colour — see `reserveExtremes`. */
+  pinned = 0,
+): RgbColor[] {
   const k = palette.length;
   let current = palette.map((c) => ({ ...c }));
   for (let it = 0; it < iterations; it++) {
@@ -451,7 +851,7 @@ function refine(hist: Histogram, palette: RgbColor[], iterations: number): RgbCo
     }
     let moved = false;
     const next = current.map((c, j) => {
-      if (sumN[j] === 0) return c;
+      if (j < pinned || sumN[j] === 0) return c;
       const n = {
         r: clamp255(sumR[j] / sumN[j]),
         g: clamp255(sumG[j] / sumN[j]),
@@ -482,11 +882,18 @@ const MIN_SEPARATION = 61;
 const l1 = (a: RgbColor, b: RgbColor): number =>
   Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b);
 
-function closestPair(palette: RgbColor[]): { i: number; j: number; d: number } {
-  let bi = 0;
-  let bj = 1;
+/**
+ * The two closest palette entries `separate` is allowed to fold together.
+ *
+ * `pinned` leading entries are excluded: they are the reserved ink/highlight
+ * centres, and folding one back into its neighbour is exactly the outcome the
+ * reservation exists to prevent.
+ */
+function closestPair(palette: RgbColor[], pinned = 0): { i: number; j: number; d: number } {
+  let bi = pinned;
+  let bj = pinned + 1;
   let bd = Infinity;
-  for (let i = 0; i < palette.length; i++) {
+  for (let i = pinned; i < palette.length; i++) {
     for (let j = i + 1; j < palette.length; j++) {
       const d = l1(palette[i], palette[j]);
       if (d < bd) {
@@ -600,22 +1007,29 @@ function splitCluster(hist: Histogram, members: number[]): [RgbColor, RgbColor] 
  * the best palette seen is what is returned, so this cannot oscillate and
  * cannot make the separation worse than what it was handed.
  */
-function separate(hist: Histogram, palette: RgbColor[], rounds = 8): RgbColor[] {
+function separate(
+  hist: Histogram,
+  palette: RgbColor[],
+  rounds = 8,
+  /** Leading entries that are neither folded away nor split — see `reserveExtremes`. */
+  pinned = 0,
+): RgbColor[] {
   if (palette.length < 3) return palette;
   let current = palette.map((c) => ({ ...c }));
   let best = current;
-  let bestSep = closestPair(current).d;
+  let bestSep = closestPair(current, pinned).d;
   let bestErr = totalError(hist, current);
   for (let round = 0; round < rounds; round++) {
-    const pair = closestPair(current);
+    const pair = closestPair(current, pinned);
     if (pair.d >= MIN_SEPARATION) break;
     const { owner, error } = assign(hist, current);
     // The slot to re-spend on: the worst-fitting cluster that is not one of the
     // two being folded together (folding and splitting the same region is a
-    // no-op that would loop forever).
+    // no-op that would loop forever), and not a reserved one (splitting the ink
+    // slot in two is the defect this whole reservation exists to stop).
     let target = -1;
     let worst = 0;
-    for (let j = 0; j < current.length; j++) {
+    for (let j = pinned; j < current.length; j++) {
       if (j === pair.i || j === pair.j) continue;
       if (error[j] > worst) {
         worst = error[j];
@@ -645,8 +1059,8 @@ function separate(hist: Histogram, palette: RgbColor[], rounds = 8): RgbColor[] 
       else if (j === target) next.push(halves[0], halves[1]);
       else next.push(current[j]);
     }
-    current = refine(hist, next, 3);
-    const sep = closestPair(current).d;
+    current = refine(hist, next, 3, pinned);
+    const sep = closestPair(current, pinned).d;
     const err = totalError(hist, current);
     // A round is kept only if it is better on BOTH counts: the palette is more
     // separated *and* it fits the picture at least as well. The second half is
