@@ -124,7 +124,7 @@ test('[D4] the saved-file confirmation is cleared when every image is removed', 
 });
 
 test('[D4] the export row reports the size of the document it will write', async ({ page }) => {
-  // The real product shows a live file-size label next to Download
+  // The reference product shows a live file-size label next to Download
   // (OBSERVED-UI.md, "File size label (e.g. 223KB)").
   await loadViaPicker(page, FIXTURE.flat512);
   await waitForReady(page);

@@ -60,7 +60,7 @@ const S = engine.DEFAULT_SETTINGS;
 /**
  * Defaults with every optional cleanup off.
  *
- * `DEFAULT_SETTINGS` ships Smart anti-aliasing on (the real product does too —
+ * `DEFAULT_SETTINGS` ships Smart anti-aliasing on (the reference product does too —
  * fixtures/reference/OBSERVED-UI.md — and it is what keeps the default output
  * economical). Its index-image majority pass is also a very effective impulse
  * remover, so on the speckled fixture the noise-removal controls have nothing
@@ -77,7 +77,7 @@ const photo = await load('photo-gradient-512x384.jpg');
 const fox = await load('reference/fox-sticker.png');
 /** Handed to the engine (alpha preserved). */
 const foxIn = await loadIngest('reference/fox-sticker.png');
-/** The real the reference product output for that artwork — the blind-A/B exemplar. */
+/** The reference product output for that artwork — the blind-A/B exemplar. */
 const FOX_EXEMPLAR = 'reference/fox-sticker-clipart-8colors-smartAA.svg';
 /**
  * The settings the exemplar was captured at (fixtures/reference/OBSERVED-UI.md):
@@ -103,9 +103,9 @@ const renderResult = (r) => render(r.svg, r.width, r.height);
  * Rasterize an exemplar for pixel comparison.
  *
  * NOT `render()`: an exemplar is only registered against the source when the
- * real product wrote the source's own pixel dimensions into it, and captures
+ * reference product wrote the source's own pixel dimensions into it, and captures
  * that declare a padded frame draw the artwork in a corner of it — rendering
- * such a file against its declared box puts the real product's paw where our
+ * such a file against its declared box puts the reference product's paw where our
  * margin is, and every comparison then passes for the wrong reason. Shared with
  * the instruments so both measure the same picture (instruments/lib/render.mjs).
  */
@@ -172,7 +172,7 @@ test('[B2] smoothing changes the shape of a curved boundary', async () => {
 test('[quality] outlines are curve-fitted, not a pixel staircase', async () => {
   const r = await engine.vectorize(foxIn, { ...S, ...EXEMPLAR_SETTINGS });
   const ratio = curveCommandRatio(r.svg);
-  // The real the reference product output for this artwork scores 0.671; ours is 1.000.
+  // The reference product output for this artwork scores 0.671; ours is 1.000.
   assert.ok(
     ratio >= 0.65,
     `curve command ratio ${ratio.toFixed(3)} — the exemplar scores 0.671; ` +
@@ -240,7 +240,7 @@ test('[quality] the gold-standard exemplar is matched on economy and fidelity', 
   );
 
   // ...and the rendering has to hold up next to it, at the source size. Ours
-  // scores 1.80 and the real product 1.03 — three quarters of this canvas is
+  // scores 1.80 and the reference product 1.03 — three quarters of this canvas is
   // transparent and both drawings get that part right, which is why the
   // interesting fidelity numbers below are all measured inside a crop.
   const mae = meanColorError(fox, render(r.svg, r.width, r.height));
@@ -317,12 +317,12 @@ function meanColor(image) {
 
 test('[B1] the face survives the Enhance bundle, not just the frame average', async () => {
   /**
-   * A blind A/B against the real product is won or lost here, and every
+   * A blind A/B against the reference product is won or lost here, and every
    * whole-frame number in this file is area-weighted: the face is 7 % of the
    * canvas and three quarters of the rest is transparent, so an output that
    * loses both eye arcs and the mouth curve still scores a whole-frame MAE
    * under 2 and an ink recall of 0.967. Measured inside the crop, the same
-   * output scores 0.962 against the real product's 0.999 — which is the number
+   * output scores 0.962 against the reference product's 0.999 — which is the number
    * that moves when a cleanup pass starts eating thin dark line art.
    */
   const r = await engine.vectorize(foxIn, { ...S, ...EXEMPLAR_SETTINGS });
@@ -357,7 +357,7 @@ test('[quality] colour layers are distinct colours, not a near-duplicate patchwo
    * mosaic of two near-identical shades. The metric's window was 24 and
    * reported 0; it is 32 now, and this is the contract that keeps it honest.
    *
-   * This is one of the few bars where we are STRICTER than the real product
+   * This is one of the few bars where we are STRICTER than the reference product
    * rather than chasing it: its own capture of this artwork ships two such
    * pairs — rgb(125,64,29) beside rgb(116,58,28) (10.9) and rgb(8,0,0) beside
    * rgb(0,0,0) (8.0), two browns and a doubled black — which is exactly the
@@ -370,7 +370,7 @@ test('[quality] colour layers are distinct colours, not a near-duplicate patchwo
   assert.equal(
     exemplar,
     2,
-    'the real product ships two near-duplicate layer pairs on this artwork — if that number ' +
+    'the reference product ships two near-duplicate layer pairs on this artwork — if that number ' +
       'moved, re-read the paragraph above before trusting the palette-shortfall bars that cite it',
   );
   assert.equal(
@@ -389,7 +389,7 @@ test('[quality] the DEFAULT quality settings stay in the exemplar economy class'
    * differ from those settings by exactly one tick (Enhance off), and they cost
    * 36 sub-paths and 17.2 KB against 25 and 14.6 KB: 0.32x and 0.50x the real
    * product's, where turning Smart anti-aliasing off as well would be 1.20x and
-   * 0.86x. The real product's own measured effect for that control is -81 %
+   * 0.86x. The reference product's own measured effect for that control is -81 %
    * path count (fixtures/reference/OBSERVED-UI.md).
    *
    * The bars are looser than the enhance-on 0.5x/0.8x and still nowhere near
@@ -480,7 +480,7 @@ test('[quality-bar] the DEFAULT settings paint no colour the crop does not conta
       assert.ok(
         mine <= Math.max(theirs, 0.0005),
         `${label}: ${(mine * 100).toFixed(2)} % of the ${name} is painted a colour the source ` +
-          `crop does not contain, against the real product's ${(theirs * 100).toFixed(2)} % — a ` +
+          `crop does not contain, against the reference product's ${(theirs * 100).toFixed(2)} % — a ` +
           'hue that is not in the picture is still a hue that is not in the picture',
       );
     }
@@ -492,13 +492,13 @@ test('[quality] outlines come back as solid strokes, not thinned or dashed', asy
    * `inkRecall` accepts anything darker than luma 128 as "kept", which answers
    * "was this stroke erased" and not "is it still a stroke": on the paw crop it
    * scores us 0.997 against the exemplar's 1.000 for toe arcs that come back
-   * visibly thinner than the real product's.
+   * visibly thinner than the reference product's.
    *
    * Strictly (source ink < 60 must come back < 60) the same crop reads 0.947 of
    * the exemplar's score and the face 0.951. The bar is relative on purpose: a
    * global absolute bar cannot be used, because an exemplar drops antialiased
    * skirts everywhere and its own global score is not the question. The
-   * question is only ever "is the real product's line more solid than ours,
+   * question is only ever "is the reference product's line more solid than ours,
    * where ours is worst" — and here it is, by five points.
    */
   const ex = await renderExemplar(FOX_EXEMPLAR);
@@ -514,7 +514,7 @@ test('[quality] outlines come back as solid strokes, not thinned or dashed', asy
     const mine = strictInkRecall(src, cropRegion(ours, box));
     assert.ok(
       mine >= theirs * 0.93,
-      `${name}: strict ink recall ${mine.toFixed(3)} against the real product's ` +
+      `${name}: strict ink recall ${mine.toFixed(3)} against the reference product's ` +
         `${theirs.toFixed(3)} (${(mine / theirs).toFixed(3)}x) — its outlines are solid where ` +
         'ours are thin or broken',
     );
@@ -533,7 +533,7 @@ test('[quality] colour boundaries are smooth sweeps, not sawtooth', async () => 
    * `layerCompactness` is perimeter / (2*sqrt(pi*area)) per colour layer,
    * averaged over the layers that carry the picture: 1.0 for a disc, higher the
    * more ragged the boundary. Ours 2.99 against the exemplar's 4.55 — on this
-   * artwork we are the smooth one, because the real product spends two of its
+   * artwork we are the smooth one, because the reference product spends two of its
    * seven layers on near-identical browns whose boundaries interleave.
    *
    * The bar is the instruments' own (`maxLayerCompactnessRatio: 0.8` on
@@ -570,7 +570,7 @@ test('[quality] the linework is one silhouette, not a network of thin ribbons', 
    * one shape: the alternative (bottom layer = dominant colour) costs ~2x the
    * bytes on the gold standard and is what the layer-compactness gate above was
    * failing on. On this artwork the bottom layer comes back rgb(2,2,2) as a
-   * single contour, while the real product's own capture puts a near-white
+   * single contour, while the reference product's own capture puts a near-white
    * sticker border underneath everything and pays for it in perimeter.
    */
   const r = await engine.vectorize(foxIn, { ...S, ...EXEMPLAR_SETTINGS });
@@ -625,7 +625,7 @@ test('[quality] the seam through a shading gradient is one arc, not a mountain r
    * so it cannot separate a shape that is genuinely intricate from a smooth
    * shape traced onto a noisy per-pixel threshold — and `curveCommandRatio`
    * cannot either, because our commands ARE cubics. They can be cubics fitted
-   * to a wobble the real product never had: on the retired exemplar the lap-6
+   * to a wobble the reference product never had: on the retired exemplar the lap-6
    * critique measured 43 % more boundary length than the real output for the
    * same region, with the source showing a soft gradient and the exemplar one
    * clean arc.
@@ -651,7 +651,7 @@ test('[quality] the seam through a shading gradient is one arc, not a mountain r
 });
 
 test('[quality] the black outline survives a small colour budget', async () => {
-  // At 6 colours the real product keeps the drawing's black outline; a plain
+  // At 6 colours the reference product keeps the drawing's black outline; a plain
   // coverage-ranked palette loses it into the nearest dark mid-tone and the
   // drawing falls apart. Ours keeps rgb(2,2,2).
   const r = await engine.vectorize(foxIn, { ...S, colorCount: 6, enhance: true });

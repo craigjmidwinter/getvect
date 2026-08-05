@@ -3,7 +3,7 @@
  *
  * `toDxf(result, { curves: 'lines' })` is implemented in `src/engine/dxf.ts`,
  * documented in the engine contract (docs/HARNESS.md) and listed in REFERENCE
- * section E as a real-product download ("DXF lines-vs-splines variants"). But
+ * section E as a reference-product download ("DXF lines-vs-splines variants"). But
  * `grep -rn "'dxf'" src/renderer src/main src/shared` finds only the format
  * string and `src/renderer/App.tsx` offers exactly one DXF button, so no user
  * can reach the variant: it is code the product does not have.

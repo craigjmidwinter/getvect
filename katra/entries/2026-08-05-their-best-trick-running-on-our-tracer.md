@@ -51,7 +51,7 @@ never-fake-alpha fallback is permanent behaviour, and local background removal
 (issue #1) earns its keep even for cloud users.
 
 ```note
-The classical side didn't sit idle: measuring against the real product's enhanced
+The classical side didn't sit idle: measuring against the reference product's enhanced
 canvas exposed that our Smart-AA fold crowned the biggest histogram peak as each
 merged band's colour. Re-centring survivors on the coverage-weighted mean of what
 they absorbed warmed the muddy face by half its error — and improved the fox too.

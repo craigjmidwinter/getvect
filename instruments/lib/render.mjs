@@ -41,19 +41,19 @@ export async function rasterizeSvg(svg, width, height) {
  * exemplar meaningless.
  *
  * **Already in source coordinates.** `fixtures/reference/fox-sticker-clipart-8colors-smartAA.svg`
- * declares `width="1024" height="1024"` for a 1024x1024 source: the real product
+ * declares `width="1024" height="1024"` for a 1024x1024 source: the reference product
  * wrote the source's own pixel dimensions into the file, so the drawing is
  * already registered against the source and the only correct thing to do is
  * rasterize it as declared. Trimming it would be actively wrong — this artwork
  * is a sticker with 76.5 % transparent margin, and cropping to the ink and
- * stretching that to the full frame scored the real product MAE 77.1 (against
+ * stretching that to the full frame scored the reference product MAE 77.1 (against
  * 3.0 rasterized as declared), i.e. it moved the fox's paw into our muzzle.
  *
  * **Not in source coordinates.** Some captures declare a padded frame and draw
  * the artwork in a corner of it (the retired capture this fallback was first
  * measured on declared an 11520x9280 viewBox for a 1046x833 source and drew
  * inside the top-left quarter of it).
- * Rasterizing *that* box against the source scored the real product MAE 63.55 —
+ * Rasterizing *that* box against the source scored the reference product MAE 63.55 —
  * worse than any plausible output of ours — because it compared our paw against
  * the exemplar's empty margin. Rendering at 2x, trimming the uniform border and
  * resizing to the source is the comparison a critic makes by hand.
@@ -67,7 +67,7 @@ export async function rasterizeSvg(svg, width, height) {
  * artwork is a die-cut sticker whose outermost feature is a WHITE BORDER:
  * flattened on white it is indistinguishable from the page, the trim ate it, and
  * what survived got stretched over the frame at an aspect ratio the drawing does
- * not have. The real product scored MAE 37.8 and 0.34 ink recall — numbers that
+ * not have. The reference product scored MAE 37.8 and 0.34 ink recall — numbers that
  * describe a misregistration, not a tracer. Rasterized straight to the source
  * frame the same file scores MAE 4.3 and 0.997.
  *

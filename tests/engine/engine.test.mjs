@@ -32,7 +32,7 @@ const S = engine.DEFAULT_SETTINGS;
 /**
  * Defaults with every optional cleanup off.
  *
- * `DEFAULT_SETTINGS` ships Smart anti-aliasing on (the real product does too —
+ * `DEFAULT_SETTINGS` ships Smart anti-aliasing on (the reference product does too —
  * fixtures/reference/OBSERVED-UI.md — and it is what keeps the default output
  * economical). Its index-image majority pass is also a very effective impulse
  * remover, so on the speckled fixture the noise-removal controls have nothing
@@ -265,7 +265,7 @@ test('EPS export is structurally valid PostScript', async () => {
 });
 
 test('DXF export is a well-formed drawing in both curve variants', async () => {
-  // The real product offers "DXF (splines)" and "DXF (lines)" as separate
+  // The reference product offers "DXF (splines)" and "DXF (lines)" as separate
   // downloads (fixtures/reference/OBSERVED-UI.md), and they are different
   // dialects: SPLINE is an R13+ entity, so the spline variant declares R2000
   // (AC1015) and carries handles, while the lines variant stays pure R12

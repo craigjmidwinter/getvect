@@ -32,7 +32,7 @@ height: 480
 caption: Integration-critic score by lap. The lap-5 dip is the critic inventing a sharper instrument, not the app getting worse
 ```
 
-![Lap-5 blind A/B: source | our engine at 16c+Enhance | real the reference product. Ours keeps shading the exemplar throws away (MAE 5.65 vs 13.50)](media/ab-full.png)
+![Lap-5 blind A/B: source | our engine at 16c+Enhance | reference product. Ours keeps shading the exemplar throws away (MAE 5.65 vs 13.50)](media/ab-full.png)
 
 ![The identity test that stopped the loop: left is the engine's output, right is the same image after feeding the engine's own palette back to it unchanged. A no-op edit should be invisible](media/identity-override.png)
 
@@ -48,10 +48,10 @@ it now decodes through the renderer's pipeline instead of its own. The measured-
 picture-the-app-cannot-produce failure mode is dead.
 
 By lap five the engine itself crossed the line that matters: in the blind A/B against
-the real product's own gold-standard export, ours is closer to the source and keeps
+the reference product's own gold-standard export, ours is closer to the source and keeps
 shading the exemplar throws away — MAE 5.65 vs the exemplar's 13.50, curve ratio
 0.866 vs 0.639, 70 sub-paths vs 65. On the license-clean fox sticker it's not close:
-29 sub-paths and 13.6 KB against the real product's 63 paths and 35.5 KB at matched
+29 sub-paths and 13.6 KB against the reference product's 63 paths and 35.5 KB at matched
 settings. The tracer is no longer the gap.
 
 Then the lap-5 critic did the thing fresh context is for: it invented a sharper

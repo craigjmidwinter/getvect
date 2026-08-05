@@ -1,9 +1,10 @@
 # GetVect — Reference Spec (feature parity with the reference product)
 
 This is the **quality bar** for the gauntlet loop. The target is feature parity with the
-*behavior* of https://the reference product — the raster→vector conversion workflow — delivered as a
-local desktop Electron app. Accounts, credits, payments, and the web API are explicitly
-**out of scope** (they are billing plumbing, not vectorizer behavior).
+*behavior* of **the reference product**, a leading online vectorizer we benchmark against —
+the raster→vector conversion workflow — delivered as a local desktop Electron app.
+Accounts, credits, payments, and the web API are explicitly **out of scope** (they are
+billing plumbing, not vectorizer behavior).
 
 ## What the reference product does (the reference)
 
@@ -34,7 +35,7 @@ A. **Launch & ingest**
    - A2. Unsupported files are rejected with a clear message.
    - A3. Multiple images form a sidebar/list; selecting one switches the workspace to it.
 
-B. **Vectorization engine** — the REAL product's controls were captured live; see
+B. **Vectorization engine** — the reference product's controls were captured live; see
    `fixtures/reference/OBSERVED-UI.md` for the exact UI ground truth. Summary:
    - B1. Auto-vectorizes on load with defaults; visible progress state; UI stays responsive.
    - B2. Model presets: Clipart (with Detail Level: Maximum/Ultra/Very High/High/Medium/
@@ -58,25 +59,25 @@ C. **Preview**
    - C3. Vector preview is the actual SVG that will be exported.
 
 D. **Export**
-   - D1. SVG export: valid XML, renders identically to the preview. Real product's SVG
+   - D1. SVG export: valid XML, renders identically to the preview. Reference product's SVG
      structure: per-color `<g fill="rgb(...)">` layers, 10× scaled viewBox (see exemplars).
    - D2. EPS export: structurally valid (parses, correct bounding box, paths present).
    - D3. DXF export: structurally valid (readable entities, correct extents).
    - D4. Exports go through the native save dialog with sensible default filenames.
-   - D5. PDF and PNG export options alongside SVG/EPS/DXF (real product also offers these).
+   - D5. PDF and PNG export options alongside SVG/EPS/DXF (reference product also offers these).
 
-E. **Stretch features** (real product has them; missing = minor severity, not blockers):
+E. **Stretch features** (reference product has them; missing = minor severity, not blockers):
    isometric exploded layer view, crop image, edit pixels, gradients detection tab,
    drag-to-regroup output color circles, DXF lines-vs-splines variants, Android
    VectorDrawable XML, STL, GCODE, ZIP/minimized/≤15KB variants, output size controls.
 
-## Gold-standard exemplar (real the reference product output — use for blind A/B)
+## Gold-standard exemplar (reference product output — use for blind A/B)
 
 `fixtures/reference/fox-sticker.png` is a raster source (1024×1024 original mascot artwork,
 flat-color character with a black outline on a **76.5% transparent** field) and
 `fixtures/reference/fox-sticker-clipart-8colors-smartAA.svg` is **the actual output
 the reference product produced for it**, captured signed-out at Clipart / 8-color palette / Smart
-anti-aliasing on / Enhance on / Minimum Area 5px². Measured properties of the real product's
+anti-aliasing on / Enhance on / Minimum Area 5px². Measured properties of the reference product's
 output: 63 paths in 7 per-color `<g fill="rgb(...)">` layers, 114 sub-paths, 35.5KB, curve
 command ratio 0.671, no background-covering path at all (the transparency survives), viewBox
 `0 0 10240 10240` at a declared 1024×1024. Our engine, run on the same PNG at those settings,
@@ -88,13 +89,13 @@ to the source.
 Those ~3×/~5× numbers are the product floor, not the bar the engine is held to. It currently
 lands at 0.08× the exemplar's paths, 0.22× its sub-paths and 0.42× its bytes, so
 `fixtures/manifest.json` gates the measured numbers with headroom instead — a limit an order
-of magnitude above reality is a limit that has been deleted. Where the real product is still
+of magnitude above reality is a limit that has been deleted. Where the reference product is still
 ahead is line quality, and that is where the ratios in the manifest point: its outlines come
 back 5% more solid than ours in the crop where we are worst, and its strokes are 1.6× more
 even.
 
 `fixtures/reference/OBSERVED-UI.md` records the live parameter table the settings above come
-from. Headline finding: the real product's **Smart anti-aliasing** collapses path count by
+from. Headline finding: the reference product's **Smart anti-aliasing** collapses path count by
 ~81% at identical settings (354→67 on one subject, 637→63 on the fox). Matching that
 smoothness-per-path economy is a core engine goal, not a stretch feature.
 

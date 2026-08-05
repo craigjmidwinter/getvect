@@ -18,7 +18,7 @@
  *      and wall-clock ms,
  *   5. compares each against the fixture's thresholds (fixtures/manifest.json,
  *      derived from REFERENCE.md "Quality bar"), including ratios against a
- *      real the reference product exemplar when the fixture declares one.
+ *      reference product exemplar when the fixture declares one.
  *
  * Outputs:
  *   artifacts/metrics.json          machine-readable, one record per fixture
@@ -110,7 +110,7 @@ function salientRegions(fixture) {
        * The exemplar may draw the same feature a DIFFERENT colour, and then
        * measuring it against ours is a lie in both directions.
        *
-       * The real product's Enhance is a generative re-illustration, so it does
+       * The reference product's Enhance is a generative re-illustration, so it does
        * not preserve the source's colours — it repaints them. On the mascot it
        * repaints the source's olive eyes, rgb(187,161,80), as a saturated green,
        * rgb(121,176,89), and gives that green its own output layer. Scored
@@ -295,7 +295,7 @@ const GATES = [
   // `strictInkRecall` demands the source's ink come back as ink.
   ['minStrictInkRecall', 'strictInkRecall', 'min', (v) => v.toFixed(4)],
   ['minRegionStrictInkRecall', 'regionStrictInkRecall', 'min', (v) => v.toFixed(4)],
-  // ...and the same question asked against the real product instead of against
+  // ...and the same question asked against the reference product instead of against
   // an invented constant: < 1 means its outlines are more solid than ours in the
   // region where we are worst. A whole-frame absolute bar cannot be used here —
   // the exemplar itself scores 0.859 globally because it drops antialiased
@@ -305,7 +305,7 @@ const GATES = [
   // and that every other ink metric here read backwards (metrics.mjs
   // `strokeWidthProfile`): a line that thickens, thins and breaks recalls MORE
   // ink and joins MORE components than an even one, so `strictInkRecall` scored
-  // us 0.967 against the real product's 0.755 for a mouth arc that tapered to a
+  // us 0.967 against the reference product's 0.755 for a mouth arc that tapered to a
   // spindle and detached from both fangs. Gated as a ratio to the exemplar's own
   // cv on the same crop, and paired with how much fatter our line is than its.
   ['maxStrokeWidthCvRatio', 'strokeWidthCvRatio', 'max', (v) => `${v.toFixed(2)}x`],
@@ -354,7 +354,7 @@ const GATES = [
  * The aggregate `maxRegionMeanColorError` reads the worst crop, which is the
  * right default (adding a box can only tighten a fixture) and the wrong tool
  * when two crops deserve different numbers: on the gold standard at
- * DEFAULT_SETTINGS the paw-pad bar is 22 because the real product's own
+ * DEFAULT_SETTINGS the paw-pad bar is 22 because the reference product's own
  * six-colour output scores 21.89 there, while the face has to be held at the
  * exemplar's 19.13 and at ~0 colour leak. One aggregate number cannot say both,
  * and the old way to say the stricter one — raise the aggregate — would have
@@ -374,7 +374,7 @@ const REGION_GATES = [
   ['maxForeignColorRatio', 'foreignColorRatio', 'max', (v) => `${(v * 100).toFixed(2)}%`],
   // Did the colour this crop is ABOUT survive (metrics.mjs
   // `colorPresenceProfile`)? Against the source's own share of it, and against
-  // the real product's trace of the same pixels.
+  // the reference product's trace of the same pixels.
   ['minColorPresenceRatio', 'colorPresenceRatio', 'min', (v) => `${(v * 100).toFixed(1)}% of source`],
   ['minColorPresenceOverExemplar', 'colorPresenceOverExemplar', 'min', (v) => `${v.toFixed(2)}x`],
   ['minColorPresence', 'colorPresence', 'min', (v) => `${(v * 100).toFixed(2)}% of crop`],
@@ -473,7 +473,7 @@ async function main() {
   const exemplarCache = new Map();
 
   /**
-   * Measure a gold-standard exemplar (real the reference product output shipped in
+   * Measure a gold-standard exemplar (reference product output shipped in
    * fixtures/reference/) the same way we measure ours, so the comparison
    * REFERENCE lines 80-83 asks for is a number instead of an eyeball.
    */
@@ -516,7 +516,7 @@ async function main() {
             ...inkCoverageProfile(a, b),
             meanColorError: meanColorError(a, b),
             foreignColorRatio: foreignColorRatio(a, b),
-            // Did the region's named colour survive into the REAL PRODUCT's
+            // Did the region's named colour survive into the REFERENCE PRODUCT's
             // output? This is the half of the eyes question that makes ours a
             // finding rather than an opinion.
             ...(region.exemplarColorTarget
@@ -810,7 +810,7 @@ async function main() {
        * thresholds in the first place: an aggregate is only meaningful across
        * crops that are asking the same question. The mascot's nose box is 64x38
        * of almost nothing but outline, so a fifth of it is ink and its mean
-       * colour error is 15 in the REAL PRODUCT's trace; folded into the
+       * colour error is 15 in the REFERENCE PRODUCT's trace; folded into the
        * whole-face aggregate it would not tighten `maxRegionMeanColorError`, it
        * would force that bar up from 8 to 18 and quietly loosen the face and the
        * chest with it. A crop that opts out must carry its own bars — the ones
@@ -914,13 +914,13 @@ async function main() {
             if (!e) continue;
             r.exemplarInkRecall = e.inkRecall;
             r.exemplarStrictInkRecall = e.strictInkRecall;
-            // How much ink the real product spends on the same crop. The bar
+            // How much ink the reference product spends on the same crop. The bar
             // for a blob is not "1.0" — its own trace fattens a little too —
             // so the honest reading of ours is beside its number.
             r.exemplarInkCoverageRatio = e.inkCoverageRatio;
             r.exemplarMeanColorError = e.meanColorError;
             r.exemplarForeignColorRatio = e.foreignColorRatio;
-            // The named colour, A/B'd. The real product keeping a hue we fold
+            // The named colour, A/B'd. The reference product keeping a hue we fold
             // away is the whole finding; if it folds the colour too, the defect
             // is the artwork's and not ours.
             r.exemplarColorPresence = e.colorPresence;
@@ -947,10 +947,10 @@ async function main() {
             }
           }
           // The A/B on stroke geometry, in the region where we are worst: how
-          // much less even our line is than the real product's, and how much
+          // much less even our line is than the reference product's, and how much
           // fatter. Both are ratios because the absolute numbers belong to the
           // artwork — a drawn line genuinely varies — while "less even than the
-          // real product's trace of the same line" belongs to us.
+          // reference product's trace of the same line" belongs to us.
           //
           // Same aggregation rule as the absolute region gates above: a crop
           // that declared `aggregate: false` carries its own bars and does not
@@ -972,7 +972,7 @@ async function main() {
             .filter((r) => r.strokeWidthOverExemplar != null)
             .map((r) => r.strokeWidthOverExemplar);
           metrics.strokeWidthOverExemplar = fatRatios.length ? Math.max(...fatRatios) : null;
-          // < 1 means the real product renders the salient region better than
+          // < 1 means the reference product renders the salient region better than
           // we do — the blind A/B, as one number, in the region where we are
           // worst relative to it.
           metrics.exemplarRegionInkRecall = exemplar.regions[0].inkRecall;
@@ -1103,20 +1103,20 @@ async function main() {
           `, SSIM ${fmt(region.ssim, 4)}, ink components ${fmt(region.inkComponentRatio, 2)}x source` +
           `, ink spend ${fmt(region.inkCoverageRatio, 2)}x source` +
           (region.exemplarInkCoverageRatio != null
-            ? ` (real product ${fmt(region.exemplarInkCoverageRatio, 2)}x)`
+            ? ` (reference product ${fmt(region.exemplarInkCoverageRatio, 2)}x)`
             : '') +
           `, foreign colour ${fmt((region.foreignColorRatio ?? 0) * 100, 2)}%` +
           (region.exemplarForeignColorRatio != null
             ? ` vs ${fmt(region.exemplarForeignColorRatio * 100, 2)}%`
             : '') +
           // The named colour, if this crop names one: how much of it the source
-          // has, how much we kept, and how much the real product kept.
+          // has, how much we kept, and how much the reference product kept.
           (region.colorPresenceTarget != null
             ? `, ${region.colorPresenceTarget} ${fmt((region.colorPresence ?? 0) * 100, 2)}% of crop ` +
               `vs source ${fmt((region.sourceColorPresence ?? 0) * 100, 2)}% ` +
               `(kept ${fmt((region.colorPresenceRatio ?? 0) * 100, 1)}%)` +
               (region.exemplarColorPresence != null
-                ? `, real product ${region.exemplarColorPresenceTarget ?? region.colorPresenceTarget} ` +
+                ? `, reference product ${region.exemplarColorPresenceTarget ?? region.colorPresenceTarget} ` +
                   `${fmt(region.exemplarColorPresence * 100, 2)}% of crop ` +
                   `(ours ${fmt(region.colorPresenceOverExemplar, 3)}x theirs)`
                 : '')

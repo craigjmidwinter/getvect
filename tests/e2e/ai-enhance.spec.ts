@@ -157,7 +157,7 @@ test.describe('with the stub slowed down so the in-flight state is observable', 
     await expect(page.locator(tid(TESTIDS.progressIndicator))).toBeVisible();
 
     // ...then the trace runs on the returned bitmap, at the provider's own
-    // dimensions — which is what the real product does.
+    // dimensions — which is what the reference product does.
     await waitForReady(page);
     await expect(page.locator(tid(TESTIDS.aiEnhanceStatus))).toHaveAttribute(
       'data-ai-state',
