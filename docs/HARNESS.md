@@ -396,9 +396,30 @@ Two notes for anyone tuning it:
   counts letters, and eliding them makes a staircase of a thousand `l` segments look
   like a handful of commands. It costs about a byte per segment.
 - **Enhance is a bundle, not a filter.** It turns on the denoise pass *and* smart
-  anti-aliasing, folds away colour groups under 1 % coverage, and raises the minimum
-  shape area to one ten-thousandth of the canvas. That is what makes the gold-standard
+  anti-aliasing, folds away colour groups under 1 % coverage, raises the minimum region
+  area to one ten-thousandth of the canvas, and applies half of that number as a
+  *document* floor at trace time (a bounding-box test, so a hairline still clears it —
+  it removes the small lobes a ragged edge sheds, which are attached to their parent
+  region and therefore invisible to any despeckle). That is what makes the gold-standard
   A/B land inside REFERENCE's 3×/5× economy limits at the exemplar's own settings.
+- **Transparency is a group with no colour.** `opacityMask()` splits the input at
+  alpha 128; those pixels are excluded from the histogram (so they cannot win a palette
+  slot), carry `TRANSPARENT_INDEX` through the whole index image (so they join no layer
+  and no despeckle merges them away), and suppress the backdrop `<rect>` entirely — the
+  layers no longer partition the canvas, so a full-bleed rect would be an invented
+  background rather than a free optimisation. Their RGB is still *read* by the 3×3
+  neighbourhood filters, so `bleedTransparent()` first dilates the drawn colours
+  outwards a few pixels and flattens the rest to the mean drawn colour: a canvas hands
+  back `(0,0,0,0)`, and without the bleed every sticker grows a black bruise round its
+  edge where the median and anti-aliasing passes read that as artwork.
+- **Cleanups must not eat line art.** A one-pixel stroke is a *minority* in every 3×3
+  window it passes through, so both the median filter and the majority filter would
+  erase exactly the strokes REFERENCE's use cases are made of. Both now spare a pixel
+  whose two opposite neighbours share its colour (`continuesRun` / `continuesColorRun`):
+  an impulse has no such support, a line always does. Curve fitting had the same bug in
+  continuous form — an absolute tolerance is a large fraction of a thin shape — so the
+  fit tolerance is capped at 30 % of the contour's own mean thickness (`2·area/
+  perimeter`). Together those took ink recall on the gold standard from 0.909 to 0.942.
 
 ## Environment caveats
 

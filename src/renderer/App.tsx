@@ -293,12 +293,24 @@ export function App() {
           ),
         );
       } catch (error) {
+        /**
+         * A file that cannot be decoded is a rejected file (REFERENCE A2), and
+         * it does not matter that the rejection happened one step later than the
+         * extension check: the entry goes, exactly as it would have if the name
+         * had ended in `.txt`. Leaving it in the sidebar instead parks the
+         * workspace on an image that can never be traced — status stuck at
+         * `error`, exports disabled, the byte count still describing whatever
+         * was on screen before — and the only way out is to delete it by hand.
+         */
         const message = error instanceof Error ? error.message : String(error);
-        setImages((prev) =>
-          prev.map((image) =>
-            image.id === entry.id ? { ...image, status: 'error', error: message } : image,
-          ),
-        );
+        URL.revokeObjectURL(entry.url);
+        setImages((prev) => {
+          const next = prev.filter((image) => image.id !== entry.id);
+          setSelectedId((current) =>
+            current === entry.id ? (next[next.length - 1]?.id ?? null) : current,
+          );
+          return next;
+        });
         setToast(`Could not open ${entry.name}: ${message}`);
       }
     }
@@ -544,6 +556,11 @@ export function App() {
   const activeSwatch = palette.length ? clamp(swatchIndex, 0, palette.length - 1) : 0;
   /** True once the palette in the preview is the user's, not the engine's. */
   const paletteEdited = Boolean(settings.palette);
+  /**
+   * The Drawing preset thresholds luminance into black and white (REFERENCE
+   * B2), so every colour-budget control below is inert while it is selected.
+   */
+  const twoTone = (settings.preset ?? 'clipart') === 'drawing';
   const activeHex = hexOf(palette[activeSwatch] ?? { r: 0, g: 0, b: 0 });
   const disabledColors = settings.disabledColors ?? [];
 
@@ -694,13 +711,18 @@ export function App() {
    * reads as "the app lost my work" (REFERENCE C1). It is replaced the instant
    * the new trace lands, so `ready` still means "this is the export".
    */
-  const [displaySvg, setDisplaySvg] = useState<string | null>(null);
+  const [lastSvg, setLastSvg] = useState<string | null>(null);
   useEffect(() => {
-    if (svg) setDisplaySvg(svg);
+    if (svg) setLastSvg(svg);
   }, [svg]);
-  useEffect(() => {
-    if (images.length === 0) setDisplaySvg(null);
-  }, [images.length]);
+  /**
+   * Emptying the workspace has to take the document with it *in the same
+   * render*. Clearing it from an effect instead leaves one committed frame in
+   * which the status line already says `idle` while `export-size` still reports
+   * the removed image's bytes next to disabled buttons — a number describing a
+   * document that is not on screen.
+   */
+  const displaySvg = images.length === 0 ? null : lastSvg;
 
   const svgBytes = useMemo(
     () => (displaySvg ? new TextEncoder().encode(displaySvg).length : 0),
@@ -1015,7 +1037,21 @@ export function App() {
                 <Slider
                   testid={TESTIDS.settingColorCount}
                   label="Colors"
-                  hint={paletteEdited ? 'edited palette' : describeColors(settings.colorCount)}
+                  /**
+                   * Drawing is two-tone by construction (REFERENCE B2), so the
+                   * colour budget has nothing to decide. The real product swaps
+                   * these controls out entirely under that preset; disabling
+                   * them is the same promise: a live control that cannot change
+                   * the result is a lie about the product.
+                   */
+                  disabled={twoTone}
+                  hint={
+                    twoTone
+                      ? 'Drawing is black & white'
+                      : paletteEdited
+                        ? 'edited palette'
+                        : describeColors(settings.colorCount)
+                  }
                   min={1}
                   max={64}
                   value={clamp(settings.colorCount, 1, 64)}
@@ -1197,7 +1233,7 @@ export function App() {
               <span className="settings-summary">{summaryOf(selected)}</span>
             </div>
 
-            <div className="settings-column">
+            <div className="settings-column is-colors">
               <div className="panel-title">Input palette</div>
               <div className="palette-sizes" role="radiogroup" aria-label="Candidate palettes">
                 {PALETTE_SIZES.map((size) => (
@@ -1208,6 +1244,7 @@ export function App() {
                     type="button"
                     role="radio"
                     aria-checked={settings.colorCount === size}
+                    disabled={twoTone}
                     className={`chip${settings.colorCount === size ? ' is-on' : ''}`}
                     onClick={() =>
                       setSetting({ colorCount: size, palette: null, disabledColors: [] })
@@ -1451,6 +1488,7 @@ function Slider({
   min,
   max,
   value,
+  disabled,
   onChange,
 }: {
   testid: string;
@@ -1459,10 +1497,12 @@ function Slider({
   min: number;
   max: number;
   value: number;
+  /** A control that cannot affect the result must not look live (REFERENCE B2). */
+  disabled?: boolean;
   onChange: (value: number) => void;
 }) {
   return (
-    <label className="slider">
+    <label className={`slider${disabled ? ' is-disabled' : ''}`}>
       <span className="slider-label">
         {label}
         <em>{value}</em>
@@ -1475,6 +1515,7 @@ function Slider({
         step={1}
         value={value}
         aria-label={label}
+        disabled={disabled}
         onChange={(event) => onChange(Number(event.target.value))}
       />
       {hint ? <span className="slider-hint">{hint}</span> : null}

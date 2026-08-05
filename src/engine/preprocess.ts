@@ -40,6 +40,18 @@ export function medianFilter3(image: RasterImage): RasterImage {
       cols[1] = x;
       cols[2] = x + 1 < width ? x + 1 : width - 1;
       const o = (rows[1] + x) * 4;
+      // A hairline is an impulse to a median filter — three of nine samples
+      // against six of paper — so an unguarded median erases exactly the line
+      // art REFERENCE's use cases are made of. A line is continuous, though, so
+      // a pixel with two opposite neighbours of its own colour is left alone
+      // (same rule as `continuesRun`, which protects the index image).
+      if (continuesColorRun(data, width, height, x, y)) {
+        out[o] = data[o];
+        out[o + 1] = data[o + 1];
+        out[o + 2] = data[o + 2];
+        out[o + 3] = 255;
+        continue;
+      }
       for (let c = 0; c < 3; c++) {
         let n = 0;
         for (let r = 0; r < 3; r++) {
@@ -53,6 +65,43 @@ export function medianFilter3(image: RasterImage): RasterImage {
     }
   }
   return { width, height, data: out };
+}
+
+/**
+ * `continuesRun`, for colours rather than palette indices.
+ *
+ * "Its own colour" becomes "within `tolerance` L1 units of its own colour",
+ * which is what makes it usable on an antialiased or slightly noisy source: the
+ * middle of a stroke and the stroke either side of it are close, a salt-and-
+ * pepper impulse and its neighbours are not.
+ */
+function continuesColorRun(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  tolerance = 48,
+): boolean {
+  const o = (y * width + x) * 4;
+  const near = (dx: number, dy: number): boolean => {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= width || ny >= height) return false;
+    const i = (ny * width + nx) * 4;
+    return (
+      Math.abs(data[i] - data[o]) +
+        Math.abs(data[i + 1] - data[o + 1]) +
+        Math.abs(data[i + 2] - data[o + 2]) <=
+      tolerance
+    );
+  };
+  return (
+    (near(-1, 0) && near(1, 0)) ||
+    (near(0, -1) && near(0, 1)) ||
+    (near(-1, -1) && near(1, 1)) ||
+    (near(1, -1) && near(-1, 1))
+  );
 }
 
 /** Insertion sort on nine bytes — faster than Array#sort at this size. */
@@ -69,12 +118,20 @@ function median9(w: Uint8Array): number {
   return w[4];
 }
 
-/** Replace each index with the most common index in its 3×3 neighbourhood. */
+/**
+ * Replace each index with the most common index in its 3×3 neighbourhood.
+ *
+ * `transparentIndex` (when set) is inert in both directions: a see-through pixel
+ * keeps its value, and see-through neighbours cast no vote. Letting them vote
+ * would erode the silhouette — a one-pixel-wide antenna sticking out into the
+ * transparent field is a local minority and would be filtered away.
+ */
 export function majorityFilter(
   indices: Uint8Array,
   width: number,
   height: number,
   paletteSize: number,
+  transparentIndex = -1,
 ): Uint8Array {
   const out = new Uint8Array(indices.length);
   const tally = new Int32Array(paletteSize);
@@ -82,14 +139,21 @@ export function majorityFilter(
     const y0 = y > 0 ? y - 1 : 0;
     const y2 = y + 1 < height ? y + 1 : height - 1;
     for (let x = 0; x < width; x++) {
+      const self = indices[y * width + x];
+      if (self === transparentIndex || self >= paletteSize) {
+        out[y * width + x] = self;
+        continue;
+      }
       const x0 = x > 0 ? x - 1 : 0;
       const x2 = x + 1 < width ? x + 1 : width - 1;
       tally.fill(0);
       for (let yy = y0; yy <= y2; yy++) {
         const row = yy * width;
-        for (let xx = x0; xx <= x2; xx++) tally[indices[row + xx]]++;
+        for (let xx = x0; xx <= x2; xx++) {
+          const v = indices[row + xx];
+          if (v < paletteSize && v !== transparentIndex) tally[v]++;
+        }
       }
-      const self = indices[y * width + x];
       let best = self;
       let bestN = tally[self];
       for (let c = 0; c < paletteSize; c++) {
@@ -98,10 +162,50 @@ export function majorityFilter(
           best = c;
         }
       }
+      // ...unless the centre is the middle of a run of its own colour.
+      if (best !== self && continuesRun(indices, width, height, x, y, self)) best = self;
       out[y * width + x] = best;
     }
   }
   return out;
+}
+
+/**
+ * Is (x, y) in the middle of a run of its own colour?
+ *
+ * A majority filter is a minority-remover, and a one-pixel-wide black line is a
+ * minority in every window it passes through: three of nine pixels, against six
+ * of paper. Left to vote, two passes of it erase exactly the strokes REFERENCE's
+ * headline use cases are made of — the gold-standard artwork lost 7 % of its ink
+ * that way, in dashes scattered along every outline.
+ *
+ * A line, though, is *continuous*: the pixel before it and the pixel after it
+ * are the same colour. So a centre with two opposite neighbours of its own
+ * colour is spared — that is the whole rule. It costs four comparisons, it needs
+ * no length or thickness constant, and it leaves the filter's actual job intact:
+ * an isolated speck has no opposite pair, and neither does the lobe on a ragged
+ * boundary, while a pixel in a flat edge (which should not move either) does.
+ */
+function continuesRun(
+  indices: Uint8Array,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  self: number,
+): boolean {
+  const at = (dx: number, dy: number): number => {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= width || ny >= height) return -1;
+    return indices[ny * width + nx];
+  };
+  return (
+    (at(-1, 0) === self && at(1, 0) === self) ||
+    (at(0, -1) === self && at(0, 1) === self) ||
+    (at(-1, -1) === self && at(1, 1) === self) ||
+    (at(1, -1) === self && at(-1, 1) === self)
+  );
 }
 
 /**
@@ -283,6 +387,98 @@ function deAntialiasPass(image: RasterImage): RasterImage {
     }
   }
   return { width, height, data: out };
+}
+
+/**
+ * Give the see-through part of the image a colour it can be filtered against.
+ *
+ * A canvas hands back `(0,0,0,0)` for every transparent pixel, so as far as any
+ * 3×3 neighbourhood filter is concerned a sticker sits on a field of pure
+ * black — the median pass darkens its outline, `deAntialias` reads the sprite
+ * edge as a ramp into black and snaps it there, and the artwork grows a bruise
+ * one to two pixels deep all the way round. Nothing downstream *draws* these
+ * pixels (they carry `TRANSPARENT_INDEX` from `mapToPalette` on), but they are
+ * still neighbours, so they have to be plausible.
+ *
+ * So the drawn colours are dilated outwards a few pixels, and whatever is still
+ * uncovered is filled with the average drawn colour: locally the field
+ * continues the edge it touches, globally it is flat, and in neither case can
+ * it introduce contrast that was not in the picture.
+ */
+export function bleedTransparent(
+  image: RasterImage,
+  opaque: Uint8Array,
+  passes = 3,
+): RasterImage {
+  const { width, height } = image;
+  const n = width * height;
+  const data = new Uint8ClampedArray(image.data);
+
+  let sumR = 0;
+  let sumG = 0;
+  let sumB = 0;
+  let drawn = 0;
+  for (let p = 0, i = 0; p < n; p++, i += 4) {
+    if (!opaque[p]) continue;
+    sumR += data[i];
+    sumG += data[i + 1];
+    sumB += data[i + 2];
+    drawn++;
+  }
+  if (drawn === 0) return { width, height, data };
+  const meanR = Math.round(sumR / drawn);
+  const meanG = Math.round(sumG / drawn);
+  const meanB = Math.round(sumB / drawn);
+
+  const filled = Uint8Array.from(opaque);
+  for (let pass = 0; pass < passes; pass++) {
+    const grown = Uint8Array.from(filled);
+    let any = false;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const p = y * width + x;
+        if (filled[p]) continue;
+        let r = 0;
+        let g = 0;
+        let b = 0;
+        let k = 0;
+        const y0 = y > 0 ? y - 1 : 0;
+        const y2 = y + 1 < height ? y + 1 : height - 1;
+        const x0 = x > 0 ? x - 1 : 0;
+        const x2 = x + 1 < width ? x + 1 : width - 1;
+        for (let yy = y0; yy <= y2; yy++) {
+          for (let xx = x0; xx <= x2; xx++) {
+            const q = yy * width + xx;
+            if (!filled[q]) continue;
+            const i = q * 4;
+            r += data[i];
+            g += data[i + 1];
+            b += data[i + 2];
+            k++;
+          }
+        }
+        if (k === 0) continue;
+        const i = p * 4;
+        data[i] = Math.round(r / k);
+        data[i + 1] = Math.round(g / k);
+        data[i + 2] = Math.round(b / k);
+        data[i + 3] = 255;
+        grown[p] = 1;
+        any = true;
+      }
+    }
+    filled.set(grown);
+    if (!any) break;
+  }
+
+  for (let p = 0, i = 0; p < n; p++, i += 4) {
+    if (filled[p]) continue;
+    data[i] = meanR;
+    data[i + 1] = meanG;
+    data[i + 2] = meanB;
+    data[i + 3] = 255;
+  }
+  return { width, height, data };
 }
 
 export function cloneRaster(image: RasterImage): RasterImage {
