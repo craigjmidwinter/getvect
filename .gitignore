@@ -1,8 +1,18 @@
+# dependencies & build output
 node_modules/
 dist/
+.vite/
+
+# generated, fully reproducible from the scripts (see docs/HARNESS.md)
 artifacts/
 test-results/
 playwright-report/
+nanobanana-output/
+
+# noise
 *.log
 .DS_Store
-.vite/
+Thumbs.db
+.env
+.env.*
+!.env.example
