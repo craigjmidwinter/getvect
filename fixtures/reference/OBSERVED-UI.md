@@ -48,9 +48,18 @@ around the panes: ① model preset, ② input color palette, ③ quality enhance
 - "Colors: N" label. Radio list of auto-generated candidate palettes at sizes
   1, 2, 3, 4, 5, 6, 8, 12, 15, 16, 18 — each row rendered as its swatch strip.
 - **Custom Palette** button.
-- **Enhance image with AI** (Beta) checkbox. Observed effect on a photo-backed
-  upload: a busy yellow patterned background became near-white — i.e. denoise +
-  background simplification before tracing.
+- **Enhance image with AI** (Beta) checkbox. Initially this looked like denoise +
+  background simplification. Extracting the site's `#inputcanvas` with Enhance on
+  settled it: the "enhanced input" is a **generative image-to-image re-illustration**
+  of the upload — busy background fully removed, soft shading repainted as flat
+  colour bands, outlines redrawn uniform, and the image resampled to a new working
+  resolution (observed 1152×928 for a 1046×833 upload; dimensions divisible by 8,
+  consistent with a diffusion-style model). The tracer then traces already-flat art.
+  This is the real product's structural advantage on shaded artwork; GetVect's
+  Enhance is classical (denoise + quantization), which flat-art fixtures don't
+  distinguish but soft-shaded art does. Side effect consistent with a generative
+  pass: small distinct features (e.g. a mascot's small coloured eyes) can be
+  dropped entirely.
 - **Advanced Options** tabs: Quality Enhancement | Transparency | Filters | Text
   - Anti-aliasing: Off / Smart / Mid (+ dropdown)
   - Noise Reduction: Off / Low / High
