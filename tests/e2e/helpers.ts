@@ -210,16 +210,26 @@ export async function zoomTo(page: Page, target: number) {
  * The layout size (and therefore the rasterization) lags the zoom by up to a
  * frame on purpose — see `useLayoutZoom` in Preview.tsx. Anything that measures
  * pixels has to wait for the resting state rather than catch a transient.
+ *
+ * Past the stage's layout ceiling (`MAX_STAGE_PX`, i.e. beyond ~16x on a 1024px
+ * image) `data-render-zoom` deliberately stops short of `data-zoom` and the
+ * remainder is a transform again. "Settled" there means "stopped moving".
  */
 export async function waitForSettledRender(page: Page) {
   for (const id of [TESTIDS.previewOriginal, TESTIDS.previewVector]) {
+    const read = () =>
+      page
+        .locator(tid(id))
+        .evaluate((el) => [el.getAttribute('data-render-zoom'), el.getAttribute('data-zoom')]);
     await expect
       .poll(
-        async () =>
-          page
-            .locator(tid(id))
-            .evaluate((el) => el.getAttribute('data-render-zoom') === el.getAttribute('data-zoom')),
-        { message: `${id} never settled: data-render-zoom never reached data-zoom` },
+        async () => {
+          const [render, zoom] = await read();
+          if (render === zoom) return true;
+          await page.waitForTimeout(80);
+          return (await read())[0] === render;
+        },
+        { message: `${id} never settled: data-render-zoom kept moving` },
       )
       .toBe(true);
   }
