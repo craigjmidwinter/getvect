@@ -18,16 +18,19 @@ import test from 'node:test';
 import { Resvg } from '@resvg/resvg-js';
 
 import { canvasIngest, decodeImageFile, flattenOnWhite } from '../../instruments/lib/decode.mjs';
+import { rasterizeExemplarContent } from '../../instruments/lib/render.mjs';
 import {
   countCubics,
   countSubPaths,
   cropRegion,
   curveCommandRatio,
   inkRecall,
+  layerCompactness,
   meanColorError,
   nearDuplicateFillPairs,
   perColorCoverageDelta,
   pixelMismatchRatio,
+  strictInkRecall,
   svgStructure,
   tinySubPathRatio,
 } from '../../instruments/lib/metrics.mjs';
@@ -82,6 +85,19 @@ function render(svg, width, height) {
 }
 
 const renderResult = (r) => render(r.svg, r.width, r.height);
+
+/**
+ * Rasterize an exemplar for pixel comparison.
+ *
+ * NOT `render()`: `fixtures/reference/artwork.svg` draws its artwork in the
+ * top-left quarter of its declared viewBox, so rendering it against that box
+ * puts the real product's paw where our margin is. Every comparison would then
+ * pass for the wrong reason. Shared with the instruments so both measure the
+ * same picture (instruments/lib/render.mjs).
+ */
+const renderExemplar = async (name) =>
+  (await rasterizeExemplarContent(readFileSync(fixture(name), 'utf8'), artwork.width, artwork.height))
+    .image;
 
 test('[B2] every slider changes the rendered picture, not just the bytes', async () => {
   // A geometry change that no pixel can see is not "observably changes output".
@@ -241,6 +257,30 @@ test('[quality] hairlines stay unbroken through the cleanup passes', async () =>
  */
 const ARTWORK_FACE = { x: 300, y: 200, width: 360, height: 200 };
 
+/**
+ * The left paw pad: a warm brown, rgb(164,143,125) in the source, surrounded by
+ * cream and outlined in near-black. Same box `fixtures/manifest.json` gives the
+ * gold-standard rows as their `paw-pad` salient region. It is where the default
+ * pipeline loses a whole colour family, and — being an ellipse inside a contour
+ * inside a shaded region — it is also where outline continuity and quantization
+ * raggedness are easiest to see.
+ */
+const ARTWORK_PAW_PAD = { x: 60, y: 670, width: 110, height: 80 };
+
+/** Mean RGB of a region, for asking "did this end up the right hue at all". */
+function meanColor(image) {
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  const n = image.width * image.height;
+  for (let i = 0; i < image.data.length; i += 4) {
+    r += image.data[i];
+    g += image.data[i + 1];
+    b += image.data[i + 2];
+  }
+  return { r: r / n, g: g / n, b: b / n };
+}
+
 test('[B1] the face survives the Enhance bundle, not just the frame average', async () => {
   /**
    * A blind A/B against the real product was lost here with every gate green.
@@ -326,6 +366,98 @@ test('[quality] the DEFAULT quality settings stay in the exemplar economy class'
     ours.bytes <= exemplar.bytes * 8,
     `${(ours.bytes / 1024).toFixed(0)} KB vs the exemplar's ${(exemplar.bytes / 1024).toFixed(0)} KB ` +
       `(${(ours.bytes / exemplar.bytes).toFixed(1)}x, limit 8x) at the default quality settings`,
+  );
+});
+
+test('[B4] the default pipeline does not invert a region\'s hue', async () => {
+  /**
+   * The paw pad is a warm brown in the source — mean rgb(153,136,121), red 32
+   * above blue — and at DEFAULT_SETTINGS it comes back mean rgb(107,137,146),
+   * red 39 *below* blue. That is not a fidelity slip, it is the wrong colour
+   * family: Smart anti-aliasing's ramp snapper collapses the pad's shading onto
+   * its neighbours' extremes before quantization, the brown loses its histogram
+   * mass, and the region is repainted from the nearest surviving colour, which
+   * is a blue.
+   *
+   * Judged on the sign, not the size, so it cannot be argued down: a region the
+   * source paints clearly warm must not come back cool.
+   */
+  const src = cropRegion(artwork, ARTWORK_PAW_PAD);
+  const sourceMean = meanColor(src);
+  assert.ok(
+    sourceMean.r - sourceMean.b >= 20,
+    'the fixture crop is not clearly warm any more — re-derive the box before touching this test',
+  );
+
+  for (const settings of [{ ...S }, { ...S, colorCount: 6, enhance: true }]) {
+    const r = await engine.vectorize(artworkIn, settings);
+    const out = meanColor(cropRegion(render(r.svg, r.width, r.height), ARTWORK_PAW_PAD));
+    assert.ok(
+      out.r - out.b >= 0,
+      `at ${settings.colorCount} colours the paw pad comes back rgb(${out.r.toFixed(0)},` +
+        `${out.g.toFixed(0)},${out.b.toFixed(0)}) from a source rgb(${sourceMean.r.toFixed(0)},` +
+        `${sourceMean.g.toFixed(0)},${sourceMean.b.toFixed(0)}) — a warm brown rendered a cool ` +
+        'teal, i.e. the colour family was deleted before quantization, not approximated',
+    );
+  }
+});
+
+test('[quality] outlines come back as solid strokes, not thinned or dashed', async () => {
+  /**
+   * `inkRecall` accepts anything darker than luma 128 as "kept", which answers
+   * "was this stroke erased" and not "is it still a stroke". On the paw crop it
+   * scored us 0.978 against the exemplar's 1.000 — and `regionInkRecall` even
+   * read 1.08x the exemplar overall — for a contour a critic could see was
+   * hairline-thin and interrupted where the real product's was unbroken.
+   *
+   * Strictly (source ink < 60 must come back < 60) the same crop reads 0.943 of
+   * the exemplar's score. The bar is relative on purpose: a global absolute bar
+   * cannot be used, because the exemplar drops antialiased skirts everywhere
+   * and scores 0.859 globally to our 0.899. The question is only ever "is the
+   * real product's line more solid than ours, where ours is worst".
+   */
+  const ex = await renderExemplar('reference/artwork.svg');
+  const r = await engine.vectorize(artworkIn, { ...S, colorCount: 16, enhance: true });
+  const ours = render(r.svg, r.width, r.height);
+
+  for (const [name, box] of [
+    ['paw pad', ARTWORK_PAW_PAD],
+    ['face', ARTWORK_FACE],
+  ]) {
+    const src = cropRegion(artwork, box);
+    const theirs = strictInkRecall(src, cropRegion(ex, box));
+    const mine = strictInkRecall(src, cropRegion(ours, box));
+    assert.ok(
+      mine >= theirs * 0.98,
+      `${name}: strict ink recall ${mine.toFixed(3)} against the real product's ` +
+        `${theirs.toFixed(3)} (${(mine / theirs).toFixed(3)}x) — its outlines are solid where ` +
+        'ours are thin or broken',
+    );
+  }
+});
+
+test('[quality] colour boundaries are smooth sweeps, not sawtooth', async () => {
+  /**
+   * The signature that makes a 16-colour output read as "posterized photo"
+   * rather than "clipart": the seam between two shades of the same colour runs
+   * as a ragged sawtooth with spikes and notches instead of one clean curve.
+   * Nothing else in the suite can see it — both sides of the seam are nearly
+   * the right colour (MAE is fine), no ink is involved (ink recall is fine) and
+   * it is one big region either way (sub-path count is fine).
+   *
+   * `layerCompactness` is perimeter / (2*sqrt(pi*area)) per colour layer,
+   * averaged over the layers that carry the picture: 1.0 for a disc, higher the
+   * more ragged the boundary. Ours 3.73 against the exemplar's 2.67.
+   */
+  const exemplar = layerCompactness(readFileSync(fixture('reference/artwork.svg'), 'utf8'));
+  const r = await engine.vectorize(artworkIn, { ...S, colorCount: 16, enhance: true });
+  const ours = layerCompactness(r.svg);
+  assert.ok(
+    ours.mean <= exemplar.mean * 1.3,
+    `mean layer compactness ${ours.mean.toFixed(2)} over ${ours.counted} layers vs the exemplar's ` +
+      `${exemplar.mean.toFixed(2)} over ${exemplar.counted} ` +
+      `(${(ours.mean / exemplar.mean).toFixed(2)}x, limit 1.3x) — our colour boundaries carry ` +
+      'that much more perimeter for the area they enclose',
   );
 });
 

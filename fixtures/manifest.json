@@ -156,16 +156,29 @@
         "enhance": true
       },
       "exemplar": "reference/artwork.svg",
-      "salientRegion": {
-        "x": 300,
-        "y": 200,
-        "width": 360,
-        "height": 200
-      },
+      "salientRegions": [
+        {
+          "name": "face",
+          "x": 300,
+          "y": 200,
+          "width": 360,
+          "height": 200
+        },
+        {
+          "name": "paw-pad",
+          "x": 60,
+          "y": 670,
+          "width": 110,
+          "height": 80
+        }
+      ],
       "thresholds": {
         "meanColorError": 7,
         "ssim": 0.9,
         "minInkRecall": 0.94,
+        "minRegionStrictInkRecallRatio": 0.98,
+        "maxLayerCompactnessRatio": 1.3,
+        "maxPaletteShortfall": 1,
         "minRegionInkRecall": 0.93,
         "maxMeanColorErrorRatio": 1,
         "minDxfSplines": 1,
@@ -195,12 +208,22 @@
         "enhance": false
       },
       "exemplar": "reference/artwork.svg",
-      "salientRegion": {
-        "x": 300,
-        "y": 200,
-        "width": 360,
-        "height": 200
-      },
+      "salientRegions": [
+        {
+          "name": "face",
+          "x": 300,
+          "y": 200,
+          "width": 360,
+          "height": 200
+        },
+        {
+          "name": "paw-pad",
+          "x": 60,
+          "y": 670,
+          "width": 110,
+          "height": 80
+        }
+      ],
       "thresholds": {
         "meanColorError": 7,
         "ssim": 0.9,
@@ -231,9 +254,20 @@
         "enhance": true
       },
       "exemplar": "reference/artwork-clipart-6colors-min90.svg",
+      "salientRegions": [
+        {
+          "name": "paw-pad",
+          "x": 60,
+          "y": 670,
+          "width": 110,
+          "height": 80
+        }
+      ],
       "thresholds": {
         "maxMeanColorErrorRatio": 1.5,
         "minInkRecall": 0.94,
+        "maxRegionMeanColorError": 24,
+        "maxPaletteShortfall": 1,
         "maxTransparentAreaColorError": 8,
         "maxPathRatio": 3,
         "maxSubPathRatio": 3,
@@ -242,7 +276,37 @@
         "minCurveCommandRatio": 0.5,
         "maxMs": 10000
       },
-      "note": "Blind A/B against real Clipart 6-colour output (93 paths, 91KB, curve ratio 0.64)."
+      "note": "Blind A/B against real Clipart 6-colour output (93 paths, 91KB, curve ratio 0.64). Carries the paw-pad crop because the 6-colour palette failure is most visible there."
+    },
+    {
+      "id": "reference-artwork-default",
+      "file": "reference/artwork.png",
+      "kind": "clipart",
+      "format": "png",
+      "width": 1046,
+      "height": 833,
+      "supported": true,
+      "distinctColors": null,
+      "salientRegions": [
+        {
+          "name": "paw-pad",
+          "x": 60,
+          "y": 670,
+          "width": 110,
+          "height": 80
+        }
+      ],
+      "thresholds": {
+        "maxRegionMeanColorError": 12,
+        "minRegionStrictInkRecall": 0.94,
+        "maxPaletteShortfall": 1,
+        "minInkRecall": 0.94,
+        "maxTransparentAreaColorError": 8,
+        "maxTinySubPathRatio": 0.02,
+        "minCurveCommandRatio": 0.5,
+        "maxMs": 10000
+      },
+      "note": "DEFAULT_SETTINGS on the gold-standard artwork — deliberately no `settings` override. The other three reference rows all pin a configuration, which left the one a user gets out of the box unmeasured while its default output had a hue-inverted region."
     },
     {
       "id": "unsupported-gif",

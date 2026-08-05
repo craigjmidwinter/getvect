@@ -11,8 +11,10 @@
  *   2. calls the engine's pure `vectorize()` headlessly (dist/engine/index.js),
  *   3. rasterizes the produced SVG back to the SOURCE dimensions with resvg,
  *   4. measures mean/RMS colour error, SSIM, mismatch ratio, per-colour area
- *      drift, path AND sub-path counts, speck ratio, curve-command ratio,
- *      near-duplicate colour layers, SVG byte size and wall-clock ms,
+ *      drift, ink recall (loose AND strict), ink-component continuity, per-layer
+ *      boundary compactness, palette shortfall, path AND sub-path counts, speck
+ *      ratio, curve-command ratio, near-duplicate colour layers, SVG byte size
+ *      and wall-clock ms,
  *   5. compares each against the fixture's thresholds (fixtures/manifest.json,
  *      derived from REFERENCE.md "Quality bar"), including ratios against a
  *      real the reference product exemplar when the fixture declares one.
@@ -23,7 +25,9 @@
  *   artifacts/raster/<id>.png       that SVG re-rasterized at source size
  *   artifacts/diff/<id>.png         amplified absolute difference
  *   artifacts/region/<id>.png       the salient-region crop of the re-raster,
- *                                   for fixtures that declare `salientRegion`
+ *                                   for fixtures that declare `salientRegion` /
+ *                                   `salientRegions` (further boxes land in
+ *                                   artifacts/region/<id>-<name>.png)
  *   stdout                          human-readable table
  *
  * Exit codes: 0 all measured fixtures pass · 1 a measured fixture missed a
@@ -35,12 +39,17 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
 import sharp from 'sharp';
-import { Resvg } from '@resvg/resvg-js';
 import { canvasIngest, decodeImageFile, flattenOnWhite, transparentRatio } from './lib/decode.mjs';
+// Rasterization lives in lib/render.mjs so `npm run test:engine` measures
+// exemplars exactly the way the instruments do — see the note there about the
+// content box.
+import { rasterizeExemplarContent, rasterizeSvg } from './lib/render.mjs';
 import {
   alphaMask,
   cropRegion,
+  inkComponentRatio,
   inkRecall,
+  layerCompactness,
   maskedMeanColorError,
   meanColorError,
   perColorCoverageDelta,
@@ -48,8 +57,27 @@ import {
   psnr,
   rmsColorError,
   ssim,
+  strictInkRecall,
   svgStructure,
 } from './lib/metrics.mjs';
+
+/**
+ * A fixture's salient regions, normalized.
+ *
+ * `salientRegion` (one box) is the original spelling and still works;
+ * `salientRegions` is a list of named boxes, because one crop is not enough on
+ * the gold standard: the face is where line art is lost and the paw pad is
+ * where a whole colour family is lost, and a fixture that can only name one of
+ * them measures the other with nothing. Region gates are applied to the WORST
+ * region, so adding a box can only tighten a fixture, never loosen it.
+ */
+function salientRegions(fixture) {
+  if (Array.isArray(fixture.salientRegions)) {
+    return fixture.salientRegions.map((r, i) => ({ name: r.name ?? `region${i + 1}`, ...r }));
+  }
+  if (fixture.salientRegion) return [{ name: 'salient', ...fixture.salientRegion }];
+  return [];
+}
 
 const require = createRequire(import.meta.url);
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -80,69 +108,6 @@ async function loadEngine() {
   } catch (err) {
     throw new Error(`Could not load engine ${target} — run \`npm run build:node\` first.\n${err.message}`);
   }
-}
-
-async function rasterizeSvg(svg, width, height) {
-  const resvg = new Resvg(svg, {
-    fitTo: { mode: 'width', value: width },
-    background: 'white',
-    font: { loadSystemFonts: false },
-  });
-  const png = resvg.render().asPng();
-  const { data, info } = await sharp(png)
-    .resize(width, height, { fit: 'fill', kernel: 'nearest' })
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  return {
-    png,
-    image: {
-      width: info.width,
-      height: info.height,
-      data: new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength),
-    },
-  };
-}
-
-/**
- * Rasterize an exemplar SVG **from its own content**, not from its declared
- * viewBox.
- *
- * `fixtures/reference/artwork.svg` declares an 11520x9280 viewBox and draws its
- * artwork in the top-left quarter of it. Rasterizing that box against the
- * source scored the real product a mean colour error of 63.55 — worse than any
- * plausible output of ours — so `exemplarMeanColorErrorRatio` was ~0.08 for
- * everything and the fidelity half of the A/B gate measured nothing. Rendering
- * at 2x, trimming the uniform border and resizing to the source is the
- * comparison a critic makes by hand: the same exemplar then scores MAE 13.50 /
- * SSIM 0.886 / ink recall 0.973, which is a number worth being measured against.
- */
-async function rasterizeExemplarContent(svg, width, height) {
-  const big = new Resvg(svg, {
-    fitTo: { mode: 'width', value: width * 2 },
-    background: 'white',
-    font: { loadSystemFonts: false },
-  })
-    .render()
-    .asPng();
-  // `trim` removes a uniform border; on an exemplar that already fills its
-  // frame it is a no-op, so this is safe for every exemplar we ship.
-  const trimmed = await sharp(big).flatten({ background: '#fff' }).trim({ threshold: 10 }).toBuffer();
-  const meta = await sharp(trimmed).metadata();
-  const { data, info } = await sharp(trimmed)
-    .resize(width, height, { fit: 'fill' })
-    .flatten({ background: '#fff' })
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  return {
-    contentBox: { width: meta.width, height: meta.height },
-    image: {
-      width: info.width,
-      height: info.height,
-      data: new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength),
-    },
-  };
 }
 
 async function writeDiff(a, b, file, amplify = 4) {
@@ -179,12 +144,31 @@ const GATES = [
   // the alpha-0 background opaque (the black-rectangle blocker) scores ~255
   // here while MAE/SSIM over the whole frame can still look survivable.
   ['maxTransparentAreaColorError', 'transparentAreaColorError', 'max', (v) => v.toFixed(2)],
-  // The salient region (fixture `salientRegion`). Whole-frame scores are
-  // area-weighted and cannot see a destroyed face; these are the same numbers
-  // computed inside the crop that carries the meaning.
+  // The salient regions (fixture `salientRegion` / `salientRegions`). Whole-frame
+  // scores are area-weighted and cannot see a destroyed face; these are the same
+  // numbers computed inside the crops that carry the meaning, aggregated to the
+  // WORST region so adding a box can only tighten a fixture.
   ['minRegionInkRecall', 'regionInkRecall', 'min', (v) => v.toFixed(4)],
   ['maxRegionMeanColorError', 'regionMeanColorError', 'max', (v) => v.toFixed(2)],
   ['minRegionSsim', 'regionSsim', 'min', (v) => v.toFixed(4)],
+  // Continuity, not just survival. `inkRecall` accepts anything darker than 128,
+  // so a contour thinned to a grey smear or broken into dashes still scores ~1;
+  // `strictInkRecall` demands the source's ink come back as ink.
+  ['minStrictInkRecall', 'strictInkRecall', 'min', (v) => v.toFixed(4)],
+  ['minRegionStrictInkRecall', 'regionStrictInkRecall', 'min', (v) => v.toFixed(4)],
+  // ...and the same question asked against the real product instead of against
+  // an invented constant: < 1 means its outlines are more solid than ours in the
+  // region where we are worst. A whole-frame absolute bar cannot be used here —
+  // the exemplar itself scores 0.859 globally because it drops antialiased
+  // skirts, while inside the paw it scores 0.984 to our 0.943.
+  ['minRegionStrictInkRecallRatio', 'regionStrictInkRecallRatio', 'min', (v) => `${v.toFixed(3)}x`],
+  // Boundary raggedness of the colour layers (metrics.mjs `layerCompactness`):
+  // the sawtooth-vs-sweep difference between clipart and a posterized photo.
+  ['maxLayerCompactness', 'layerCompactness', 'max', (v) => v.toFixed(2)],
+  ['maxLayerCompactnessRatio', 'layerCompactnessRatio', 'max', (v) => `${v.toFixed(2)}x`],
+  // B3: how many of the colours the user asked for — and the image actually has
+  // — our own folds merged away before the palette was returned.
+  ['maxPaletteShortfall', 'paletteShortfall', 'max', String],
   // D3: the DXF must carry the curves the SVG paid for, and must not balloon
   // past the EPS of the same drawing by flattening them into vertex runs.
   ['minDxfSplines', 'dxfSplineCount', 'min', String],
@@ -229,9 +213,13 @@ function table(rows) {
     ['tiny%', (r) => fmt(r.metrics ? r.metrics.tinySubPathRatio * 100 : null, 1), 6],
     ['curve', (r) => fmt(r.metrics?.curveCommandRatio, 3), 6],
     ['ink', (r) => fmt(r.metrics?.inkRecall, 3), 6],
-    // Ink recall inside the fixture's salient region, when it declares one —
+    // Ink recall inside the fixture's salient region(s), when it declares any —
     // the number that catches a destroyed face behind a green whole-frame score.
     ['rgnInk', (r) => fmt(r.metrics?.regionInkRecall, 3), 6],
+    // Strict ink recall (ink must come back as ink) in the worst region, and the
+    // mean boundary raggedness of the colour layers.
+    ['sInk', (r) => fmt(r.metrics?.regionStrictInkRecall ?? r.metrics?.strictInkRecall, 3), 6],
+    ['cmpct', (r) => fmt(r.metrics?.layerCompactness, 2), 6],
     ['SVG KB', (r) => fmt(r.metrics ? r.metrics.svgBytes / 1024 : null, 1), 8],
     ['ms', (r) => fmt(r.metrics?.wallClockMs, 0), 6],
   ];
@@ -261,8 +249,8 @@ async function main() {
    * fixtures/reference/) the same way we measure ours, so the comparison
    * REFERENCE lines 80-83 asks for is a number instead of an eyeball.
    */
-  async function measureExemplar(relPath, source, region) {
-    const cacheKey = `${relPath}::${region ? JSON.stringify(region) : ''}`;
+  async function measureExemplar(relPath, source, regions) {
+    const cacheKey = `${relPath}::${JSON.stringify(regions ?? [])}`;
     if (exemplarCache.has(cacheKey)) return exemplarCache.get(cacheKey);
     let measured = null;
     try {
@@ -282,11 +270,22 @@ async function main() {
         meanColorError: meanColorError(source, traced),
         ssim: ssim(source, traced),
         inkRecall: inkRecall(source, traced),
+        strictInkRecall: strictInkRecall(source, traced),
         meanColorErrorAsDeclared: meanColorError(source, asDeclared),
-        regionInkRecall: region
-          ? inkRecall(cropRegion(source, region), cropRegion(traced, region))
-          : null,
+        regions: (regions ?? []).map((region) => {
+          const a = cropRegion(source, region);
+          const b = cropRegion(traced, region);
+          return {
+            name: region.name,
+            inkRecall: inkRecall(a, b),
+            strictInkRecall: strictInkRecall(a, b),
+            meanColorError: meanColorError(a, b),
+          };
+        }),
       };
+      // The first region keeps the old field name so nothing that reads
+      // `exemplar.regionInkRecall` from an older metrics.json breaks.
+      measured.regionInkRecall = measured.regions[0]?.inkRecall ?? null;
     } catch (err) {
       measured = { file: relPath, error: err.message };
     }
@@ -414,6 +413,10 @@ async function main() {
       pixelMismatchRatio: pixelMismatchRatio(reference, traced),
       // Area-weighted scores cannot see a deleted hairline; this can.
       inkRecall: inkRecall(reference, traced),
+      // ...and this can see a hairline that came back as a grey smear or a row
+      // of dashes, which `inkRecall`'s luma-128 "kept" test forgives.
+      strictInkRecall: strictInkRecall(reference, traced),
+      inkComponentRatio: inkComponentRatio(reference, traced),
       // How much each palette colour's area drifted between source and trace:
       // catches half-pixel erosion of hairlines that MAE/SSIM average away.
       perColorCoverageDelta: Array.isArray(result.palette)
@@ -433,8 +436,24 @@ async function main() {
       curveCommandRatio: structure.curveCommandRatio,
       cubicCount: structure.cubicCount,
       layerCount: structure.layerCount,
+      layerCompactness: structure.layerCompactness,
       nearDuplicateFillPairs: structure.nearDuplicateFillPairs,
       paletteSize: Array.isArray(result.palette) ? result.palette.length : null,
+      sourceColors: typeof result.sourceColors === 'number' ? result.sourceColors : null,
+      /**
+       * B3: colours asked for, minus colours delivered — capped by what the
+       * image actually had. The engine reports `sourceColors` (the palette
+       * BEFORE our own folds), so this separates "the image ran out" from "our
+       * cleanup merged them": 16 requested, 16 found, 8 delivered is a
+       * shortfall of 8 and nothing to do with the picture.
+       */
+      paletteShortfall:
+        Array.isArray(result.palette) && typeof result.sourceColors === 'number'
+          ? Math.max(
+              0,
+              Math.min(settings.colorCount, result.sourceColors) - result.palette.length,
+            )
+          : null,
       reportedPathCount: typeof result.pathCount === 'number' ? result.pathCount : null,
       svgBytes: structure.bytes,
       wallClockMs,
@@ -448,19 +467,46 @@ async function main() {
      * mouth and both fangs moved `inkRecall` by 0.03 and MAE by 1.5 while every
      * gate stayed green. Same metrics, computed inside the crop.
      */
-    const region = fixture.salientRegion ?? null;
-    if (region) {
-      const refRegion = cropRegion(reference, region);
-      const outRegion = cropRegion(traced, region);
-      metrics.salientRegion = region;
-      metrics.regionInkRecall = inkRecall(refRegion, outRegion);
-      metrics.regionMeanColorError = meanColorError(refRegion, outRegion);
-      metrics.regionSsim = ssim(refRegion, outRegion);
-      await sharp(Buffer.from(outRegion.data.buffer, outRegion.data.byteOffset, outRegion.data.byteLength), {
-        raw: { width: outRegion.width, height: outRegion.height, channels: 4 },
-      })
-        .png()
-        .toFile(join(artifactsDir, 'region', `${fixture.id}.png`));
+    const regions = salientRegions(fixture);
+    if (regions.length) {
+      metrics.regions = [];
+      for (const [i, region] of regions.entries()) {
+        const refRegion = cropRegion(reference, region);
+        const outRegion = cropRegion(traced, region);
+        metrics.regions.push({
+          name: region.name,
+          box: { x: region.x, y: region.y, width: region.width, height: region.height },
+          inkRecall: inkRecall(refRegion, outRegion),
+          strictInkRecall: strictInkRecall(refRegion, outRegion),
+          inkComponentRatio: inkComponentRatio(refRegion, outRegion),
+          meanColorError: meanColorError(refRegion, outRegion),
+          ssim: ssim(refRegion, outRegion),
+        });
+        const crop = join(
+          artifactsDir,
+          'region',
+          i === 0 ? `${fixture.id}.png` : `${fixture.id}-${region.name}.png`,
+        );
+        await sharp(
+          Buffer.from(outRegion.data.buffer, outRegion.data.byteOffset, outRegion.data.byteLength),
+          { raw: { width: outRegion.width, height: outRegion.height, channels: 4 } },
+        )
+          .png()
+          .toFile(crop);
+      }
+      // Gates read the WORST region: a fixture that names two crops is asking
+      // that BOTH survive, so adding one can only ever tighten the fixture.
+      const worst = (key, dir) => {
+        const vals = metrics.regions.map((r) => r[key]).filter((v) => v != null);
+        if (!vals.length) return null;
+        return dir === 'min' ? Math.min(...vals) : Math.max(...vals);
+      };
+      metrics.salientRegion = metrics.regions[0].box;
+      metrics.regionInkRecall = worst('inkRecall', 'min');
+      metrics.regionStrictInkRecall = worst('strictInkRecall', 'min');
+      metrics.regionInkComponentRatio = worst('inkComponentRatio', 'max');
+      metrics.regionMeanColorError = worst('meanColorError', 'max');
+      metrics.regionSsim = worst('ssim', 'min');
     }
 
     /**
@@ -487,7 +533,7 @@ async function main() {
 
     let exemplar = null;
     if (fixture.exemplar) {
-      exemplar = await measureExemplar(fixture.exemplar, source, region);
+      exemplar = await measureExemplar(fixture.exemplar, source, regions);
       if (!exemplar.error) {
         metrics.exemplarBytesRatio = metrics.svgBytes / exemplar.bytes;
         metrics.exemplarSubPathRatio = metrics.subPathCount / Math.max(1, exemplar.subPathCount);
@@ -496,12 +542,32 @@ async function main() {
           metrics.meanColorError / Math.max(0.01, exemplar.meanColorError);
         metrics.exemplarCurveCommandRatio = exemplar.curveCommandRatio;
         metrics.exemplarInkRecall = exemplar.inkRecall;
-        if (region && exemplar.regionInkRecall != null) {
-          metrics.exemplarRegionInkRecall = exemplar.regionInkRecall;
+        metrics.exemplarStrictInkRecall = exemplar.strictInkRecall;
+        metrics.exemplarLayerCompactness = exemplar.layerCompactness;
+        if (metrics.layerCompactness != null && exemplar.layerCompactness) {
+          metrics.layerCompactnessRatio = metrics.layerCompactness / exemplar.layerCompactness;
+        }
+        if (metrics.regions && exemplar.regions?.length) {
+          for (const [i, r] of metrics.regions.entries()) {
+            const e = exemplar.regions[i];
+            if (!e) continue;
+            r.exemplarInkRecall = e.inkRecall;
+            r.exemplarStrictInkRecall = e.strictInkRecall;
+            r.exemplarMeanColorError = e.meanColorError;
+            r.inkRecallRatio = r.inkRecall / Math.max(0.01, e.inkRecall);
+            r.strictInkRecallRatio = r.strictInkRecall / Math.max(0.01, e.strictInkRecall);
+          }
           // < 1 means the real product renders the salient region better than
-          // we do — the blind A/B, as one number.
-          metrics.regionInkRecallRatio =
-            metrics.regionInkRecall / Math.max(0.01, exemplar.regionInkRecall);
+          // we do — the blind A/B, as one number, in the region where we are
+          // worst relative to it.
+          metrics.exemplarRegionInkRecall = exemplar.regions[0].inkRecall;
+          metrics.regionInkRecallRatio = Math.min(
+            ...metrics.regions.filter((r) => r.inkRecallRatio != null).map((r) => r.inkRecallRatio),
+          );
+          const strict = metrics.regions
+            .filter((r) => r.strictInkRecallRatio != null)
+            .map((r) => r.strictInkRecallRatio);
+          metrics.regionStrictInkRecallRatio = strict.length ? Math.min(...strict) : null;
         }
       }
     }
@@ -549,19 +615,36 @@ async function main() {
           `subpaths ${fmt(r.metrics.exemplarSubPathRatio)}x (${r.metrics.subPathCount} vs ${e.subPathCount}), ` +
           `paths ${fmt(r.metrics.exemplarPathRatio)}x (${r.metrics.pathCount} vs ${e.pathCount}), ` +
           `curve ratio ${fmt(r.metrics.curveCommandRatio, 3)} vs ${fmt(e.curveCommandRatio, 3)}, ` +
-          `MAE ${fmt(r.metrics.meanColorError)} vs ${fmt(e.meanColorError)} ` +
+          `MAE ${fmt(r.metrics.meanColorError)} vs ${fmt(e.meanColorError)}, ` +
+          `layer compactness ${fmt(r.metrics.layerCompactness)} vs ${fmt(e.layerCompactness)} ` +
+          `(${fmt(r.metrics.layerCompactnessRatio)}x) ` +
           `(exemplar rasterized from its ${e.contentBox?.width}x${e.contentBox?.height} content box)`,
       );
     }
-    if (r.metrics?.regionInkRecall != null) {
-      const box = r.metrics.salientRegion;
+    for (const region of r.metrics?.regions ?? []) {
+      const box = region.box;
       console.log(
-        `  ${r.id}: salient region ${box.width}x${box.height}@${box.x},${box.y} — ` +
-          `ink ${fmt(r.metrics.regionInkRecall, 4)}` +
-          (r.metrics.exemplarRegionInkRecall != null
-            ? ` vs exemplar ${fmt(r.metrics.exemplarRegionInkRecall, 4)} (${fmt(r.metrics.regionInkRecallRatio)}x)`
+        `  ${r.id}: region "${region.name}" ${box.width}x${box.height}@${box.x},${box.y} — ` +
+          `ink ${fmt(region.inkRecall, 4)}` +
+          (region.exemplarInkRecall != null
+            ? ` vs exemplar ${fmt(region.exemplarInkRecall, 4)} (${fmt(region.inkRecallRatio)}x)`
             : '') +
-          `, MAE ${fmt(r.metrics.regionMeanColorError)}, SSIM ${fmt(r.metrics.regionSsim, 4)}`,
+          `, strict ink ${fmt(region.strictInkRecall, 4)}` +
+          (region.exemplarStrictInkRecall != null
+            ? ` vs ${fmt(region.exemplarStrictInkRecall, 4)} (${fmt(region.strictInkRecallRatio)}x)`
+            : '') +
+          `, MAE ${fmt(region.meanColorError)}` +
+          (region.exemplarMeanColorError != null
+            ? ` vs ${fmt(region.exemplarMeanColorError)}`
+            : '') +
+          `, SSIM ${fmt(region.ssim, 4)}, ink components ${fmt(region.inkComponentRatio, 2)}x source`,
+      );
+    }
+    if (r.metrics?.paletteShortfall > 0) {
+      console.log(
+        `  ${r.id}: palette — ${r.metrics.paletteSize} delivered of ${r.settings.colorCount} ` +
+          `requested (${r.metrics.sourceColors} found in the image); our folds merged ` +
+          `${r.metrics.paletteShortfall} away`,
       );
     }
     if (r.metrics?.dxfBytes != null) {

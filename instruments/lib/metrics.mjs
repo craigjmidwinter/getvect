@@ -181,6 +181,91 @@ export function inkRecall(reference, traced, { inkLuma = 60, keptLuma = 128 } = 
 }
 
 /**
+ * Strict ink recall — did the stroke survive at *stroke* darkness?
+ *
+ * `inkRecall` accepts anything darker than 128 as "kept", which is the right
+ * question for "was this stroke erased". It is the wrong question for "is this
+ * stroke still a solid stroke": a contour that a curve fit thinned below a
+ * pixel renders as a grey smear at luma 90-120 and scores a perfect 1.0, and a
+ * contour broken into dashes scores whatever fraction of it is still painted at
+ * all. Measured loosely on the gold standard's paw the engine read 0.978
+ * against the real product's 1.000 — a 2 % gap for an outline a critic could
+ * see was dashed. Measured strictly (source ink < 60 must come back < 60) the
+ * same crop reads 0.946 vs 0.983, which is a gap a threshold can hold.
+ */
+export function strictInkRecall(reference, traced, { inkLuma = 60 } = {}) {
+  return inkRecall(reference, traced, { inkLuma, keptLuma: inkLuma });
+}
+
+/** One byte per pixel, 1 where luma is below `inkLuma` — the ink field. */
+export function inkMask(image, inkLuma = 60) {
+  const mask = new Uint8Array(image.width * image.height);
+  for (let p = 0, i = 0; i < image.data.length; i += 4, p++) {
+    const luma = 0.299 * image.data[i] + 0.587 * image.data[i + 1] + 0.114 * image.data[i + 2];
+    mask[p] = luma < inkLuma ? 1 : 0;
+  }
+  return mask;
+}
+
+/**
+ * Number of 8-connected components in an image's ink field, ignoring
+ * components smaller than `minPixels` (isolated antialiasing crumbs are not
+ * strokes and neither product should be judged on them).
+ */
+export function inkComponents(image, { inkLuma = 60, minPixels = 4 } = {}) {
+  const { width, height } = image;
+  const mask = inkMask(image, inkLuma);
+  const seen = new Uint8Array(width * height);
+  const stack = new Int32Array(width * height);
+  let components = 0;
+  for (let p = 0; p < mask.length; p++) {
+    if (!mask[p] || seen[p]) continue;
+    let top = 0;
+    stack[top++] = p;
+    seen[p] = 1;
+    let size = 0;
+    while (top > 0) {
+      const q = stack[--top];
+      size++;
+      const qx = q % width;
+      const qy = (q - qx) / width;
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = qy + dy;
+        if (ny < 0 || ny >= height) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = qx + dx;
+          if (nx < 0 || nx >= width || (dx === 0 && dy === 0)) continue;
+          const n = ny * width + nx;
+          if (mask[n] && !seen[n]) {
+            seen[n] = 1;
+            stack[top++] = n;
+          }
+        }
+      }
+    }
+    if (size >= minPixels) components++;
+  }
+  return components;
+}
+
+/**
+ * Continuity, as one number: components in the trace's ink field over
+ * components in the source's.
+ *
+ * A continuous outline traced continuously scores ~1. An outline broken into
+ * dashes multiplies its own component count while `inkRecall` barely moves,
+ * because every dash is still ink and the gaps are a rounding error in area.
+ * This is what "the strokes are interrupted" looks like to an instrument.
+ * Returns null when the source region has no ink to count.
+ */
+export function inkComponentRatio(reference, traced, opts = {}) {
+  assertSameSize(reference, traced);
+  const ref = inkComponents(reference, opts);
+  if (ref === 0) return null;
+  return inkComponents(traced, opts) / ref;
+}
+
+/**
  * Crop a RasterImage to `{ x, y, width, height }`, clamped to the image.
  *
  * Whole-frame scores are area-weighted, so a region that is 8 % of the canvas
@@ -418,6 +503,241 @@ export function layerFills(svg) {
     .filter(Boolean);
 }
 
+/**
+ * Flatten one path-data string into polylines, one per sub-path.
+ *
+ * Curves are sampled (`samples` points per cubic/quadratic) so a fitted
+ * boundary and a staircase of `l` segments are measured on the same footing —
+ * otherwise a curve would count as one "edge" however far it travels.
+ * Arcs contribute their endpoint only, which is what `subPathBoxes` does too.
+ */
+export function subPathPolylines(d, samples = 8) {
+  const tokens = d.match(/[MmLlHhVvCcSsQqTtAaZz]|-?(?:\d*\.\d+|\d+)(?:[eE][-+]?\d+)?/g) ?? [];
+  const polys = [];
+  let poly = null;
+  let cx = 0;
+  let cy = 0;
+  let sx = 0;
+  let sy = 0;
+  let cmd = null;
+  let i = 0;
+  const num = () => Number(tokens[i++]);
+  const push = (x, y) => {
+    if (poly) poly.push([x, y]);
+  };
+  const cubic = (x1, y1, x2, y2, x3, y3) => {
+    for (let s = 1; s <= samples; s++) {
+      const t = s / samples;
+      const u = 1 - t;
+      push(
+        u * u * u * cx + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3,
+        u * u * u * cy + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3,
+      );
+    }
+    cx = x3;
+    cy = y3;
+  };
+
+  while (i < tokens.length) {
+    const token = tokens[i];
+    if (/[MmLlHhVvCcSsQqTtAaZz]/.test(token)) {
+      cmd = token;
+      i++;
+    } else if (cmd == null) {
+      i++;
+      continue;
+    } else if (cmd === 'M') cmd = 'L';
+    else if (cmd === 'm') cmd = 'l';
+
+    const lower = cmd.toLowerCase();
+    const rel = cmd === lower;
+    const need = ARG_COUNT[lower];
+    if (need > 0 && i + need > tokens.length) break;
+
+    if (lower === 'z') {
+      cx = sx;
+      cy = sy;
+      push(cx, cy);
+      continue;
+    }
+    if (lower === 'm') {
+      const x = num();
+      const y = num();
+      cx = rel ? cx + x : x;
+      cy = rel ? cy + y : y;
+      sx = cx;
+      sy = cy;
+      poly = [[cx, cy]];
+      polys.push(poly);
+      continue;
+    }
+    if (lower === 'h') {
+      const x = num();
+      cx = rel ? cx + x : x;
+      push(cx, cy);
+    } else if (lower === 'v') {
+      const y = num();
+      cy = rel ? cy + y : y;
+      push(cx, cy);
+    } else if (lower === 'l' || lower === 't') {
+      const x = num();
+      const y = num();
+      cx = rel ? cx + x : x;
+      cy = rel ? cy + y : y;
+      push(cx, cy);
+    } else if (lower === 'c' || lower === 's' || lower === 'q') {
+      const pts = [];
+      for (let k = 0; k < need; k += 2) {
+        const x = num();
+        const y = num();
+        pts.push([rel ? cx + x : x, rel ? cy + y : y]);
+      }
+      // s/q carry fewer control points than a cubic; reuse the start point for
+      // the missing one. The sampling only has to be consistent, not exact.
+      const [p1, p2, p3] = pts.length === 3 ? pts : [[cx, cy], pts[0], pts[1]];
+      cubic(p1[0], p1[1], p2[0], p2[1], p3[0], p3[1]);
+    } else if (lower === 'a') {
+      num(); num(); num(); num(); num();
+      const x = num();
+      const y = num();
+      cx = rel ? cx + x : x;
+      cy = rel ? cy + y : y;
+      push(cx, cy);
+    }
+  }
+  return polys.filter((p) => p.length > 1);
+}
+
+/** Absolute shoelace area and total edge length of a polyline. */
+function polylineAreaPerimeter(points) {
+  let area = 0;
+  let perimeter = 0;
+  for (let i = 0; i < points.length; i++) {
+    const [x0, y0] = points[i];
+    const [x1, y1] = points[(i + 1) % points.length];
+    area += x0 * y1 - x1 * y0;
+    perimeter += Math.hypot(x1 - x0, y1 - y0);
+  }
+  return { area: Math.abs(area) / 2, perimeter };
+}
+
+/**
+ * Per-`<g fill>` layer geometry: area, perimeter and **compactness**
+ * `perimeter / (2 * sqrt(pi * area))` — 1.0 for a circle, higher the more
+ * ragged the boundary.
+ *
+ * Why this exists: a quantization boundary that sawtooths through a shaded
+ * region costs nothing in MAE (both sides of the seam are nearly the right
+ * colour), nothing in ink recall (no ink involved) and nothing in sub-path
+ * count (it is one big region either way) — and it is the single most visible
+ * difference between "clipart" and "posterized photo". Measured on the gold
+ * standard, our mid-tone layers score 5.65 / 5.36 against the real product's
+ * 4.35 / 2.87 for the equivalent cream and blue.
+ *
+ * Computed from the path data rather than by rasterizing each layer alone, so
+ * it stays pure, deterministic and fast. Layers are split at every
+ * `<g … fill="…">` start: the exemplar nests a plain `<g>` inside each fill
+ * group, so matching to the next `</g>` would truncate every layer.
+ */
+export function layerGeometry(svg, { curveSamples = 8 } = {}) {
+  const starts = [...svg.matchAll(/<g\b[^>]*\bfill="([^"]+)"[^>]*>/g)];
+  const layers = [];
+  for (let i = 0; i < starts.length; i++) {
+    const from = starts[i].index + starts[i][0].length;
+    const to = i + 1 < starts.length ? starts[i + 1].index : svg.length;
+    const chunk = svg.slice(from, to);
+    let area = 0;
+    let perimeter = 0;
+    let box = null;
+    const extend = (x0, y0, x1, y1) => {
+      box = box
+        ? [Math.min(box[0], x0), Math.min(box[1], y0), Math.max(box[2], x1), Math.max(box[3], y1)]
+        : [x0, y0, x1, y1];
+    };
+    for (const d of pathDataAttributes(chunk)) {
+      for (const poly of subPathPolylines(d, curveSamples)) {
+        const m = polylineAreaPerimeter(poly);
+        area += m.area;
+        perimeter += m.perimeter;
+        let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity];
+        for (const [x, y] of poly) {
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
+        extend(minX, minY, maxX, maxY);
+      }
+    }
+    // <rect> and <circle> primitives the writer may emit alongside paths.
+    for (const m of chunk.matchAll(/<rect\b([^>]*)>/g)) {
+      const w = Number(/\bwidth="([\d.]+)"/.exec(m[1])?.[1] ?? 0);
+      const h = Number(/\bheight="([\d.]+)"/.exec(m[1])?.[1] ?? 0);
+      const x = Number(/\bx="([-\d.]+)"/.exec(m[1])?.[1] ?? 0);
+      const y = Number(/\by="([-\d.]+)"/.exec(m[1])?.[1] ?? 0);
+      area += w * h;
+      perimeter += 2 * (w + h);
+      extend(x, y, x + w, y + h);
+    }
+    for (const m of chunk.matchAll(/<circle\b([^>]*)>/g)) {
+      const r = Number(/\br="([\d.]+)"/.exec(m[1])?.[1] ?? 0);
+      const cx = Number(/\bcx="([-\d.]+)"/.exec(m[1])?.[1] ?? 0);
+      const cy = Number(/\bcy="([-\d.]+)"/.exec(m[1])?.[1] ?? 0);
+      area += Math.PI * r * r;
+      perimeter += 2 * Math.PI * r;
+      extend(cx - r, cy - r, cx + r, cy + r);
+    }
+    layers.push({
+      fill: starts[i][1],
+      color: parseColor(starts[i][1]),
+      area,
+      perimeter,
+      box,
+      compactness: area > 0 ? perimeter / (2 * Math.sqrt(Math.PI * area)) : null,
+    });
+  }
+  return layers;
+}
+
+/**
+ * Mean compactness over the layers that carry the picture.
+ *
+ * `minCoverage` is a share of the **drawing's bounding box**, not of the
+ * declared viewBox: `fixtures/reference/artwork.svg` draws inside the top-left
+ * quarter of an 11520x9280 box, so viewBox-relative coverage would drop every
+ * one of the real product's layers under the bar and the exemplar side of the
+ * comparison would measure nothing.
+ */
+export function layerCompactness(svg, { minCoverage = 0.01, curveSamples = 8 } = {}) {
+  const layers = layerGeometry(svg, { curveSamples });
+  let box = null;
+  for (const l of layers) {
+    if (!l.box) continue;
+    box = box
+      ? [
+          Math.min(box[0], l.box[0]),
+          Math.min(box[1], l.box[1]),
+          Math.max(box[2], l.box[2]),
+          Math.max(box[3], l.box[3]),
+        ]
+      : l.box;
+  }
+  const canvas = box ? Math.max(1, (box[2] - box[0]) * (box[3] - box[1])) : 1;
+  const counted = layers.filter((l) => l.compactness != null && l.area / canvas >= minCoverage);
+  const mean = counted.length
+    ? counted.reduce((sum, l) => sum + l.compactness, 0) / counted.length
+    : null;
+  return {
+    mean,
+    counted: counted.length,
+    layers: counted.map((l) => ({
+      fill: l.fill,
+      coverage: l.area / canvas,
+      compactness: l.compactness,
+    })),
+  };
+}
+
 /** Squared RGB distance. */
 export function colorDistance2(a, b) {
   return (a.r - b.r) ** 2 + (a.g - b.g) ** 2 + (a.b - b.b) ** 2;
@@ -528,6 +848,9 @@ export function svgStructure(svg) {
     curveCommandRatio: curveCommandRatio(svg),
     cubicCount: countCubics(svg),
     layerCount: layerFills(svg).length,
+    // Boundary raggedness of the layers that carry the picture. The number that
+    // separates "clipart" from "posterized photo" (see `layerCompactness`).
+    layerCompactness: layerCompactness(svg).mean,
     nearDuplicateFillPairs: nearDuplicateFillPairs(svg),
     bytes: Buffer.byteLength(svg, 'utf8'),
   };

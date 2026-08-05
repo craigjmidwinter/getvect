@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createHash } from 'node:crypto';
 
-import { decodeImageFile, flattenOnWhite } from '../../instruments/lib/decode.mjs';
+import { canvasIngest, decodeImageFile, flattenOnWhite } from '../../instruments/lib/decode.mjs';
 import {
   countSubPaths,
   curveCommandRatio,
@@ -50,6 +50,13 @@ const RAW = { ...S, antiAliasing: 'off' };
 const flat = await load('logo-flat-512.png');
 const noisy = await load('logo-noisy-512.png');
 const artwork = await load('reference/artwork.png');
+/**
+ * The gold standard as the *app* hands it over — `(0,0,0,0)` for every
+ * transparent pixel, the one decode contract in docs/HARNESS.md. Colour-budget
+ * questions have to be asked on these pixels: the flattened version donates a
+ * palette slot to a white background the user never asked for.
+ */
+const artworkIn = canvasIngest(await decodeImageFile(fixture('reference/artwork.png')));
 
 /** The six colours scripts/generate-fixtures.mjs draws the flat fixture from. */
 const FLAT_SOURCE_COLORS = ['#f2efe6', '#1b3a5c', '#2b2b2b', '#e4572e', '#2e9e5b', '#f2c14e'];
@@ -152,7 +159,80 @@ test('[B3] the sort order reorders layers without changing the colour set', asyn
   assert.deepEqual([...fa].sort(), [...fb].sort(), 'sorting must not change which colours exist');
 });
 
+test('[B3] the requested colour count is delivered when the image has the colours', async () => {
+  /**
+   * `colorCount` is the headline control of the whole product and it is the one
+   * number the user is allowed to expect back. Measured on the gold standard at
+   * DEFAULT_SETTINGS: 6 -> 5, 8 -> 6, 12 -> 9, 16 -> 9, while `sourceColors`
+   * reported 6/8/12/16 every time. So the quantizer found what was asked for
+   * and our own folds (mergeSimilarColors / mergeSmallGroups / the despeckle
+   * merges) threw it away — a 44 % shortfall at 16, against a real product that
+   * delivers 13 output groups at the same setting.
+   *
+   * The bar is `min(requested, found) - 1`: one fold is a rounding difference,
+   * seven is a different product.
+   */
+  const shortfalls = [];
+  for (const colorCount of [6, 8, 12, 16]) {
+    const r = await engine.vectorize(artworkIn, { ...S, colorCount });
+    const floor = Math.min(colorCount, r.sourceColors) - 1;
+    if (r.palette.length < floor) {
+      shortfalls.push(
+        `${colorCount} requested -> ${r.palette.length} delivered (${r.sourceColors} found, ` +
+          `floor ${floor})`,
+      );
+    }
+  }
+  assert.deepEqual(
+    shortfalls,
+    [],
+    `the colour budget is not honoured: ${shortfalls.join('; ')} — the image is not the reason, ` +
+      'sourceColors says the quantizer found them and the cleanup folds merged them away',
+  );
+});
+
 // --- B4: noise reduction / anti-aliasing ------------------------------------
+
+test('[B4] the default pipeline keeps every colour family the image has', async () => {
+  /**
+   * The blocker Smart anti-aliasing (the DEFAULT) causes on real artwork: a
+   * whole *hue* disappears. At DEFAULT_SETTINGS on the gold standard the
+   * delivered palette is [241,230,219 | 103,151,168 | 196,184,178 |
+   * 45,116,143 | 65,95,103 | 17,16,13] — three blues and no brown — and the
+   * paw pads, source rgb(164,143,125), come back rgb(103,150,167): a warm
+   * brown rendered a light teal.
+   *
+   * `computePalette(image, 8)` finds the brown (138,123,111), so the quantizer
+   * is not the culprit; the pre-trace ramp snapper is (`src/engine/preprocess.ts`
+   * treats a wide smooth gradient as if it were a 1px antialiasing ramp and
+   * collapses its interior onto the extremes). The real product's own 6-colour
+   * output for this image keeps a tan, rgb(141,128,114).
+   *
+   * A mid-luma warm colour is therefore something the delivered palette must
+   * still contain, at the default settings and at a six-colour budget.
+   */
+  const luma = (c) => 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
+  const isMidWarm = (c) => c.r - c.b >= 20 && luma(c) >= 90 && luma(c) <= 200;
+  const show = (list) => list.map((c) => `rgb(${c.r},${c.g},${c.b})`).join(' ');
+
+  const candidates = await engine.computePalette(artworkIn, 8);
+  assert.ok(
+    candidates.some(isMidWarm),
+    `the quantizer itself found no mid-luma warm colour in [${show(candidates)}] — this check ` +
+      'assumes the brown is in the image; if the fixture changed, change the check',
+  );
+
+  for (const colorCount of [S.colorCount, 6]) {
+    const r = await engine.vectorize(artworkIn, { ...S, colorCount });
+    assert.ok(
+      r.palette.some(isMidWarm),
+      `at ${colorCount} colours the delivered palette [${show(r.palette)}] has no mid-luma warm ` +
+        `entry, while computePalette finds [${show(candidates.filter(isMidWarm))}] — the paw pads ` +
+        'have nothing left to be painted with and come back teal',
+    );
+  }
+});
+
 
 test('[B4] noise reduction has three levels, each quieter than the last', async () => {
   // Isolated from Smart anti-aliasing (`RAW`): both remove impulse noise, and
