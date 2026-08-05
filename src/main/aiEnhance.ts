@@ -32,6 +32,7 @@ import {
   ENHANCE_TIMEOUT_MS,
   enhanceProvider,
   type EnhanceErrorCode,
+  type EnhanceImageMime,
   type EnhanceKeyResult,
   type EnhanceProviderId,
   type EnhanceQuality,
@@ -130,6 +131,12 @@ function geminiEndpoint(quality: 'fast' | 'best'): string {
  * The key travels in the `x-goog-api-key` header rather than a `?key=` query
  * parameter so it cannot end up in a redirect, a proxy log or an error string
  * that quotes the URL.
+ *
+ * `responseModalities: ['IMAGE']` is asked for, not assumed: the two tiers
+ * answer in different *shapes*. Flash returns one `inlineData` part of PNG;
+ * the pro model returns an `inlineData` part of **JPEG** carrying a
+ * `thoughtSignature`, sometimes behind text parts. Nothing downstream may
+ * assume part order or PNG (see `firstInlineImage` and `sniffImageMime`).
  */
 const gemini: EnhanceProvider = {
   id: 'gemini',
@@ -172,11 +179,11 @@ const gemini: EnhanceProvider = {
       throw new EnhanceError('bad-response', redact(messageOf(error), apiKey));
     }
 
-    const png = firstInlineImage(json);
-    if (!png) {
-      throw new EnhanceError('bad-response', 'the response carried no inline image data');
+    const returned = firstInlineImage(json);
+    if (!returned) {
+      throw new EnhanceError('bad-response', `the response carried no image (${whyNoImage(json)})`);
     }
-    return png;
+    return returned;
   },
 };
 
@@ -187,12 +194,21 @@ function statusCode(status: number): EnhanceErrorCode {
 }
 
 /**
- * `candidates[0].content.parts[*].inlineData.data`, base64 PNG.
+ * The first inline image anywhere in the reply, as raw bytes.
  *
- * Both spellings are accepted because the REST API takes `inline_data` on the
- * way in and answers with `inlineData` — a response shape that changes case
- * between request and reply is exactly the kind of thing that should not turn
- * into a silent "no image" in six months.
+ * Deliberately forgiving about everything except "are there bytes":
+ *
+ * - **Both spellings.** The REST API takes `inline_data` on the way in and
+ *   answers with `inlineData`; a shape that changes case between request and
+ *   reply must not turn into a silent "no image" in six months.
+ * - **Any position, any candidate.** The pro tier interleaves `text` and
+ *   thought parts, so this scans rather than reading `parts[0]`.
+ * - **No `content` assumed.** A safety-blocked candidate has a `finishReason`
+ *   and no `content` at all; reading `candidate.content.parts` unguarded is
+ *   the crash we already hit once on flash.
+ * - **No mime assumed.** The label the provider attaches is ignored entirely —
+ *   `sniffImageMime` reads the magic bytes, because the label is the provider's
+ *   claim and the bytes are the fact.
  */
 function firstInlineImage(json: unknown): Uint8Array | null {
   const candidates = (json as { candidates?: unknown[] } | null)?.candidates;
@@ -205,6 +221,52 @@ function firstInlineImage(json: unknown): Uint8Array | null {
       const data = blob?.inlineData?.data ?? blob?.inline_data?.data;
       if (typeof data === 'string' && data.length > 0) return new Uint8Array(Buffer.from(data, 'base64'));
     }
+  }
+  return null;
+}
+
+/**
+ * Why a 200 came back with no picture in it, in the provider's own words.
+ *
+ * "The provider replied without an image" is true and useless; a safety block,
+ * a `MAX_TOKENS` stop and a text-only answer are three different problems with
+ * three different fixes, and the reply says which it was.
+ */
+function whyNoImage(json: unknown): string {
+  const reply = json as {
+    promptFeedback?: { blockReason?: string };
+    candidates?: { finishReason?: string; content?: { parts?: unknown[] } }[];
+  } | null;
+  const blocked = reply?.promptFeedback?.blockReason;
+  if (blocked) return `blocked: ${blocked}`;
+  const candidate = reply?.candidates?.[0];
+  if (!candidate) return 'no candidates';
+  const parts = candidate.content?.parts;
+  const kinds = Array.isArray(parts)
+    ? [...new Set(parts.map((p) => Object.keys(p as object).join('+')))].join(', ')
+    : 'no parts';
+  return `finishReason ${candidate.finishReason ?? 'unset'}, parts: ${kinds}`;
+}
+
+/**
+ * The image type of `bytes`, from their magic number — `null` if this is not
+ * an image format the renderer can decode.
+ *
+ * This replaced a PNG-signature check that rejected everything else. That check
+ * was written when the only tier was flash (which answers PNG) and it silently
+ * condemned the entire `best` tier the day it was added: `gemini-3-pro-image-preview`
+ * answers **JPEG**, so every Best run ended in `bad-response`. The lesson is in
+ * the shape of this function — decide what the bytes *are*, do not assert what
+ * they must be.
+ */
+function sniffImageMime(bytes: Uint8Array): EnhanceImageMime | null {
+  if (bytes.length < 12) return null;
+  const starts = (sig: number[]) => sig.every((b, i) => bytes[i] === b);
+  if (starts([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'image/png';
+  if (starts([0xff, 0xd8, 0xff])) return 'image/jpeg';
+  // RIFF....WEBP
+  if (starts([0x52, 0x49, 0x46, 0x46]) && String.fromCharCode(...bytes.slice(8, 12)) === 'WEBP') {
+    return 'image/webp';
   }
   return null;
 }
@@ -246,9 +308,10 @@ function redact(text: string, apiKey: string): string {
  * palette no fixture contains — so "the working image was replaced by the
  * enhanced one" is an assertion about the traced document rather than a vibe.
  *
- * Two hooks, both keyed off the *stored key* so a spec can drive them entirely
+ * Three hooks, all keyed off the *stored key* so a spec can drive them entirely
  * through the UI: a key of `fail-auth` / `fail-network` / `fail-timeout` /
- * `fail-bad-response` makes the run fail with that code, and
+ * `fail-bad-response` makes the run fail with that code, a key of `reply-jpeg`
+ * answers in JPEG instead of PNG (see `STUB_JPEG`), and
  * `GETVECT_AI_STUB_DELAY_MS` widens the window in which the in-flight state is
  * observable.
  */
@@ -262,6 +325,34 @@ export const STUB_COLORS = [
   { r: 0x1b, g: 0x1f, b: 0x2a },
 ] as const;
 
+/**
+ * The stub's JPEG reply: a 192x128 four-colour baseline JPEG, checked in as a
+ * constant because the main process has no encoder and a canned blob is the
+ * only way to be byte-identical on every machine.
+ *
+ * It exists because of a real outage. `gemini-2.5-flash-image` answers PNG and
+ * `gemini-3-pro-image-preview` answers **JPEG**; a PNG-only guard in
+ * `runEnhance` therefore failed 100% of `best` runs with "the provider did not
+ * return a PNG" while every stub-driven spec stayed green, because the stub
+ * only ever spoke PNG. A test double that can only produce the shape the code
+ * already handles is not a test double.
+ */
+const STUB_JPEG_BASE64 =
+  '/9j/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/' +
+  '2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAAR' +
+  'CACAAMADAREAAhEBAxEB/8QAFwABAQEBAAAAAAAAAAAAAAAAAAUJCP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAZAQEAAwEB' +
+  'AAAAAAAAAAAAAAAABAUGCAf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCUpHqQAAAAAAAAAACo1rmwAAAA' +
+  'AAAAAABLZJ0mAAAAAAAAAAAqNa5sAAAAAAAAAAAS2SdJgAAAAAAAAAAKjWubAAAAAAAAAAAEtknSYAAAAAAAAAACo1rmwAAA' +
+  'AAAAAAABLZJ0mAAAAAAAAAAAqNa5sAAAAAAAAAAAS2SdJgAAAAAAAAAAKjWubAAAAAAAAAAAEtknSYAAAAAAAAAACo1rmwAA' +
+  'AAAAAAAABLZJ0mAAAAAAAAAAAqNa5sAAAAAAAAAAAdGKB6SAAAAAAAAAAAzzWiIAAAAAAAAAAA0MVaWAAAAAAAAAAAzzWiIA' +
+  'AAAAAAAAAA0MVaWAAAAAAAAAAAzzWiIAAAAAAAAAAA0MVaWAAAAAAAAAAAzzWiIAAAAAAAAAAA0MVaWAAAAAAAAAAAzzWiIA' +
+  'AAAAAAAAAA0MVaWAAAAAAAAAAAzzWiIAAAAAAAAAAA0MVaWAAAAAAAAAAAzzWiIAAAAAAAAAAA0MVaWAAAAAAAAAAAzzWiIA' +
+  'AAAAAAAAAA//2Q==';
+
+/** Dimensions of `STUB_JPEG_BASE64`, so a spec can name them. */
+export const STUB_JPEG_WIDTH = 192;
+export const STUB_JPEG_HEIGHT = 128;
+
 const stub: EnhanceProvider = {
   id: 'gemini',
   async enhance({ apiKey, signal }): Promise<Uint8Array> {
@@ -269,6 +360,7 @@ const stub: EnhanceProvider = {
     await sleep(Number.isFinite(delay) && delay > 0 ? delay : 0, signal);
     const forced = /^fail-([a-z-]+)$/.exec(apiKey.trim());
     if (forced) throw new EnhanceError(forced[1] as EnhanceErrorCode, `stub failure: ${forced[1]}`);
+    if (apiKey.trim() === 'reply-jpeg') return new Uint8Array(Buffer.from(STUB_JPEG_BASE64, 'base64'));
     return stubPng();
   },
 };
@@ -451,24 +543,47 @@ export async function clearKey(id: EnhanceProviderId): Promise<EnhanceKeyResult>
   return { ok: true };
 }
 
+/**
+ * Is there a key here that this machine can actually *use*?
+ *
+ * Not "is there a file with bytes in it" — that question has a different, and
+ * misleading, answer. Electron's `safeStorage` on macOS encrypts against a
+ * Keychain secret named after the application; rename the app (or restore a
+ * home directory onto a new machine, or lose the login keychain) and the
+ * ciphertext on disk survives while the secret that opens it does not. Answering
+ * `true` there leaves the UI saying "Key saved" over an armed switch that fails
+ * on every single run with a message about storage — which is exactly what
+ * happened when the app was renamed from `getvect` to `GetVect`.
+ *
+ * So this decrypts. Nothing is deleted: the dead ciphertext is harmless and
+ * throwing away a user's bytes on a heuristic is worse than ignoring them. The
+ * next `setKey` overwrites it.
+ */
 export async function hasKey(id: EnhanceProviderId): Promise<boolean> {
-  const store = await readStore();
-  const entry = store.keys[id];
-  return Boolean(entry && entry.data);
+  return (await loadKey(id)).kind === 'ok';
 }
 
 /**
- * Decrypt one key. Private on purpose: this value never crosses the IPC
- * boundary, and the only caller is `runEnhance` below.
+ * The three states a stored key can be in — `none` and `unreadable` are
+ * different problems with different sentences, and collapsing them is how a
+ * dead ciphertext gets reported as "no key stored".
+ *
+ * Private on purpose: the key itself never crosses the IPC boundary, and the
+ * only callers are `hasKey` and `runEnhance` in this file.
  */
-async function readKey(id: EnhanceProviderId): Promise<string | null> {
+type StoredKey = { kind: 'none' } | { kind: 'unreadable' } | { kind: 'ok'; key: string };
+
+async function loadKey(id: EnhanceProviderId): Promise<StoredKey> {
   const entry = (await readStore()).keys[id];
-  if (!entry?.data) return null;
+  if (!entry?.data) return { kind: 'none' };
   try {
-    if (entry.enc === 'e2e-plain') return Buffer.from(entry.data, 'base64').toString('utf8');
-    return safeStorage.decryptString(Buffer.from(entry.data, 'base64'));
+    const key =
+      entry.enc === 'e2e-plain'
+        ? Buffer.from(entry.data, 'base64').toString('utf8')
+        : safeStorage.decryptString(Buffer.from(entry.data, 'base64'));
+    return key ? { kind: 'ok', key } : { kind: 'unreadable' };
   } catch {
-    return null;
+    return { kind: 'unreadable' };
   }
 }
 
@@ -493,17 +608,19 @@ async function debugDump(
   durationMs: number,
   input: Uint8Array,
   output: Uint8Array,
+  mimeType: EnhanceImageMime,
 ): Promise<void> {
   const dir = process.env.GETVECT_AI_DEBUG_DIR;
   if (!dir) return;
   try {
     await fs.mkdir(dir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const extension = mimeType.slice('image/'.length);
     await fs.writeFile(path.join(dir, `${stamp}-input.png`), input);
-    await fs.writeFile(path.join(dir, `${stamp}-output.png`), output);
+    await fs.writeFile(path.join(dir, `${stamp}-output.${extension}`), output);
     await fs.writeFile(
       path.join(dir, `${stamp}-meta.json`),
-      JSON.stringify({ provider, model: GEMINI_MODELS[quality], quality, transparent, durationMs, inputBytes: input.length, outputBytes: output.length }, null, 2),
+      JSON.stringify({ provider, model: GEMINI_MODELS[quality], quality, transparent, durationMs, mimeType, inputBytes: input.length, outputBytes: output.length }, null, 2),
     );
   } catch {
     // Debugging must never break the feature.
@@ -515,10 +632,12 @@ export async function runEnhance(request: EnhanceRunRequest): Promise<EnhanceRun
   const provider = info ? providerFor(request.provider) : null;
   if (!info || !provider) return { ok: false, code: 'unsupported', message: 'unknown provider' };
 
-  const hasStored = await hasKey(request.provider);
-  if (!hasStored) return { ok: false, code: 'no-key', message: 'no key stored' };
-  const apiKey = await readKey(request.provider);
-  if (!apiKey) return { ok: false, code: 'storage', message: 'the stored key could not be read' };
+  const stored = await loadKey(request.provider);
+  if (stored.kind === 'none') return { ok: false, code: 'no-key', message: 'no key stored' };
+  if (stored.kind === 'unreadable') {
+    return { ok: false, code: 'storage', message: 'the stored key could not be decrypted' };
+  }
+  const apiKey = stored.key;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ENHANCE_TIMEOUT_MS);
@@ -533,11 +652,16 @@ export async function runEnhance(request: EnhanceRunRequest): Promise<EnhanceRun
       signal: controller.signal,
       quality,
     });
-    if (!looksLikePng(image)) {
-      return { ok: false, code: 'bad-response', message: 'the provider did not return a PNG' };
+    const mimeType = sniffImageMime(image);
+    if (!mimeType) {
+      return {
+        ok: false,
+        code: 'bad-response',
+        message: `the provider returned ${image.length} bytes that are not a PNG, JPEG or WebP`,
+      };
     }
-    await debugDump(request.provider, quality, Boolean(request.transparent), Date.now() - started, input, image);
-    return { ok: true, image };
+    await debugDump(request.provider, quality, Boolean(request.transparent), Date.now() - started, input, image, mimeType);
+    return { ok: true, image, mimeType };
   } catch (error) {
     if (error instanceof EnhanceError) return { ok: false, code: error.code, message: error.message };
     if (controller.signal.aborted) return { ok: false, code: 'timeout', message: 'timed out' };
@@ -545,12 +669,6 @@ export async function runEnhance(request: EnhanceRunRequest): Promise<EnhanceRun
   } finally {
     clearTimeout(timer);
   }
-}
-
-const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-
-function looksLikePng(bytes: Uint8Array): boolean {
-  return bytes.length > 8 && PNG_SIGNATURE.every((b, i) => bytes[i] === b);
 }
 
 // --- IPC -------------------------------------------------------------------

@@ -53,8 +53,25 @@ export type EnhanceErrorCode =
   | 'unsupported' // unknown provider id
   | 'unknown';
 
+/**
+ * The image types a provider is allowed to answer with.
+ *
+ * Not a formality. `gemini-2.5-flash-image` replies `image/png`;
+ * `gemini-3-pro-image-preview` replies **`image/jpeg`** for the same request,
+ * and an earlier version of this contract only accepted PNG — so the entire
+ * `best` tier came back as "the provider did not return a PNG" while `fast`
+ * worked. The type is sniffed from the bytes, never taken from the provider's
+ * own label, and travels with the image so the renderer can build the right
+ * Blob rather than guessing.
+ *
+ * JPEG has no alpha channel: a `transparent: true` request answered in JPEG
+ * comes back flattened, and there is nothing honest to do about that here
+ * (keying out "white" would eat the white *inside* the drawing).
+ */
+export type EnhanceImageMime = 'image/png' | 'image/jpeg' | 'image/webp';
+
 export type EnhanceRunResult =
-  | { ok: true; image: Uint8Array }
+  | { ok: true; image: Uint8Array; mimeType: EnhanceImageMime }
   | { ok: false; code: EnhanceErrorCode; message: string };
 
 /** Outcome of `setKey` / `clearKey`. Never carries key material. */
@@ -106,7 +123,11 @@ export function describeEnhanceError(code: EnhanceErrorCode, providerLabel: stri
     case 'provider':
       return `${providerLabel} returned an error.`;
     case 'storage':
-      return 'The saved key could not be read back from this machine.';
+      // Almost always recoverable, and the recovery is not guessable: the OS
+      // keystore no longer holds the secret this key was encrypted with (a
+      // renamed application, a restored home directory, a new keychain), so
+      // the ciphertext on disk is dead and the only cure is to save it again.
+      return 'The saved key could not be decrypted on this machine — save the key again.';
     case 'unsupported':
       return 'That AI Enhance provider is not available in this build.';
     default:
