@@ -320,8 +320,8 @@ which.
 | testid | element | required attributes / behaviour |
 | --- | --- | --- |
 | `preview-pane` | preview container | **Required:** `data-mode` ∈ `original` \| `vector` \| `side-by-side`. Must have a non-zero bounding box (the suite drags inside it to test panning). |
-| `preview-original` | original raster view | **Required (side-by-side):** `data-zoom`, `data-pan-x`, `data-pan-y`. |
-| `preview-vector` | vector view | Must contain a live `<svg>` element. **Required:** `data-zoom`, `data-pan-x`, `data-pan-y` — identical values to `preview-original` at all times (synchronised views, REFERENCE C2). |
+| `preview-original` | original raster view | **Required (side-by-side):** `data-zoom`, `data-pan-x`, `data-pan-y`, `data-render-zoom`. Also `data-pixelated` = `"true"`/`"false"` — see C4. |
+| `preview-vector` | vector view | Must contain a live `<svg>` element. **Required:** `data-zoom`, `data-pan-x`, `data-pan-y`, `data-render-zoom` — identical values to `preview-original` at all times (synchronised views, REFERENCE C2). |
 | `preview-toggle` | button | Cycles `original` ↔ `vector`. |
 | `preview-side-by-side` | button | Sets `data-mode="side-by-side"`; both views visible. |
 | `zoom-in` / `zoom-out` / `zoom-fit` | buttons | Change zoom. `zoom-fit` must be idempotent and return the same value each time. |
@@ -353,6 +353,41 @@ which.
 The `<svg>` inside `preview-vector` must be the **same document** that gets exported: same
 `viewBox`, same number of `<path>` elements. Don't render a downscaled or simplified
 preview and generate a different SVG at export time.
+
+### C4 — zoom is a re-render, not a magnifier
+
+- **The vector view re-rasterizes at every zoom.** Zoom must change the `<svg>`'s
+  **layout size** (`tests/e2e/c4-zoom-sharpness.spec.ts`). A `transform: scale()` on the
+  stage is geometrically identical and visually wrong: Chromium rasterizes the layer once
+  at its layout size and stretches that texture, so the vector pane goes as soft as the
+  raster pane it is being compared against. Measured on `spikes-bands-384` at 400%: the
+  20%-80% luminance band across an ink edge is **≤ 3 CSS px** in `preview-vector` on every
+  scanline (1 px in practice), against 4 px in `preview-original`.
+- **`data-render-zoom`** is the zoom the stage is currently *laid out* (and therefore
+  rasterized) at. It equals `data-zoom` at rest and may lag it by a frame while a wheel
+  gesture is in flight — a transient stretched texture during the gesture is fine, the
+  resting state must be sharp. Anything measuring pixels should wait for
+  `data-render-zoom === data-zoom` (`waitForSettledRender` in `tests/e2e/helpers.ts`).
+- **Above ~200% the original view shows its pixels.** `preview-original` carries
+  `data-pixelated="true"` and its `<img>` computes `image-rendering: pixelated` once
+  `data-zoom` exceeds 2; below that the browser default stands. The side-by-side is an
+  argument about pixels versus curves, and bilinear smoothing invents an edge the source
+  does not have. A source pixel must therefore cover a flat `zoom`-wide block on screen,
+  not a gradient.
+
+### C5 — the transparency checkerboard
+
+The checkerboard belongs to the **view**, not to the artwork (`tests/e2e/c5-checkerboard.spec.ts`).
+
+- It fills every pixel of every view at any zoom and pan, drawn **under** the content:
+  transparent regions of the artwork show it through, opaque paint hides it, and nothing
+  else affects it.
+- It is drawn in UI space — constant cell size at every zoom (22px tile / 11px cells), so
+  it never reads as part of the picture.
+- `preview-original` and `preview-vector` draw it at the **same size and the same phase**
+  (each view anchors the tiling at its own top-left corner). Two halves of a comparison
+  with backgrounds a pixel out of step read as a difference in the results.
+- It is continuous across the edge of the artwork: no seam where the content box ends.
 
 ---
 
