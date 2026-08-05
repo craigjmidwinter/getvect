@@ -1,8 +1,31 @@
 # the reference product — observed ground truth (captured live, 2026-08-04)
 
-Recorded by driving the real product at  with
-`fixtures/reference/artwork.png` uploaded (processing worked signed-out; per-image
-editor page at /images/<id>/<name>.html).
+Recorded by driving the real product at  with real
+artwork uploaded (processing worked signed-out; per-image editor page at
+/images/<id>/<name>.html). Two subjects were driven; the one whose captures are
+checked in is `fixtures/reference/fox-sticker.png` — see "Exemplars in this
+directory" immediately below.
+
+## Exemplars in this directory
+
+`fox-sticker.png` is an original generated mascot (chroma-keyed to real alpha;
+1024×1024, **76.5% transparent** pixels) with `fox-sticker-white.png` as the
+white-flattened variant. Run through the real product signed-out:
+
+- **Transparency is preserved**: both panes render on a checkerboard; the output
+  SVG has NO background-covering path (the first path starts mid-canvas at
+  M4460 8480). The site auto-selected an 8-color palette; output = 7 color
+  groups, two pairs of which are near-duplicates (rgb(125,64,29) beside
+  rgb(116,58,28), rgb(8,0,0) beside rgb(0,0,0)) — fold those and it is five
+  distinguishable colors.
+- `fox-sticker-clipart-8colors-smartAA.svg` — real output at Clipart defaults for
+  this image (Smart AA was ON by default here, Enhance ON, min-area 5px²):
+  **63 paths, 114 sub-paths, 7 groups, 35.5KB**, curve command ratio 0.671,
+  viewBox `0 0 10240 10240` at a declared 1024×1024. This is the primary
+  smoothness/economy exemplar and the only one the fixtures gate against.
+- Same settings with **AA Off**: 637 paths, 189KB (measured, not checked in) —
+  the same ~90% path reduction the parameter table below records on the other
+  subject, replicated on a second one.
 
 ## Layout
 
@@ -25,9 +48,9 @@ around the panes: ① model preset, ② input color palette, ③ quality enhance
 - "Colors: N" label. Radio list of auto-generated candidate palettes at sizes
   1, 2, 3, 4, 5, 6, 8, 12, 15, 16, 18 — each row rendered as its swatch strip.
 - **Custom Palette** button.
-- **Enhance image with AI** (Beta) checkbox. Observed effect on artwork.png: busy
-  yellow patterned background became near-white — i.e. denoise + background
-  simplification before tracing.
+- **Enhance image with AI** (Beta) checkbox. Observed effect on a photo-backed
+  upload: a busy yellow patterned background became near-white — i.e. denoise +
+  background simplification before tracing.
 - **Advanced Options** tabs: Quality Enhancement | Transparency | Filters | Text
   - Anti-aliasing: Off / Smart / Mid (+ dropdown)
   - Noise Reduction: Off / Low / High
@@ -77,7 +100,12 @@ output color group (dark-to-light layering), paths in potrace-style long-form
 relative coordinates at 10× scale. Layers stack: later/lighter layers sit on top
 (Overlap behavior).
 
-## Parameter-response measurements (artwork.png, 1045×833, Enhance ON)
+## Parameter-response measurements (1045×833 flat-color character, Enhance ON)
+
+The numbers are the real product's, measured live at the settings named. They are
+kept because the *response* is what matters and it is not subject-specific — the
+Smart-AA finding below replicates on the fox (637 paths → 63). The image they were
+taken on is not checked in.
 
 | Preset  | Palette | Min Area | Groups | Paths | DOM size |
 |---------|---------|----------|--------|-------|----------|
@@ -95,17 +123,6 @@ settings it collapsed 354 paths → 67 (-81%) and 186KB → 42KB. It is evidentl
 pre-trace edge cleanup (edge-aware smoothing of the quantized regions), not a
 post-render effect. The engine's analog matters more than any tracer parameter.
 
-Saved exemplars in this directory:
-- `artwork.png` — source raster
-- `artwork.svg` — user-captured real output (34 paths, 31KB). User recalls settings
-  were ~16 colors with **Smart anti-aliasing enabled** — consistent with the measured
-  Smart-AA profile below.
-- `artwork-clipart-6colors-min90.svg` — DOM-extracted real output at Clipart /
-  6-color palette / Minimum Area 90px² / AA Off / Enhance ON (93 paths, 91KB)
-- `artwork-clipart-18colors-min90-smartAA.svg` — DOM-extracted real output at
-  Clipart / 18-color palette / Minimum Area 90px² / **AA Smart** / Enhance ON
-  (67 paths, 42KB) — the primary smoothness/economy exemplar
-
 ## Parity scope note for GetVect
 
 Core parity (must-have): 4 presets + Clipart detail levels, palette size radio +
@@ -115,21 +132,3 @@ roundness / minimum area / overlap / circle detection, zoom/fit both panes,
 downloads: SVG, EPS, PDF, DXF, PNG. Stretch (minor if missing): isometric view,
 crop, edit pixels, gradients tab, STL/GCODE/VectorDrawable, ZIP variants,
 ≤15KB GT, output size tab, drag-to-regroup color circles.
-
-## Fox exemplar (license-clean replacement art, captured 2026-08-04)
-
-`fox-sticker.png` is an original generated mascot (Gemini image gen, chroma-keyed to
-real alpha; 1024×1024, 76.5% transparent pixels) with `fox-sticker-white.png` as the
-white-flattened variant. Run through the real product signed-out:
-
-- **Transparency is preserved**: both panes render on a checkerboard; the output SVG
-  has NO background-covering path (first path starts mid-canvas at M4460 8480). The
-  site auto-selected an 8-color palette; output = 7 color groups.
-- `fox-sticker-clipart-8colors-smartAA.svg` — real output at Clipart defaults for
-  this image (Smart AA was ON by default here, Enhance ON, min-area 5px²):
-  63 paths, 7 groups, 35.5KB, viewBox 0 0 10240 10240.
-- Same settings with AA Off: 637 paths, 189KB — replicates the artwork Smart-AA
-  finding (~90% path reduction) on a second subject.
-
-These fox files are the go-forward public exemplars; the artwork set is Nintendo
-artwork and must be purged (including git history) before the repo goes public.

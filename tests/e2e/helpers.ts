@@ -16,9 +16,10 @@ export const FIXTURE = {
   bmp: join(FIXTURES, 'shapes-256.bmp'),
   gif: join(FIXTURES, 'unsupported-animation.gif'),
   txt: join(FIXTURES, 'unsupported-notes.txt'),
-  /** Real artwork (1046x833) — the REFERENCE gold-standard source. Slow enough
-   *  to observe in-flight states, busy enough to exercise the quality knobs. */
-  artwork: join(FIXTURES, 'reference', 'artwork.png'),
+  /** Real artwork (1024x1024, 76.5% transparent) — the REFERENCE gold-standard
+   *  source. Slow enough to observe in-flight states, busy enough to exercise
+   *  the quality knobs, and transparent enough to catch an invented backdrop. */
+  fox: join(FIXTURES, 'reference', 'fox-sticker.png'),
 } as const;
 
 export { TESTIDS, expect };

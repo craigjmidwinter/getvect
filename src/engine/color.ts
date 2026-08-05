@@ -1222,9 +1222,10 @@ export interface DespeckleOptions {
    * Exempt *strokes* from the area test.
    *
    * A speck and a hairline can have the same pixel count, and an area-only
-   * filter cannot tell them apart: at the enhance floor (~87px² on the 1046px
+   * filter cannot tell them apart: at the enhance floor (~85px² on the 1024px
    * reference artwork) a 2px-wide, 30px-long eyelid is 60px² and disappears,
-   * which is what turned Artwork's mouth and eyes into dashes. Elongation
+   * which is what turned the reference artwork's mouth and eyes into dashes.
+   * Elongation
    * separates them without a magic length: `maxDim² / area` is 1 for a disc,
    * ~1 for any compact blob, and grows with the aspect ratio of a stroke, so a
    * region longer than ~`elongation`× its own thickness is treated as line art

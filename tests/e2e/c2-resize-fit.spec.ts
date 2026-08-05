@@ -29,7 +29,7 @@ async function resizeWindow(
 }
 
 test('[C2] shrinking the window re-fits the preview', async ({ app, page }) => {
-  await loadViaPicker(page, FIXTURE.artwork);
+  await loadViaPicker(page, FIXTURE.fox);
   await waitForReady(page);
   await page.locator(tid(TESTIDS.zoomFit)).click();
   const fitAtFullSize = await zoomOf(page);

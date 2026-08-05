@@ -222,11 +222,11 @@ export function strictInkRecall(reference, traced, { inkLuma = 60 } = {}) {
  * pixels and quadratic only in the (small) number of distinct cells.
  *
  * The window is 32, the same one `nearDuplicateFillPairs` calls a duplicate. It
- * was 40, and 40 is wide enough to miss the defect this metric exists for: the
- * teal that painted a fifth of the gold standard's lower jaw sat 40.2 units
- * from the nearest colour its crop contains, so `reference-artwork` reported
- * "foreign colour 0.00%" for a muzzle that visibly held it. Both real
- * exemplars still score 0 everywhere at 32, which is the check that this is a
+ * was 40, and 40 is wide enough to miss the defect this metric exists for: on
+ * the retired exemplar the teal that painted a fifth of the lower jaw sat 40.2
+ * units from the nearest colour its crop contains, so the gold-standard row
+ * reported "foreign colour 0.00%" for a muzzle that visibly held it. The real
+ * exemplar still scores 0 everywhere at 32, which is the check that this is a
  * tightening rather than a re-baselining.
  */
 export function foreignColorRatio(reference, traced, { tolerance = 32, bin = 4 } = {}) {
@@ -896,10 +896,14 @@ export function layerGeometry(svg, { curveSamples = 8 } = {}) {
  * Mean compactness over the layers that carry the picture.
  *
  * `minCoverage` is a share of the **drawing's bounding box**, not of the
- * declared viewBox: `fixtures/reference/artwork.svg` draws inside the top-left
- * quarter of an 11520x9280 box, so viewBox-relative coverage would drop every
- * one of the real product's layers under the bar and the exemplar side of the
- * comparison would measure nothing.
+ * declared viewBox. A real-product capture may draw inside a corner of a padded
+ * viewBox (the retired exemplar used the top-left quarter of an 11520x9280
+ * box), and viewBox-relative coverage would then drop every one of its layers
+ * under the bar and the exemplar side of the comparison would measure nothing.
+ * It also matters for a sticker: `fox-sticker-clipart-8colors-smartAA.svg` fills
+ * its viewBox honestly, but the artwork inside it is a fox on a transparent
+ * field, so the layers are small against the frame and large against the
+ * drawing.
  */
 export function layerCompactness(svg, { minCoverage = 0.01, curveSamples = 8 } = {}) {
   const layers = layerGeometry(svg, { curveSamples });

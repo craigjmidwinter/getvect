@@ -32,7 +32,7 @@ function overlap(a: { x: number; y: number; width: number; height: number }, b: 
 }
 
 test('[C1] the vector view never goes blank while a new image is traced', async ({ page }) => {
-  await loadViaPicker(page, FIXTURE.flat512, FIXTURE.artwork);
+  await loadViaPicker(page, FIXTURE.flat512, FIXTURE.fox);
   await waitForReady(page);
 
   let blankFrames = 0;
@@ -54,7 +54,7 @@ test('[C1] the vector view never goes blank while a new image is traced', async 
 test('[C1] the busy indicator is a centred overlay, not part of the zoom stage', async ({
   page,
 }) => {
-  await loadViaPicker(page, FIXTURE.flat512, FIXTURE.artwork);
+  await loadViaPicker(page, FIXTURE.flat512, FIXTURE.fox);
   await waitForReady(page);
   await page.locator(tid(TESTIDS.zoomIn)).click();
   await page.locator(tid(TESTIDS.zoomIn)).click();

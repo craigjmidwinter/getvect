@@ -25,7 +25,7 @@ npm run docs:screenshots # the README's three screenshots -> docs/assets/
 | `npm run build:renderer` | Renderer bundle only. |
 | `npm run typecheck` | Type-checks both projects without emitting. |
 | `npm test` | `scripts/run-tests.mjs`: engine contract tests **then** the Playwright acceptance suite (`pretest` builds first), **both always run**, exit code non-zero if either failed. The engine tests run first because they are the fidelity contracts: if the picture regressed, the UI specs' green is not worth reading. It used to be `node --test … && playwright test`, and that `&&` meant two red engine contracts hid the entire 108-test e2e suite from the documented entry point — the green e2e number was only reachable by bypassing `npm test`. Extra arguments pass through to Playwright: `npm test -- -g "\[B3\]"`. |
-| `npm run test:engine` | Engine contract tests (`node --test`, pure Node). Four files: `engine.test.mjs` (determinism, setting semantics, palette overrides, SVG grouping, EPS/DXF/PDF structure — must stay green), `parity.test.mjs` (the B2-B6 settings, D1 fill notation, D3 DXF colour distinctness and curve survival, B3's colour-budget contract — `palette.length >= min(colorCount, sourceColors) - 1` at 6/8/12/16 — B4's "the default pipeline keeps every colour family the image has", and B3's fold reversibility — the sub-1 % colour fold the panel blames for the shortfall must be switchable off by `mergeThreshold`, and reach at least the ten groups turning Enhance off already reaches, without buying them as near-duplicates — B3's palette-override identity — feeding a returned palette straight back must repaint nothing, recolouring one swatch must leave every contour where it was, and a merge must survive the next setting change (the override is matched against `result.slots`, not the deduped `result.palette`), on the gold standard as well as the flat fixture), `rendered.test.mjs` (rasterizes output: does the *picture* change, is it curve-fitted, are colour boundaries smooth sweeps rather than sawtooth — globally (`layerCompactness` vs the exemplar) **and locally** (`layerBoundaryWobble`, turning per unit boundary length, which is what sees a cubic fitted to a noisy threshold) — do outlines come back solid (`strictInkRecall` vs the exemplar, in the face and the paw-pad crops), does the default pipeline keep a warm region warm, is it economical in shapes — at the Enhance-on **and** the default settings — does it hold up against the exemplar, and does the salient region of the gold standard survive the cleanup passes; the gold-standard source is handed to the engine through `canvasIngest()`, the same one-decode contract the instruments use, because fed a white-flattened artwork the face scores 0.956 and fed the pixels the app produces it scores 0.865), `alpha.test.mjs` (the input alpha channel: a transparent background must not be traced as an opaque one). |
+| `npm run test:engine` | Engine contract tests (`node --test`, pure Node). Four files: `engine.test.mjs` (determinism, setting semantics, palette overrides, SVG grouping, EPS/DXF/PDF structure — must stay green), `parity.test.mjs` (the B2-B6 settings, D1 fill notation, D3 DXF colour distinctness and curve survival, B3's colour-budget contract — at 6/8/12/16, a fold may only cost a colour when it removes a near-duplicate, and at the budget the exemplar was captured at we must deliver the five distinguishable colours the real product's own capture reduces to — B4's "the default pipeline keeps every colour family the image has", and B3's fold reversibility — the sub-1 % colour fold the panel blames for the shortfall must be switchable off by `mergeThreshold`, and reach at least what turning Enhance off already reaches, without buying the colours back as near-duplicates — B3's palette-override identity — feeding a returned palette straight back must repaint nothing, recolouring one swatch must leave every contour where it was, and a merge must survive the next setting change (the override is matched against `result.slots`, not the deduped `result.palette`), on the gold standard as well as the flat fixture), `rendered.test.mjs` (rasterizes output: does the *picture* change, is it curve-fitted, are colour boundaries smooth sweeps rather than sawtooth — globally (`layerCompactness` vs the exemplar) **and locally** (`layerBoundaryWobble`, turning per unit boundary length, which is what sees a cubic fitted to a noisy threshold) — do outlines come back solid (`strictInkRecall` vs the exemplar, in the face and paw crops), does the default pipeline keep a warm region warm, is it economical in shapes — at the Enhance-on **and** the default settings — does it hold up against the exemplar, and does the salient region of the gold standard survive the cleanup passes; the gold-standard source is handed to the engine through `canvasIngest()`, the same one-decode contract the instruments use, because the white-flattened variant of the same artwork paints 0.46 % of the paw a hue the source does not contain where the alpha-preserving ingest paints 0.000 %), `alpha.test.mjs` (the input alpha channel: a transparent background must not be traced as an opaque one). |
 | `npm run test:headed` | Same, with a visible window. |
 | `npm run fixtures` | Regenerates `fixtures/` deterministically. |
 | `npm run instruments` | Measures the app engine on every fixture. |
@@ -108,9 +108,9 @@ and diffs.
 Rasterization lives in `instruments/lib/render.mjs` (`rasterizeSvg`,
 `rasterizeExemplarContent`) and the engine tests import the same functions, so a number in
 `artifacts/metrics.json` and a number in a `node --test` failure message describe the same
-picture. They did not always: an engine test that rasterized `reference/artwork.svg`
-against its declared viewBox was comparing our paw against the exemplar's empty margin and
-passing for it.
+picture. They did not always: an engine test that rasterized a capture with a padded
+viewBox against that declared box was comparing our paw against the exemplar's empty
+margin and passing for it.
 
 ### One decode contract
 
@@ -119,7 +119,7 @@ renderer's canvas ingest produces*, including `(0,0,0,0)` for every fully transp
 pixel — while fidelity is judged against `flattenOnWhite(...)` of the same file.
 
 This is not a detail. For one whole lap the instruments fed `vectorize()` a
-white-flattened image no UI could produce, and reported `reference-artwork` passing at
+white-flattened image no UI could produce, and reported the gold-standard row passing at
 2.82× the exemplar's sub-paths for a document the user could not obtain: through the app
 the same fixture traced its transparent background as **opaque black**, took the dominant
 palette slot for it, and came out at 4.9×. A number measured on pixels the product never
@@ -138,19 +138,19 @@ Reported per fixture (`artifacts/metrics.json`):
 | `rmsColorError`, `psnrDb` | context for the above | — |
 | `ssim` | mean windowed structural similarity (8×8 windows, stride 4, luma) | ≥ 0.90 on flat fixtures |
 | `pixelMismatchRatio` | fraction of pixels off by > 12 in any channel | — |
-| `inkRecall` | fraction of the source's *ink* pixels (luma < 60) still darker than 128 in the re-raster — line art is too few pixels for MAE/SSIM to notice when a cleanup pass deletes it | ≥ 0.94 (artwork) / ≥ 0.97 flat |
-| `strictInkRecall` | ink pixels (luma < 60) that come back **still < 60**. `inkRecall`'s "kept" test accepts anything darker than 128, which answers "was this stroke erased" and not "is it still a stroke": on the gold standard's paw it scored us 0.978 against the real product's 1.000 for a contour that was visibly thin and dashed | reported; gated per region (below) |
+| `inkRecall` | fraction of the source's *ink* pixels (luma < 60) still darker than 128 in the re-raster — line art is too few pixels for MAE/SSIM to notice when a cleanup pass deletes it | ≥ 0.95 (the fox) / ≥ 0.97 flat |
+| `strictInkRecall` | ink pixels (luma < 60) that come back **still < 60**. `inkRecall`'s "kept" test accepts anything darker than 128, which answers "was this stroke erased" and not "is it still a stroke": on the gold standard's paw it scores us 0.997 against the real product's 1.000 for toe arcs that come back visibly thinner | reported; gated per region (below) |
 | `inkComponentRatio` | 8-connected components of the trace's ink field over the source's (components under 4 px ignored). An outline broken into dashes multiplies its component count while `inkRecall` barely moves | reported |
 | `regions[]` | one entry per `salientRegion` / `salientRegions` box: `inkRecall`, `strictInkRecall`, `inkComponentRatio`, `meanColorError`, `ssim`, plus the exemplar's own values and our ratio to them | see `salientRegions` below |
 | `regionInkRecall` / `regionStrictInkRecall` / `regionMeanColorError` / `regionSsim` | the same numbers **aggregated to the worst region** — min for the "more is better" ones, max for error | `minRegionInkRecall` 0.93 on the gold standard; `minRegionStrictInkRecall` 0.94 at the defaults |
-| `regions[].foreignColorRatio` / `regionForeignColorRatio` | share of a crop painted a colour the **source crop does not contain** (nearest source colour further than 32 in RGB — the same window `nearDuplicateFillPairs` uses; at 40 the teal that painted a fifth of the gold standard's lower jaw sat 40.2 from the nearest colour its crop contains and the muzzle reported 0.00 % — source colours quantized in 4-unit cells so its own antialiased in-betweens count as present). A *categorical* error rather than a metric one: 123 teal pixels inside a cream muzzle move MAE by hundredths, move SSIM by nothing and move ink recall by nothing, and are the first thing a person names. The table's `leak%` column is the worst region's | 0 for both real exemplars everywhere; gated per crop (`maxForeignColorRatio`) at 0.05 % |
-| `regionStrictInkRecallRatio` | our strict ink recall over the exemplar's, in the region where we are worst relative to it. Absolute strict recall cannot be gated globally — the exemplar itself scores 0.859 there because it drops antialiased skirts — but "the real product's line is more solid than ours" is a fair question anywhere | ≥ 0.98 on the gold standard |
+| `regions[].foreignColorRatio` / `regionForeignColorRatio` | share of a crop painted a colour the **source crop does not contain** (nearest source colour further than 32 in RGB — the same window `nearDuplicateFillPairs` uses; at 40 the teal that painted a fifth of the gold standard's lower jaw sat 40.2 from the nearest colour its crop contains and the muzzle reported 0.00 % — source colours quantized in 4-unit cells so its own antialiased in-betweens count as present). A *categorical* error rather than a metric one: 123 teal pixels inside a cream muzzle move MAE by hundredths, move SSIM by nothing and move ink recall by nothing, and are the first thing a person names. The table's `leak%` column is the worst region's | 0 for the real exemplar everywhere, and 0 for us on the transparent source; the white-flattened variant scores 0.46 % on the paw, which is what `reference-fox-white` pins. Gated per crop (`maxForeignColorRatio`) at 0.05 % |
+| `regionStrictInkRecallRatio` | our strict ink recall over the exemplar's, in the region where we are worst relative to it. Absolute strict recall cannot be gated globally — the exemplar itself scores 0.859 there because it drops antialiased skirts — but "the real product's line is more solid than ours" is a fair question anywhere | ≥ 0.87 on the gold standard (ours is 0.90 on the muzzle, the worst crop; 1.0 is the number to aim at) |
 | `strokeWidth` / `sourceStrokeWidth` / `strokeWidthRatio` | per region: the trace's local stroke width on the source's own medial axis (the shorter of the horizontal and vertical ink runs through each skeleton point, 0 where the trace has no ink there), the source's, and ours over it. Only where the source is drawing a *stroke* — a point whose longer run is at least 3× its shorter one — because inside a filled region every interior pixel is on some medial axis and its "width" is the region: with blobs counted, one eye outvoted every line in the gold standard's face box | reported |
-| `strokeWidthCv` / `strokeWidthCvRatio` | the coefficient of variation of that width, and ours over the exemplar's in the crop where we are worst. **The thing REFERENCE's blind A/B is decided on, and the thing every other ink metric here reads backwards**: a line that thickens, thins and breaks recalls more ink and joins more components than an even one, so `regionStrictInkRecall` scored us 0.967 against the exemplar's 0.755 and `inkComponentRatio` 0.43x for a mouth arc that tapered to a spindle and detached from both fangs. Gated as a ratio because the absolute cv belongs to the artwork (a drawn line genuinely varies) while "less even than the real product's trace of the same line" belongs to us | `maxStrokeWidthCvRatio` on `reference-artwork`. **A ratchet, not parity**: ours is 1.93x on the paw crop (cv 0.340 against the exemplar's 0.176) and the bar is 2; the number to aim at is 1.15x |
-| `strokeWidthOverExemplar` | our fattening over the exemplar's, worst region. Measured by hand on the lower jaw, the source's stroke is 3.94px, the real product's 5.69px (1.44x) and ours 5.97px (1.51x), down from 6.93px (1.76x) | `maxStrokeWidthOverExemplar` 1.25 on `reference-artwork` |
-| `layerCompactness` / `layerCompactnessRatio` | mean `perimeter / (2·√(π·area))` over the `<g fill>` layers covering ≥ 1 % of the drawing (1.0 = a disc), and ours over the exemplar's. The sawtooth-vs-sweep difference between clipart and a posterized photo, which MAE cannot see (both sides of a ragged seam are nearly the right colour), ink recall cannot see (no ink) and sub-path count cannot see (one region either way). Computed from path data, not by rasterizing each layer, so it stays pure and deterministic | ≤ 1.1× the exemplar's on the gold standard (its mean is 2.67; ours is 2.87, i.e. 1.08×, down from 1.25× — the pre-fit boundary low-pass, the linework moving to the silhouette layer and the Enhance area floors between them) |
-| `layerWobble` / `layerWobbleRatio` | mean **turning per unit boundary length** over the same layers, and ours over the exemplar's. Compactness is a *global* perimeter-over-area ratio and cannot tell a genuinely intricate shape from a smooth one traced onto a noisy threshold; this walks every boundary at the same fraction of that drawing's own diagonal (so the exemplar's 10× viewBox needs no scale factor) and measures how much the heading changes per unit travelled. A soft shading gradient crossed by one arc scores low; the same gradient crossed by a sawtooth scores high **however few sub-paths it is written in and however many of its commands are cubics** — which is exactly the hole `curveCommandRatio` 0.872 left: our commands *are* curves, fitted to a wobble the real product never had. Flat fixtures score 6-13, the gold-standard exemplar 37.2, ours 40.2 | ≤ 1.15× the exemplar's on `reference-artwork` (ours is 1.08×, down from 1.49×; `reference-artwork-default` is 1.67× and `-noenhance` 1.73×, reported not gated) |
-| `sourceColors` / `paletteShortfall` | the palette size **before** our own folds, and `min(requested, sourceColors) − delivered`. Separates "the image ran out" from "our cleanup merged them": 16 requested, 16 found, 8 delivered is a shortfall of 8 and nothing to do with the picture | ≤ 1 on the 6-colour and default gold-standard rows; ≤ 8 on the 16-colour row, because the exemplar the reference product produced for that artwork at that setting carries exactly 8 `<g fill>` layers — a bar of 1 would demand fifteen layers on a picture whose gold-standard rendering has eight, and `maxNearDuplicateFills: 0` forbids the near-duplicate creams a fifteen-layer palette would be made of |
+| `strokeWidthCv` / `strokeWidthCvRatio` | the coefficient of variation of that width, and ours over the exemplar's in the crop where we are worst. **The thing REFERENCE's blind A/B is decided on, and the thing every other ink metric here reads backwards**: a line that thickens, thins and breaks recalls more ink and joins more components than an even one, so `regionStrictInkRecall` once scored us 0.967 against an exemplar's 0.755 for a mouth arc that tapered to a spindle and detached from both fangs. Gated as a ratio because the absolute cv belongs to the artwork (a drawn line genuinely varies) while "less even than the real product's trace of the same line" belongs to us | `maxStrokeWidthCvRatio` on `reference-fox`. **A ratchet, not parity**: ours is 1.64x on the muzzle crop (cv 0.455 against the exemplar's 0.277) and the bar is 1.8; the number to aim at is 1.15x |
+| `strokeWidthOverExemplar` | our fattening over the exemplar's, worst region. On the face crop the real product traces the source's stroke at 1.01x and we trace it at 1.12x, i.e. 1.11x its fattening | `maxStrokeWidthOverExemplar` 1.25 on `reference-fox` |
+| `layerCompactness` / `layerCompactnessRatio` | mean `perimeter / (2·√(π·area))` over the `<g fill>` layers covering ≥ 1 % of the drawing (1.0 = a disc), and ours over the exemplar's. The sawtooth-vs-sweep difference between clipart and a posterized photo, which MAE cannot see (both sides of a ragged seam are nearly the right colour), ink recall cannot see (no ink) and sub-path count cannot see (one region either way). Computed from path data, not by rasterizing each layer, so it stays pure and deterministic | ≤ 0.8× the exemplar's on the gold standard (its mean is 4.55; ours is 2.99, i.e. 0.66×). The bar was 1.1× when we were the ragged one; on this artwork the real product carries the extra perimeter, because two of its seven layers are near-identical browns whose boundaries interleave |
+| `layerWobble` / `layerWobbleRatio` | mean **turning per unit boundary length** over the same layers, and ours over the exemplar's. Compactness is a *global* perimeter-over-area ratio and cannot tell a genuinely intricate shape from a smooth one traced onto a noisy threshold; this walks every boundary at the same fraction of that drawing's own diagonal (so the exemplar's 10× viewBox needs no scale factor) and measures how much the heading changes per unit travelled. A soft shading gradient crossed by one arc scores low; the same gradient crossed by a sawtooth scores high **however few sub-paths it is written in and however many of its commands are cubics** — which is exactly the hole `curveCommandRatio` leaves: our commands *are* curves, and they can be curves fitted to a wobble the real product never had. Flat fixtures score 6-13, the gold-standard exemplar 80.2, ours 28.4 | ≤ 0.45× the exemplar's on `reference-fox` (ours is 0.35×; `reference-fox-default` is 0.36×, reported not gated). The bar is below 1 because on this artwork we are the smooth one — the real product spends two of its seven layers on near-identical browns whose boundaries interleave |
+| `sourceColors` / `paletteShortfall` | the palette size **before** our own folds, and `min(requested, sourceColors) − delivered`. Separates "the image ran out" from "our cleanup merged them": 8 requested, 6 found, 5 delivered is a shortfall of 1 and nothing to do with the picture | ≤ 1 on `reference-fox` and `reference-fox-default`, ≤ 2 on `reference-fox-white`, ≤ 3 on the 16-colour row. The exemplar settles what "enough" is: its capture at the 8-colour setting carries seven `<g fill>` layers, two pairs of which are inside the halo window `maxNearDuplicateFills: 0` forbids us — fold those and the real product's own answer is the five we deliver |
 | `exemplarRegionInkRecall` / `regionInkRecallRatio` | the exemplar's ink recall in that same region, and ours over it — < 1 means the real product renders the salient region better than we do | reported; the A/B in one number |
 | `pathCount` / `shapeCount` | `<path>` count / all drawable elements | ≤ 200 on flat fixtures |
 | `subPathCount` | `M`/`m` starts across every `d` attribute — the **honest shape count** | ≤ 200 flat / ≤ 1200 noisy |
@@ -158,10 +158,10 @@ Reported per fixture (`artifacts/metrics.json`):
 | `curveCommandRatio` | `[CcSsQqTtAa] / ([CcSsQqTtAa] + [LlHhVv])` — "smooth curve-fitted outlines (no pixel staircase)" made countable | ≥ 0.5 (the exemplar scores 0.639) |
 | `cubicCount` | cubic Bézier segments | — |
 | `layerCount` | `<g fill>` colour layers | — |
-| `nearDuplicateFillPairs` | pairs of colour layers within RGB distance **32** — the anti-aliasing halo / patchwork signature. The window was 24, which reported 0 for a gold-standard output carrying layers 26.6 and 27.0 apart (visibly two near-identical creams mottled across one region); the real exemplar's own layers are never closer than 37, so 32 is inside what the reference product ships | 0 on flat fixtures **and on the gold standard** |
-| `dxfBytes` / `dxfSplineCount` / `dxfVertexCount` / `epsBytes` / `epsCurveCount` / `dxfEpsBytesRatio` | D3 export structure, computed only for fixtures that gate it (`minDxfSplines`, `maxDxfEpsBytesRatio`). A DXF that flattens every fitted cubic into VERTEX runs is 12× the EPS of the same drawing | ≥ 1 SPLINE, ≤ 3× the EPS |
+| `nearDuplicateFillPairs` | pairs of colour layers within RGB distance **32** — the anti-aliasing halo / patchwork signature. The window was 24, which reported 0 for a gold-standard output carrying layers 26.6 and 27.0 apart (visibly two near-identical creams mottled across one region); this is one of the few bars where we are stricter than the real product rather than chasing it — its own capture of the gold-standard artwork ships two pairs inside the window (10.9 and 8.0 apart), and folding them is most of why our palette comes back one colour shorter than its seven layers | 0 on flat fixtures **and on the gold standard** |
+| `dxfBytes` / `dxfSplineCount` / `dxfVertexCount` / `epsBytes` / `epsCurveCount` / `dxfEpsBytesRatio` | D3 export structure, computed only for fixtures that gate it (`minDxfSplines`, `maxDxfEpsBytesRatio`). A DXF that flattens every fitted cubic into VERTEX runs is 12× the EPS of the same drawing | ≥ 10 SPLINE (25 today), ≤ 3× the EPS (2.23× today) |
 | `perColorCoverageDelta` | max change in a palette colour's area fraction between source and re-raster; catches hairline erosion that MAE/SSIM average away | ≤ 0.01 on flat fixtures |
-| `sourceTransparentRatio` | share of source pixels with alpha < 128 | context (0.33 for artwork, 0.60 for the sticker) |
+| `sourceTransparentRatio` | share of source pixels with alpha < 128 | context (0.765 for the fox, 0.60 for the sticker) |
 | `transparentAreaColorError` | mean colour error **over those pixels only**, against the source flattened on white | ≤ 8 wherever the source has alpha. Leaving the background out of the drawing scores ~0 (resvg composites on white) and so does flattening it to white; inventing an opaque backdrop scores ~255 |
 | `backdropFill` | fill of the full-bleed `<rect>`, or `null` | reported, not gated — it is the *why* behind `transparentAreaColorError` |
 | `svgBytes` | exported SVG size | < 100 KB on flat fixtures |
@@ -181,8 +181,9 @@ deliberately loose because continuous-tone images are not the target use case.
 A fixture entry may also carry:
 
 - `settings` — an override merged over `DEFAULT_SETTINGS` for that fixture only. The
-  reference exemplar was produced at roughly 16 colours with Enhance on, so judging it
-  at the 8-colour default would compare two different pictures.
+  reference exemplar was produced at 8 colours with Smart anti-aliasing, Minimum Area
+  5px² and Enhance on, so judging it at anything else would compare two different
+  pictures.
 - `compareTo` — the image fidelity is measured against, when that is not the source
   itself. Exactly one kind of fixture needs it: a noisy one. Speck removal is a feature
   (B4/B5 and the despeckle slider) and SSIM's variance term punishes it — the clean
@@ -197,22 +198,33 @@ A fixture entry may also carry:
   `maxPathRatio` / `maxMeanColorErrorRatio`. This is REFERENCE's "blind A/B" turned
   into numbers, so critics do not have to eyeball crops.
 
-  **An exemplar is rasterized from its content box, not its viewBox.**
-  `fixtures/reference/artwork.svg` declares an 11520×9280 viewBox and draws in the
-  top-left quarter of it, so rasterizing the declared box scored the real product
-  MAE 63.55 against the source and `exemplarMeanColorErrorRatio` came out 0.08 for
-  anything we emitted — the fidelity half of the gate measured nothing. The runner
-  now renders the exemplar at 2×, trims the uniform border and resizes to the source
-  (`rasterizeExemplarContent`): the same file then scores MAE 13.50 / SSIM 0.886 /
-  ink recall 0.973. `meanColorErrorAsDeclared` keeps the old number for context, and
-  the stdout line names the content box it used. For an exemplar that already fills
-  its frame the trim is a no-op.
+  **An exemplar has to be registered against the source before it can be ratioed
+  against.** `rasterizeExemplarContent` decides how, on the file's own declared size:
+
+  - The real product writes the source's pixel dimensions into the capture when the
+    drawing is already in source coordinates —
+    `fox-sticker-clipart-8colors-smartAA.svg` says `width="1024" height="1024"` for a
+    1024×1024 source — and then the only correct thing is to rasterize it as declared.
+    It scores MAE 1.03 / SSIM 0.997 / ink recall 0.999 that way.
+  - A capture that declares *anything else* has drawn its artwork inside a padded
+    frame. The retired exemplar this was first measured on declared an 11520×9280
+    viewBox for a 1046×833 source and used the top-left quarter of it, so rasterizing
+    the declared box scored the real product MAE 63.55 and
+    `exemplarMeanColorErrorRatio` came out 0.08 for anything we emitted — the
+    fidelity half of the gate measured nothing. Those are rendered at 2×, trimmed to
+    the uniform border and resized to the source.
+
+  Getting the discriminator backwards is not a small error in either direction:
+  trimming the fox exemplar (a sticker with a 76.5 % transparent margin) crops it to
+  the ink and stretches that to the frame, which scores the real product MAE 77.1 and
+  puts its paw where our muzzle is. `meanColorErrorAsDeclared` keeps the straight
+  viewBox number for context, and the stdout line names the size it rasterized at.
 - `salientRegion` / `salientRegions` — `{ x, y, width, height }` in source pixels, or a list of
   `{ name, x, y, width, height }`. Every fidelity number
   is area-weighted, and REFERENCE's blind A/B is decided on the part of the picture a
-  person looks at: the gold standard's face is 8 % of the canvas, so losing the mouth,
-  both fangs and an eye moved whole-frame ink recall by 0.03 and every gate stayed
-  green. A fixture that declares one gets `regionInkRecall` / `regionStrictInkRecall` /
+  person looks at: the gold standard's face is 7 % of the canvas and three quarters of
+  the rest of it is transparent, so losing the mouth curve and an eye moves whole-frame
+  ink recall by hundredths and every gate stays green. A fixture that declares one gets `regionInkRecall` / `regionStrictInkRecall` /
   `regionMeanColorError` / `regionSsim` / `inkComponentRatio`, the crop written to
   `artifacts/region/<id>.png` (further boxes go to `artifacts/region/<id>-<name>.png`), and
   — when it also declares an exemplar — the exemplar's own region scores beside them.
@@ -223,23 +235,27 @@ A fixture entry may also carry:
   checked against that crop alone and
   reported as `region "<name>" <metric> …`. The aggregate gates read the *worst* crop,
   which is the right default and the wrong tool when two crops deserve different numbers:
-  on `reference-artwork-default` the paw-pad bar is 22 because the real product's own
-  six-colour output scores 21.89 there, while the face has to be held at the exemplar's
-  19.13 and the muzzle at ~0 colour leak. One aggregate number cannot say both.
+  on `reference-fox-default` the aggregate colour-error bar is 12 because the muzzle
+  scores 10.91, while the face carries its own bar of 10 and the muzzle and paw carry a
+  ~0 colour-leak bar instead. One aggregate number cannot say all three.
 
   **A crop can be too big to ask the question.** The face box contains the head's own
-  dark-teal outline, so teal is a colour that crop legitimately has and the teal specks
-  inside the cream muzzle are invisible to any measurement taken over it. The `muzzle`
-  box (220×90 at 420,290 — the mouth and both fangs) is where the source has no teal at
-  all: our 16-colour + Enhance run and the real exemplar both score 0.000 % foreign
-  colour there, and `DEFAULT_SETTINGS` scores 0.50 %.
+  orange, so orange is a colour that crop legitimately has and orange specks inside the
+  white muzzle are invisible to any measurement taken over it. The `muzzle`
+  box (140×90 at 455,455 — the nose, the mouth arcs and the white around them) is where
+  the crop's own palette is small enough for the question to have an answer: our run at
+  the exemplar settings, our run at the defaults and the real exemplar all score 0.000 %
+  foreign colour there, while the white-flattened variant of the same artwork scores
+  0.46 % on the paw.
 
   **One box was not enough.** On the gold standard the face is where line art is lost and
-  the *paw pad* is where a whole colour family is lost — its source colour is rgb(164,143,125),
-  a warm brown, and at DEFAULT_SETTINGS it comes back rgb(103,150,167), a light teal, at
-  region MAE 33.5. With only the face declared, the instruments reported 9 pass / 0 fail on
-  a build whose default output had a hue-inverted region. Gates read the **worst** region, so
-  adding a box can only tighten a fixture, never loosen it.
+  the *paw* is where a whole colour family can be lost — a warm brown sock, mean
+  rgb(133,73,37), inside an orange leg inside a black outline, and exactly the kind of
+  region a pre-trace ramp snapper collapses onto its neighbours' extremes. On the retired
+  exemplar that failure shipped: with only the face declared, the instruments reported
+  9 pass / 0 fail on a build whose default output rendered a warm brown paw pad a cool
+  teal at region MAE 33.5. Gates read the **worst** region, so adding a box can only
+  tighten a fixture, never loosen it.
 
 ### The D1 viewBox question
 
@@ -300,8 +316,8 @@ whole report burns its context on JSON it did not need.
 
   ```bash
   jq -r '.results[] | select(.status=="FAIL") | "\(.id): \(.failures|join("; "))"' artifacts/metrics.json
-  jq '.results[] | select(.id=="reference-artwork") | .metrics.exemplarSubPathRatio' artifacts/metrics.json
-  jq '.results[] | select(.id=="reference-artwork") | {regionInkRecall:.metrics.regionInkRecall, vsExemplar:.metrics.regionInkRecallRatio}' artifacts/metrics.json
+  jq '.results[] | select(.id=="reference-fox") | .metrics.exemplarSubPathRatio' artifacts/metrics.json
+  jq '.results[] | select(.id=="reference-fox") | {regionInkRecall:.metrics.regionInkRecall, vsExemplar:.metrics.regionInkRecallRatio}' artifacts/metrics.json
   jq -r '.results[] | select(.metrics.regions) | .id as $i | .metrics.regions[] | "\($i)/\(.name): strict \(.strictInkRecall) MAE \(.meanColorError)"' artifacts/metrics.json
   jq -r '.results[] | select(.metrics.regionForeignColorRatio) | "\(.id): leak \(.metrics.regionForeignColorRatio*100)%"' artifacts/metrics.json
   jq -r '.results[] | select(.metrics.paletteShortfall) | "\(.id): \(.metrics.paletteSize) of \(.settings.colorCount) delivered"' artifacts/metrics.json
@@ -333,25 +349,28 @@ exactly six colours and palette assertions can be exact.
 | `sticker-alpha-256.png` | 3 flat colours on a **fully transparent** background | the alpha channel — REFERENCE's sticker/decal use case. Every other generated fixture is opaque, which is how transparent-background tracing stayed broken for a lap |
 | `unsupported-animation.gif` | valid 4×4 GIF89a | rejection (A2) — a real image the app must still refuse |
 | `unsupported-notes.txt` | plain text | rejection (A2) |
-| `reference/artwork.png` | real 1046×833 artwork (**not** generated) | REFERENCE's gold-standard A/B source; instrumented five times, as `reference-artwork` (16 colours + Enhance, exemplar `reference/artwork.svg`, regions = the face, the **muzzle** and the paw pad), `reference-artwork-noenhance` (16 colours, Enhance off; looser ratios, 8× bytes / 12× sub-paths), `reference-artwork-16c-nomerge` (16 colours + Enhance with `mergeThreshold: 0` — the same request with the colour fold explicitly turned off, see below), `reference-artwork-6c` (6 colours, exemplar `reference/artwork-clipart-6colors-min90.svg`, paw-pad region) and `reference-artwork-default` (**no `settings` key at all**, regions = face / muzzle / paw pad, each with its own bar — whatever `DEFAULT_SETTINGS` says today, on real artwork. The other rows each pin a configuration, which is how the 8-colour default a user actually gets went unmeasured while its output painted the paw pad the wrong hue) |
+| `reference/fox-sticker.png` | real 1024×1024 artwork, **76.5 % transparent** (**not** generated) | REFERENCE's gold-standard A/B source; instrumented three times, as `reference-fox` (8 colours + Smart AA + min-area 5 + Enhance — the settings the checked-in exemplar was captured at — exemplar `reference/fox-sticker-clipart-8colors-smartAA.svg`, regions = the face, the **muzzle** and the paw), `reference-fox-16c-nomerge` (16 colours + Enhance with `mergeThreshold: 0` — a bigger request with the colour fold explicitly turned off, see below) and `reference-fox-default` (**no `settings` key at all**, regions = face / muzzle / paw, each with its own bar — whatever `DEFAULT_SETTINGS` says today, on real artwork. The other rows pin a configuration, which is how the default a user actually gets went unmeasured while its output painted a region the wrong hue). On this artwork the defaults are also the Enhance-off configuration, so `-default` carries the default-settings economy ratios rather than a separate `-noenhance` row measuring the identical run twice |
+| `reference/fox-sticker-white.png` | the same artwork, white-flattened (**not** generated) | the opaque counterpart, as `reference-fox-white`: same picture, same settings, no alpha, **absolute** bars only (there is no real-product capture of the flattened variant to ratio against). It is the control that attributes a difference to the ingest rather than the tracer — and it earns its keep, because the paw crop comes back with 0.46 % of its pixels painted a hue the source does not contain where the transparent source scores 0.000 % |
 | `manifest.json` | ids, dimensions, per-fixture settings, exemplars, thresholds | consumed by the instruments |
 
 `fixtures/reference/` is checked in, not generated: `npm run fixtures` lists those
 entries and reports `MISSING` rather than trying to recreate them.
 
-**Why a fixture row exists just to set `mergeThreshold: 0`.** `reference-artwork` used to
-ask for 16 colours on an image that has 16 and get 8, and the exemplar justified the
-number (the real product's own capture of this artwork carries eight `<g fill>` layers) —
-but the panel did not: the hint attributed the shortfall to "the cleanup settings", and
-the only cleanup control that speaks about colour groups could not reach it, because
-`src/engine/index.ts` computed `groupThreshold = max(opts.mergeThreshold, opts.enhance ? 1
-: 0)`. With Enhance on, dragging MERGE THRESHOLD to 0 changed nothing. So
-`reference-artwork-16c-nomerge` runs exactly that configuration and gates
-`maxPaletteShortfall: 6` — not "16 delivered", but "at least what turning *Enhance* off
-already delivers on this same image" (10 groups, `nearDuplicateFillPairs` 0, measured in
-`reference-artwork-noenhance`), so both halves of the row are known-reachable.
+**Why a fixture row exists just to set `mergeThreshold: 0`.** `reference-fox` asks for 8
+colours and gets 5, and the exemplar mostly justifies the number (the real product's own
+capture carries seven `<g fill>` layers, but two pairs of them are inside the 32-unit halo
+window that `maxNearDuplicateFills: 0` forbids us, which leaves five distinguishable
+colours) — the panel, though, did not: the hint attributed the shortfall to "the cleanup
+settings", and the only cleanup control that speaks about colour groups could not reach
+it, because `src/engine/index.ts` computed `groupThreshold =
+max(opts.mergeThreshold, opts.enhance ? 1 : 0)`. With Enhance on, dragging MERGE THRESHOLD
+to 0 changed nothing. So `reference-fox-16c-nomerge` runs a *sixteen*-colour request with
+the fold explicitly off and gates `maxPaletteShortfall: 3` — a ratchet on today's number
+(5 delivered), not the fix. 2 is the number to aim at, because turning *Enhance* off
+instead reaches 6 delivered on the same request with `nearDuplicateFillPairs` still 0, so
+the target is known-reachable.
 
-It passes now at 11 groups. The `max(...)` is gone: `groupThreshold` is
+The `max(...)` is gone: `groupThreshold` is
 `opts.mergeThreshold` and nothing else, and what Enhance does about quantization debris
 instead is raise the *area* floors — a colour that only ever appears in 15×15 scraps loses
 the scraps on the picture rather than its seat in the palette, and a layer the floor would

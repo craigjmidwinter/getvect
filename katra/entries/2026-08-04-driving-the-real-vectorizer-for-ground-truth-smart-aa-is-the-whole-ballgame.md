@@ -17,8 +17,6 @@ stat:
     d: 10
 ---
 
-![The real editor, driven signed-out: presets + detail level, palette radios, filled/stroked styles, output color groups](media/screenshot-1785892659092-2.jpg)
-
 ![Zoomed to an edge: raster staircase (left) vs the traced curve (right) — the whole product in one frame](media/screenshot-1785892642715-1.jpg)
 
 ```embed
@@ -30,8 +28,8 @@ caption: Path count of real output by settings — the blue pair is the same con
 The gauntlet's bar was hand-written from marketing copy, and Shumer's rule says
 that's how loops fail: "make it amazing" doesn't fail CI, and neither does "matches
 the reference product" when nobody has measured what the reference product actually does. Craig
-handed over a real export — artwork.png next to the SVG the actual product produced
-— and that turned out to be the pull of a thread.
+handed over a real export — a reference raster next to the SVG the actual product
+produced for it — and that turned out to be the pull of a thread.
 
 Rather than asking for more exports one setting at a time, I drove the product
 directly in Chrome. It processes signed-out (no credits touched), and its result
@@ -63,6 +61,6 @@ reads REFERENCE.md fresh, and the export builder's very next commit shipped the
 PDF/PNG formats the recon had just added to checklist item D5.
 ```
 
-Still shaky: every exemplar is one image of one sleepy Pokémon. A second subject —
-something photographic, something with text — should join the fixtures before the
-fidelity numbers get treated as general.
+Still shaky: every exemplar is one image of one flat-colour character. A second
+subject — something photographic, something with text — should join the fixtures
+before the fidelity numbers get treated as general.

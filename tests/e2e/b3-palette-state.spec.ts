@@ -70,7 +70,7 @@ test('[B3] the colour-count hint names the real reason the palette is short', as
    * from the control that now owns the fold is also the stricter reading — it
    * is the one a user can actually reproduce from the panel.
    */
-  await loadViaPicker(page, FIXTURE.artwork);
+  await loadViaPicker(page, FIXTURE.fox);
   await waitForReady(page);
 
   // Every cleanup off first — Smart anti-aliasing is on by default (it is what
@@ -129,7 +129,7 @@ test('[B3] Auto palette restores the palette the edit replaced', async ({ page }
    * the user was looking at except re-clicking the radio — which is exactly the
    * undo the button is advertising.
    */
-  await loadViaPicker(page, FIXTURE.artwork);
+  await loadViaPicker(page, FIXTURE.fox);
   await waitForReady(page);
   await page.locator(tid(TESTIDS.enhanceToggle)).click();
   await waitForReady(page);

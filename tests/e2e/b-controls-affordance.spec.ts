@@ -78,7 +78,7 @@ test('[B2] the Photo preset never shows a colour count it will not use', async (
    * dimmed treatment Drawing already uses. What is not allowed is a live slider
    * reading N while the result carries more than N colours.
    */
-  await loadViaPicker(page, FIXTURE.artwork);
+  await loadViaPicker(page, FIXTURE.fox);
   await waitForReady(page);
   await page.locator(tid(TESTIDS.presetPhoto)).click();
   await waitForReady(page);
@@ -186,7 +186,7 @@ test('[B3] the output colour list survives the biggest palette the app offers', 
    * that overflows the column, and repeated for every visible control in the
    * output block.
    */
-  await loadViaPicker(page, FIXTURE.artwork);
+  await loadViaPicker(page, FIXTURE.fox);
   await waitForReady(page);
   await page.locator(`${tid(TESTIDS.paletteSizeOption)}[data-size="18"]`).click();
   await waitForReady(page);
@@ -476,7 +476,7 @@ test('[B3] every output colour group is visible at the default palette size', as
    * and dropping a file — and every group has to be reachable where it is
    * drawn.
    */
-  await loadViaPicker(page, FIXTURE.artwork);
+  await loadViaPicker(page, FIXTURE.fox);
   await waitForReady(page);
 
   const toggles = page.locator(tid(TESTIDS.colorGroupToggle));
@@ -512,7 +512,7 @@ test('[B3] the output colour groups are legible, not cut off mid-hex', async ({ 
    * inside a group row may overflow its own box, and the list must not scroll
    * horizontally.
    */
-  await loadViaPicker(page, FIXTURE.artwork);
+  await loadViaPicker(page, FIXTURE.fox);
   await waitForReady(page);
 
   const groups = page.locator(tid(TESTIDS.colorGroups));
