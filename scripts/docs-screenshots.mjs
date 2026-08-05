@@ -70,7 +70,7 @@ async function main() {
   //    out", so the shot has to show both halves of that at once.
   await page.locator(tid('image-list-item')).nth(1).click();
   await waitReady(page);
-  await page.locator(tid('enhance-toggle')).check();
+  await page.locator(tid('enhance-toggle')).selectOption('local');
   await waitReady(page);
   await page.locator(tid('preview-side-by-side')).click();
   await page.waitForTimeout(400);

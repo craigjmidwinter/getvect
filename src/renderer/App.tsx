@@ -57,6 +57,34 @@ type ImageStatus = 'loading' | 'vectorizing' | 'ready' | 'error';
  */
 type AiState = 'idle' | 'running' | 'done' | 'failed';
 
+/**
+ * The three states of the one Enhance control (`enhance-toggle`).
+ *
+ * There used to be two checkboxes here — "Enhance image (Beta)" and "Enhance
+ * with AI before tracing" — sitting one above the other and reading, to anyone
+ * who had not written them, as the same switch twice. They were not: one is a
+ * local denoise/simplify bundle inside `vectorize()`, the other sends the image
+ * to a third party and traces what comes back. Two independent checkboxes also
+ * made four states out of a question with three answers, and the fourth ("both
+ * on") was the least defensible of the lot — see `engineEnhanceFor`.
+ */
+export type EnhanceMode = 'off' | 'local' | 'ai';
+
+/**
+ * Mode → `settings.enhance`. The whole mapping, in one place, on purpose.
+ *
+ * **AI replaces the local cleanup; it does not stack on top of it.** The two
+ * used to compose (AI first, classical second) and that was the wrong default
+ * to have arrived at by accident: the AI pass exists to hand the tracer art
+ * that is *already* flat, and running the local denoise/simplify bundle over
+ * it re-solves a solved problem — smearing the hard region boundaries the
+ * model was asked for and folding colour groups the user can see. One control
+ * with one meaning: choose where the cleanup happens, not how many run.
+ */
+export function engineEnhanceFor(mode: EnhanceMode): boolean {
+  return mode === 'local';
+}
+
 interface ImageEntry {
   id: string;
   name: string;
@@ -1010,23 +1038,29 @@ export function App() {
   }, [aiProvider]);
 
   /**
-   * Turning the feature on or off changes the working image, so it re-traces
-   * exactly like any other setting. Turning it *on* also clears a previous
-   * failure, which is what makes the switch the retry gesture.
+   * The one Enhance control's setter: it moves the AI switch and
+   * `settings.enhance` together, so the two can never disagree.
+   *
+   * Every mode changes the bitmap the engine sees (or the settings it runs
+   * with), so every mode re-traces, exactly like any other setting. Choosing
+   * `ai` again after a failure also clears the failed state, which is what
+   * makes re-selecting it the retry gesture — `failed` is otherwise terminal
+   * on purpose (a provider that just refused the key will refuse it again).
    */
-  const toggleAiEnhance = useCallback(
-    (checked: boolean) => {
-      setAiEnabled(checked);
-      if (checked) {
+  const setEnhanceMode = useCallback(
+    (mode: EnhanceMode) => {
+      setAiEnabled(mode === 'ai');
+      if (mode === 'ai') {
         setImages((prev) =>
           prev.map((image) =>
             image.aiRaster || image.aiState !== 'failed' ? image : { ...image, aiState: 'idle' },
           ),
         );
       }
-      if (selected) requestVectorize(selected.id);
+      // One re-trace, carrying the settings half of the mapping with it.
+      setSetting({ enhance: engineEnhanceFor(mode) });
     },
-    [selected, requestVectorize],
+    [setSetting],
   );
 
   // --- export (REFERENCE D) ------------------------------------------------
@@ -1083,6 +1117,13 @@ export function App() {
   const aiRunning = Boolean(selected && aiOn && selected.aiState === 'running');
   /** What `ai-enhance-status` reports (docs/TESTIDS.md B4b). */
   const aiStateAttr: 'off' | AiState = !aiOn ? 'off' : (selected?.aiState ?? 'idle');
+
+  /**
+   * Which of the three Enhance answers is currently true, derived rather than
+   * stored: the AI switch and `settings.enhance` are the state, and a fourth
+   * copy of it in a `useState` is a fourth thing to keep in sync.
+   */
+  const enhanceMode: EnhanceMode = aiOn ? 'ai' : settings.enhance ? 'local' : 'off';
 
   const status: 'idle' | ImageStatus = selected ? selected.status : 'idle';
   const busy = status === 'loading' || status === 'vectorizing';
@@ -1541,27 +1582,50 @@ export function App() {
             </div>
 
             <div className="settings-column">
-              <label className="switch" title="Denoise and simplify colours before tracing">
-                <input
+              {/*
+                ONE Enhance control, three answers.
+
+                This was two checkboxes — "Enhance image (Beta)" and "Enhance
+                with AI before tracing" — stacked in this exact spot, which read
+                as the same thing said twice and quietly offered a fourth state
+                (both on) that nobody had chosen deliberately. A select says
+                what a pair of checkboxes could not: these are alternatives.
+              */}
+              <Field label="Enhance">
+                <select
                   data-testid={TESTIDS.enhanceToggle}
-                  type="checkbox"
-                  checked={settings.enhance}
-                  onChange={(event) => setSetting({ enhance: event.target.checked })}
-                />
-                <span>Enhance image (Beta)</span>
-              </label>
+                  aria-label="Enhance"
+                  value={enhanceMode}
+                  onChange={(event) => setEnhanceMode(event.target.value as EnhanceMode)}
+                >
+                  <option value="off">Off</option>
+                  <option value="local">Local cleanup</option>
+                  {/*
+                    Disabled rather than hidden: the capability should be
+                    discoverable, and "needs key" is the instruction for
+                    reaching it — the key fields are directly below.
+                  */}
+                  <option value="ai" disabled={!aiHasKey}>
+                    {aiHasKey ? 'AI' : 'AI (needs key)'}
+                  </option>
+                </select>
+              </Field>
+
+              {/*
+                The hint carries the decision `engineEnhanceFor` encodes: AI
+                *replaces* the local cleanup. A user who cannot see that has no
+                way to know whether picking AI also kept the denoise pass.
+              */}
+              <span className="hint" data-testid={TESTIDS.enhanceModeHint}>
+                {describeEnhanceMode(enhanceMode, providerInfo.label)}
+              </span>
 
               {/*
                 AI Enhance — the one feature in GetVect that can send anything
                 anywhere, so it is its own labelled group, off by default, inert
                 without a key, and carries the privacy sentence in the open
-                rather than in a tooltip.
-
-                It is deliberately independent of the classical Enhance switch
-                above: that one is a local denoise/simplify bundle in the engine
-                and keeps its name and its behaviour. With both on, the AI pass
-                runs first (it produces the working image) and the classical
-                bundle runs second, inside `vectorize()`.
+                rather than in a tooltip. It is the configuration for the
+                Enhance control's `AI` option, not a second switch.
               */}
               <div
                 data-testid={TESTIDS.aiEnhanceGroup}
@@ -1646,24 +1710,14 @@ export function App() {
                   </span>
                 )}
 
-                <label
-                  className={`switch${aiHasKey ? '' : ' is-disabled'}`}
-                  title={aiHasKey ? undefined : 'Save an API key first'}
-                >
-                  <input
-                    data-testid={TESTIDS.aiEnhanceToggle}
-                    type="checkbox"
-                    checked={aiOn}
-                    disabled={!aiHasKey}
-                    onChange={(event) => toggleAiEnhance(event.target.checked)}
-                  />
-                  <span>Enhance with AI before tracing</span>
-                </label>
-
                 {/*
                   REQUIRED and deliberately not a tooltip: the trade this
                   feature makes is the one thing the rest of the product exists
-                  to avoid, so it is stated where the switch is.
+                  to avoid, so it is stated in the open.
+
+                  Shown whenever the AI option is *offered*, not only once it is
+                  chosen. A notice that appears after the decision is a receipt,
+                  not a disclosure.
                 */}
                 <span data-testid={TESTIDS.aiEnhanceNotice} className="hint ai-notice">
                   Sends this image to {providerInfo.destination} using your key. Everything else in
@@ -1996,6 +2050,26 @@ function statusLabel(
       return 'Ready';
     case 'error':
       return error ? `Error: ${error}` : 'Error';
+  }
+}
+
+/**
+ * What the chosen Enhance mode actually does, for `enhance-mode-hint`.
+ *
+ * The `ai` line has one job beyond describing the feature: to say out loud
+ * that it *replaces* the local cleanup. That is a real choice made in
+ * `engineEnhanceFor`, it is not guessable from a control that offers the two
+ * as alternatives, and a user who assumed both were running would misread
+ * every result they got.
+ */
+function describeEnhanceMode(mode: EnhanceMode, providerLabel: string): string {
+  switch (mode) {
+    case 'off':
+      return 'The image is traced exactly as it arrived.';
+    case 'local':
+      return 'Denoises and simplifies colours on this machine before tracing (Beta).';
+    case 'ai':
+      return `${providerLabel} re-illustrates the image as flat art and that is what gets traced. It replaces the local cleanup rather than running before it.`;
   }
 }
 

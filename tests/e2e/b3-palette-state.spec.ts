@@ -6,6 +6,7 @@ import {
   TESTIDS,
   FIXTURE,
   loadViaPicker,
+  setEnhanceMode,
   setSelect,
   waitForReady,
 } from './helpers';
@@ -131,7 +132,7 @@ test('[B3] Auto palette restores the palette the edit replaced', async ({ page }
    */
   await loadViaPicker(page, FIXTURE.fox);
   await waitForReady(page);
-  await page.locator(tid(TESTIDS.enhanceToggle)).click();
+  await setEnhanceMode(page, 'local');
   await waitForReady(page);
   await pickSize(page, 16);
 

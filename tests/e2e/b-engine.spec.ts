@@ -7,6 +7,7 @@ import {
   fillsIn,
   loadViaPicker,
   previewSvg,
+  setEnhanceMode,
   setSelect,
   setSlider,
   waitForReady,
@@ -133,7 +134,7 @@ test('[B4] enhance toggle observably changes a noisy image', async ({ page }) =>
   const before = await previewSvg(page);
   const beforePaths = (before.match(/<path/g) ?? []).length;
 
-  await page.locator(tid(TESTIDS.enhanceToggle)).click();
+  await setEnhanceMode(page, 'local');
   await waitForReady(page);
   const after = await previewSvg(page);
   const afterPaths = (after.match(/<path/g) ?? []).length;

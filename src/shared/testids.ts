@@ -27,7 +27,12 @@ export const TESTIDS = {
   settingDetail: 'detail',
   settingSmoothing: 'smoothing',
   settingDespeckle: 'despeckle',
-  enhanceToggle: 'enhance-toggle',
+  // One control, three answers: off | local | ai. It kept the `enhance-toggle`
+  // name through the change from a pair of checkboxes to a single <select>
+  // because it is still the same question ("clean this up before tracing?") —
+  // renaming it would have churned every spec for no gain (docs/TESTIDS.md B4).
+  enhanceToggle: 'enhance-toggle', // <select> off|local|ai
+  enhanceModeHint: 'enhance-mode-hint', // what the chosen mode does, in words
   revectorizeButton: 'revectorize-button',
   resetSettingsButton: 'reset-settings-button',
 
@@ -54,7 +59,9 @@ export const TESTIDS = {
   aiKeySaveButton: 'ai-key-save',
   aiKeyClearButton: 'ai-key-clear',
   aiKeyStatus: 'ai-key-status', // + data-has-key "true"|"false"
-  aiEnhanceToggle: 'ai-enhance-toggle', // checkbox, disabled until a key is saved
+  // NB: there is no `ai-enhance-toggle`. Arming AI Enhance is the `ai` option
+  // of `enhance-toggle` above — a second checkbox next to the classical one
+  // read as the same switch twice and allowed a "both on" state nobody chose.
   aiEnhanceNotice: 'ai-enhance-notice', // the privacy sentence, always visible
   aiEnhanceStatus: 'ai-enhance-status', // + data-ai-state off|idle|running|done|failed
 
