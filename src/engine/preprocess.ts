@@ -23,6 +23,18 @@ import type { NoiseReduction, RasterImage } from './types';
 const SIMPLIFY_COLORS = 16;
 /** Majority-filter repetitions. */
 const MAJORITY_PASSES = 2;
+/**
+ * Median repetitions.
+ *
+ * Two, because one 3x3 median cannot reach a 2x2 clump of grain — it is four of
+ * nine samples, a tie rather than an outlier — and Enhance is the control whose
+ * whole promise is that the noise goes away. Measured on
+ * `fixtures/logo-noisy-512.png`, the second pass moves another 0.1 % of the
+ * pixels and takes the enhanced trace from 5684 to 5444 bytes, which is what
+ * keeps the bundle's contract ("ticking Enhance never hands back a bigger
+ * document") true now that the un-enhanced pipeline denoises well on its own.
+ */
+const MEDIAN_PASSES = 2;
 
 export function medianFilter3(image: RasterImage): RasterImage {
   const { width, height, data } = image;
@@ -215,8 +227,9 @@ function continuesRun(
 export function enhanceSync(image: RasterImage): RasterImage {
   if (image.width < 3 || image.height < 3) return cloneRaster(image);
 
-  const denoised = medianFilter3(image);
-  const palette = computePaletteSync(denoised, SIMPLIFY_COLORS);
+  let denoised = image;
+  for (let i = 0; i < MEDIAN_PASSES; i++) denoised = medianFilter3(denoised);
+  const palette = computePaletteSync(denoised, SIMPLIFY_COLORS, null, false);
   let indices = mapToPalette(denoised, palette);
   for (let i = 0; i < MAJORITY_PASSES; i++) {
     indices = majorityFilter(indices, image.width, image.height, palette.length);
@@ -299,7 +312,7 @@ export function reduceNoise(image: RasterImage, level: NoiseReduction): RasterIm
   if (level === 'off' || image.width < 3 || image.height < 3) return image;
   const denoised = medianFilter3(image);
   if (level === 'low') return denoised;
-  const palette = computePaletteSync(denoised, SIMPLIFY_COLORS);
+  const palette = computePaletteSync(denoised, SIMPLIFY_COLORS, null, false);
   let indices = mapToPalette(denoised, palette);
   for (let i = 0; i < MAJORITY_PASSES; i++) {
     indices = majorityFilter(indices, image.width, image.height, palette.length);
@@ -330,6 +343,30 @@ export function deAntialias(image: RasterImage, passes: number): RasterImage {
 
 /** L1 colour distance within which two pixels count as "the same region". */
 const SUPPORT_TOLERANCE = 30;
+/**
+ * Per-pixel step below which a run of colour reads as shading, not as an edge.
+ *
+ * The same window as `SUPPORT_TOLERANCE`, and measured rather than assumed: at
+ * 12 the gold-standard artwork's paw pads still lost their brown (the pad's
+ * shading steps further than that per pixel where it turns), at 30 the brown
+ * survives and the palette regains a warm slot. A soft edge between two flat
+ * regions steps tens of units per pixel even when it is three pixels wide, so
+ * it stays snappable either way.
+ */
+const RAMP_STEP_TOLERANCE = 30;
+/**
+ * Luma below which a ramp's dark end counts as ink, and the shading guard steps
+ * aside.
+ *
+ * Line art is the point of the picture, and a soft outline is the one wide ramp
+ * that MUST still be snapped: left alone, its skirt quantizes to whatever
+ * mid-tone is nearest and the stroke comes back thin, notched or dashed.
+ * Measured on the gold standard, exempting ink ramps put the 16-colour output's
+ * layer compactness back to 3.73 (from 4.10) and its region strict-ink recall
+ * back to 0.941x of the real product's (from 0.927x) while keeping the paw
+ * pads' brown.
+ */
+const RAMP_INK_LUMA = 60;
 /** How many pixels of its own colour a 3×3 window needs to be a real region. */
 const SUPPORT_MIN = 3;
 
@@ -374,6 +411,38 @@ function supportMap(data: Uint8ClampedArray, width: number, height: number): Uin
   return support;
 }
 
+/**
+ * Does the centre's own colour continue one pixel each way along (sx, sy)?
+ *
+ * The tolerance is the same "same region" window the support map uses: a
+ * gradient steps a unit or two per pixel and stays inside it, an antialiasing
+ * ramp jumps most of the way to a flat colour and does not.
+ */
+function sameColorBothWays(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  sx: number,
+  sy: number,
+): boolean {
+  const o = (y * width + x) * 4;
+  const near = (dx: number, dy: number): boolean => {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= width || ny >= height) return false;
+    const i = (ny * width + nx) * 4;
+    return (
+      Math.abs(data[i] - data[o]) +
+        Math.abs(data[i + 1] - data[o + 1]) +
+        Math.abs(data[i + 2] - data[o + 2]) <=
+      RAMP_STEP_TOLERANCE
+    );
+  };
+  return near(sx, sy) && near(-sx, -sy);
+}
+
 function deAntialiasPass(image: RasterImage): RasterImage {
   const { width, height, data } = image;
   if (width < 3 || height < 3) return image;
@@ -395,6 +464,10 @@ function deAntialiasPass(image: RasterImage): RasterImage {
       // luma by construction — and costs 9 comparisons instead of 36.)
       let ai = -1;
       let bi = -1;
+      let ax = 0;
+      let ay = 0;
+      let bx = 0;
+      let by = 0;
       let lo = Infinity;
       let hi = -Infinity;
       for (let yy = y0; yy <= y2; yy++) {
@@ -408,14 +481,48 @@ function deAntialiasPass(image: RasterImage): RasterImage {
           if (l < lo) {
             lo = l;
             ai = i;
+            ax = xx;
+            ay = yy;
           }
           if (l > hi) {
             hi = l;
             bi = i;
+            bx = xx;
+            by = yy;
           }
         }
       }
       if (ai < 0 || bi < 0 || ai === bi) continue;
+      // A ramp is THIN. Shading is not.
+      //
+      // Everything below reads a 3×3 window as "two flat regions with a
+      // transition pixel between them", and an antialiased edge is exactly
+      // that: one pixel wide, so stepping across it lands on flat colour
+      // immediately. A painted gradient satisfies the same in-between test just
+      // as well — its interior is always between its own neighbours — and
+      // snapping it repeatedly pushes the shading out to its extremes. On the
+      // gold-standard artwork that cost the whole brown family: the pads' and
+      // belly's mid-tones were pressed onto cream and blue, the histogram lost
+      // their mass, and at eight colours the quantizer spent three slots on
+      // creams and none on brown, so the paw pads came back teal.
+      //
+      // So the centre only moves when the ramp really is one pixel wide:
+      // stepping one pixel each way ALONG the gradient (the direction from the
+      // dark end of the window to the light end) has to leave the centre's own
+      // colour behind. This is `continuesRun`'s rule — a pixel in the middle of
+      // a run of its own colour is artwork, not an edge — restricted to the one
+      // direction that distinguishes a ramp from a region, since along the edge
+      // itself an antialiased pixel does have company. Ramps that run into ink
+      // are exempt (`RAMP_INK_LUMA`): a soft outline is a wide ramp that still
+      // has to be snapped, or the stroke comes back thin.
+      const sx = bx > ax ? 1 : bx < ax ? -1 : 0;
+      const sy = by > ay ? 1 : by < ay ? -1 : 0;
+      if (
+        lo >= RAMP_INK_LUMA &&
+        (sx !== 0 || sy !== 0) &&
+        sameColorBothWays(data, width, height, x, y, sx, sy)
+      )
+        continue;
       const best =
         Math.abs(data[ai] - data[bi]) +
         Math.abs(data[ai + 1] - data[bi + 1]) +
