@@ -409,6 +409,13 @@ gh browse craigjmidwinter/getvect
   step. Otherwise it would be GitHub's "latest release" — and therefore what the site's
   Download button resolves to — while its assets were still uploading.
 
+  **The draft is created by the workflow, before electron-builder runs**, and that ordering is a
+  fix rather than a preference. electron-builder runs one publisher per target (zip, dmg); both
+  look for a release by tag, both find none, and both create one — GitHub accepts two *drafts*
+  sharing a tag, because a draft has no tag to collide on. The first v0.1.0 attempt did exactly
+  that and split its own artefacts across two invisible drafts. The verification step now also
+  asserts there is exactly one release for the tag.
+
   Not run on a tag: the Playwright acceptance suite. Driving a real Electron window on a
   hosted runner is still too flaky to stand between a tag and a release (same reasoning as
   the disabled `e2e` job in `ci.yml`). The engine contracts are what would make a shipped

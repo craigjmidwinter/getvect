@@ -50,6 +50,7 @@
         <li><a href="#controls">Control surface</a></li>
         <li><a href="#exports">Export formats</a></li>
         <li><a href="#ai-enhance">AI Enhance</a></li>
+        <li><a href="#updates">Updates</a></li>
         <li><a href="#testing">Testing &amp; instruments</a></li>
         <li><a href="#trouble">Troubleshooting</a></li>
         <li><a href="#deeper">Going deeper</a></li>
@@ -64,8 +65,13 @@
     <div class="wrap">
       <p class="eyebrow">Getting started</p>
       <h2>Clone, install, start</h2>
-      <p>Requires <strong>Node 20+</strong> and, for now, <strong>macOS</strong>. Linux needs
-        <code>xvfb-run -a</code> for the Electron tests; Windows is untested.</p>
+      <p>Not building from source? Take the dmg from the
+        <a href="https://github.com/craigjmidwinter/getvect/releases/latest">latest release</a> —
+        macOS on Apple Silicon, unsigned, with the first-launch instructions on the
+        <a href="index.html#download">download section</a> of the front page.</p>
+      <p>To build it yourself you need <strong>Node 20+</strong> and, for now,
+        <strong>macOS</strong>. Linux needs <code>xvfb-run -a</code> for the Electron tests;
+        Windows is untested.</p>
 
 <pre><code>git clone https://github.com/craigjmidwinter/getvect.git
 cd getvect
@@ -320,9 +326,12 @@ npm run dist    <span class="c"># package -&gt; release/mac-arm64/GetVect.app (+
     <div class="wrap">
       <p class="eyebrow">AI Enhance</p>
       <h2>Optional, off by default, bring your own key</h2>
-      <p>AI Enhance is the only thing in GetVect that can touch the network. Everything else runs
-        under a <code>default-src 'self'</code> content security policy with no runtime network
-        calls at all.</p>
+      <p>GetVect has two network touchpoints, both in your control: AI Enhance, and a
+        once-per-launch update check against GitHub Releases (disable with
+        <code>GETVECT_NO_UPDATE_CHECK=1</code>). AI Enhance is the only one that sends anything —
+        your image, to Google, under your own key. Everything else runs under a
+        <code>default-src 'self'</code> content security policy with no runtime network calls at
+        all.</p>
 
       <div class="callout">
         <span class="tag">The trade, stated plainly</span>
@@ -396,6 +405,31 @@ npm run dist    <span class="c"># package -&gt; release/mac-arm64/GetVect.app (+
     </div>
   </section>
 
+  <!-- ---- updates ---------------------------------------------------------- -->
+  <section id="updates">
+    <div class="wrap">
+      <p class="eyebrow">Updates</p>
+      <h2>It tells you. It does not install.</h2>
+      <p>Once per launch, GetVect asks GitHub Releases whether there is a newer version. If there
+        is, a small dismissible banner appears in the corner with a Download link; dismiss it and
+        that version never asks again. Nothing is downloaded in the background and nothing is
+        installed behind your back.</p>
+      <p>That is not caution, it is arithmetic. macOS will not let an <strong>unsigned</strong> app
+        replace itself in place — Squirrel, the machinery Electron apps update through, refuses an
+        update whose signature it cannot check against the running app's. An in-app updater on this
+        build would pull 117 MB and then fail at the last step, every launch, forever. So it does
+        the honest half of the job. The other half is already written and switches on with the
+        certificate, not with a rewrite.</p>
+      <p>The check sends no identifier, asks one question, and fails silently when you are offline.
+        To turn it off:</p>
+<pre><code>GETVECT_NO_UPDATE_CHECK=1 open -a GetVect
+<span class="c"># or, permanently:</span>
+launchctl setenv GETVECT_NO_UPDATE_CHECK 1</code></pre>
+      <p>Along with <a href="#ai-enhance">AI Enhance</a>, that is the complete list of things this
+        app does on a network: two touchpoints, both in your control.</p>
+    </div>
+  </section>
+
   <!-- ---- testing --------------------------------------------------------- -->
   <section id="testing">
     <div class="wrap">
@@ -437,12 +471,14 @@ npm run screenshots   <span class="c"># a labelled contact sheet of the whole fl
         this is a hook rather than a note.</p>
 
       <h3>"GetVect is damaged and can't be opened"</h3>
-      <p>A packaged build from <code>npm run dist</code> is <strong>unsigned and not notarized</strong>.
-        A downloaded unsigned app is quarantined, and on Apple Silicon Gatekeeper refuses it
-        outright rather than offering the right-click → Open escape hatch. Remove the quarantine
-        attribute yourself:</p>
+      <p>Every GetVect build — the published dmg and anything from <code>npm run dist</code> — is
+        <strong>unsigned and not notarized</strong>. A downloaded unsigned app is quarantined, and
+        on Apple Silicon Gatekeeper refuses it outright rather than offering the right-click →
+        Open escape hatch. Remove the quarantine attribute yourself:</p>
 <pre><code>xattr -dr com.apple.quarantine /Applications/GetVect.app</code></pre>
-      <p>Only do that for a bundle you built yourself, or one whose provenance you trust.</p>
+      <p>Only do that for a bundle you built yourself, or one whose provenance you trust. The
+        release page carries the same instruction, and the checksum of every published artefact is
+        in <code>latest-mac.yml</code> beside it.</p>
 
       <h3>The Photo preset ignores my colour count</h3>
       <p>It has a colour floor of 16. Ask for 4 and you will get 10–16; the panel will not display
