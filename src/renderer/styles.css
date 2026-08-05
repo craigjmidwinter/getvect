@@ -534,6 +534,50 @@ code {
 }
 
 /*
+ * Below ~1100px the four columns do not fit side by side, so they wrap to 2x2.
+ *
+ * The four track minimums (215 + 165 + 185 + 238, plus 3x12 gap and 24 of
+ * padding) sum to 863px, and at the app's own declared minimum window — 900x640,
+ * `src/main/main.ts` — the panel's box is 636px wide. `overflow-x: auto` was
+ * "honest" in the sense that the content was reachable, but the whole OUTPUT
+ * COLOURS column (B3's disable-a-colour-group checkboxes, the merge threshold
+ * and the sort order) sat 227px off to the right behind a hairline scrollbar
+ * with nothing on screen saying so.
+ *
+ * Two columns of 215px + one gap is 442px, which clears the narrowest box the
+ * app can produce, so the panel grows downward instead of sideways and scrolls
+ * on the axis a settings panel is expected to scroll on. The sidebar gives up
+ * 64px at the same breakpoint so the 2x2 grid keeps slack over its minimums.
+ */
+@media (max-width: 1100px) {
+  .app {
+    grid-template-columns: 200px 1fr;
+  }
+
+  .settings-panel {
+    grid-template-columns: repeat(2, minmax(215px, 1fr));
+    /* Two rows of columns need roughly twice the height; cap it so the preview
+       still owns most of a 640px-tall window, and scroll the remainder. */
+    height: min(360px, 52vh);
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  /* In a 2x2 grid the "+ .settings-column" divider would draw a rule down the
+     left edge of the third column, which starts a row. Draw the divider only
+     between the two columns that are actually side by side. */
+  .settings-column + .settings-column {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .settings-column:nth-child(2n) {
+    border-left: 1px solid var(--line);
+    padding-left: 12px;
+  }
+}
+
+/*
  * Slim, always-visible scrollbars inside the settings panel.
  *
  * macOS hides overlay scrollbars until something is scrolling, so a region
