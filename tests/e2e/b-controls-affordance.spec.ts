@@ -74,6 +74,38 @@ test('[B3] every output-colour control is on screen at the default window size',
   }
 });
 
+test('[B3] the output colour list itself is reachable without scrolling past the fold', async ({
+  page,
+}) => {
+  /**
+   * B3's headline behaviour is "disable the background colour to get a
+   * transparent background", and the checkbox that does it is a
+   * `color-group-toggle`. Measured at the app's own default window size
+   * (1280x828 viewport) the first toggle's box was y=835 h=13 — entirely below
+   * the fold, while `merge-threshold` and `color-sort` (the two controls the
+   * test above asserts) sat at y=797 and fitted. The panel scrolls, so the
+   * feature is reachable; what is not reachable is *knowing it is there*.
+   *
+   * At least the first toggle must be fully inside the viewport.
+   */
+  await loadViaPicker(page, FIXTURE.flat512);
+  await waitForReady(page);
+
+  const viewport = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+  const first = page.locator(tid(TESTIDS.colorGroupToggle)).first();
+  await expect(first).toHaveCount(1);
+  const box = await first.boundingBox();
+  expect(box, 'no color-group-toggle on screen at all').not.toBeNull();
+  expect(
+    box!.y + box!.height,
+    `the first color-group-toggle ends at y=${(box!.y + box!.height).toFixed(0)} in a ` +
+      `${viewport.h}px viewport — B3's transparent-background control is below the fold at the ` +
+      "app's own default window size",
+  ).toBeLessThanOrEqual(viewport.h);
+  expect(box!.y, 'the first color-group-toggle starts above the viewport').toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.w);
+});
+
 test('[B3] the colour-count hint is readable, not clipped mid-sentence', async ({ page }) => {
   // "6 colours in the result — the image has no more to give" cut off at the
   // panel edge is a hint nobody can act on.

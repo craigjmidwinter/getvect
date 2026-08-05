@@ -180,6 +180,30 @@ export function inkRecall(reference, traced, { inkLuma = 60, keptLuma = 128 } = 
   return ink === 0 ? 1 : kept / ink;
 }
 
+/**
+ * Crop a RasterImage to `{ x, y, width, height }`, clamped to the image.
+ *
+ * Whole-frame scores are area-weighted, so a region that is 8 % of the canvas
+ * but carries all of the meaning — a character's face — can be destroyed while
+ * MAE, SSIM and even whole-image `inkRecall` stay inside their bars. That is
+ * exactly how the gold-standard A/B was lost with every gate green: the mouth
+ * came back as a smear of blobs and the fangs disappeared while `inkRecall`
+ * read 0.9421 against a 0.94 floor. A fixture can now name a `salientRegion`
+ * and get every fidelity number recomputed inside it.
+ */
+export function cropRegion(image, { x, y, width, height }) {
+  const x0 = Math.max(0, Math.min(image.width - 1, Math.round(x)));
+  const y0 = Math.max(0, Math.min(image.height - 1, Math.round(y)));
+  const w = Math.max(1, Math.min(image.width - x0, Math.round(width)));
+  const h = Math.max(1, Math.min(image.height - y0, Math.round(height)));
+  const data = new Uint8ClampedArray(w * h * 4);
+  for (let row = 0; row < h; row++) {
+    const from = ((y0 + row) * image.width + x0) * 4;
+    data.set(image.data.subarray(from, from + w * 4), row * w * 4);
+  }
+  return { width: w, height: h, data };
+}
+
 /** Count of `<path` elements in an SVG string (REFERENCE "Economy"). */
 export function countPaths(svg) {
   return (svg.match(/<path\b/g) ?? []).length;
@@ -406,8 +430,16 @@ export function colorDistance2(a, b) {
  * regions quantize into their own near-duplicate slots, become full layers and
  * get painted over the artwork as thin coloured outlines (REFERENCE B4
  * "Anti-aliasing Off/Smart/Mid" is the control that suppresses them).
+ *
+ * The window is 32, not 24. At 24 the metric reported 0 for the gold-standard
+ * fixture while its output carried rgb(213,202,193) beside rgb(197,186,179)
+ * (distance 26.6) and rgb(94,149,169) beside rgb(115,162,180) (27.0) — the
+ * mottled two-cream patchwork a critic could see across the belly and the
+ * metric could not. The real exemplar's own layers are never closer than 37
+ * apart, so 32 is inside what the reference product ships and outside what a
+ * halo produces.
  */
-export function nearDuplicateFillPairs(svg, threshold = 24) {
+export function nearDuplicateFillPairs(svg, threshold = 32) {
   const fills = layerFills(svg);
   const limit = threshold * threshold;
   let pairs = 0;

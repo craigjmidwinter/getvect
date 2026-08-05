@@ -161,6 +161,29 @@ test('[B4] anti-aliasing suppresses near-duplicate halo layers', async () => {
   );
 });
 
+test('[B4] an explicit anti-aliasing choice survives the Enhance bundle', async () => {
+  /**
+   * Enhance turns Smart anti-aliasing on internally, and it does it by
+   * *ignoring* `settings.antiAliasing`: with Enhance ticked, `off` and `smart`
+   * produce byte-identical documents (md5 941885e0, 71 KB each) and only `mid`
+   * differs. The UI still shows whatever the user chose, so "Anti-aliasing:
+   * Off" with Enhance on tells the reader the opposite of what the engine did —
+   * and `fixtures/reference/OBSERVED-UI.md` step ③ records the real product
+   * exposing Enhance and Anti-aliasing as independent controls.
+   *
+   * Either the explicit value wins, or the renderer must stop offering it while
+   * Enhance is on. The engine half of that choice is this contract.
+   */
+  const off = await run(snorlax, { colorCount: 16, enhance: true, antiAliasing: 'off' });
+  const smart = await run(snorlax, { colorCount: 16, enhance: true, antiAliasing: 'smart' });
+  assertDiffers(
+    off.svg,
+    smart.svg,
+    'with Enhance on, antiAliasing "off" and "smart" produce the identical document — the ' +
+      'control is dead and the UI reports a state the engine is not in',
+  );
+});
+
 test('[B4] enhance cannot introduce a colour absent from the source', async () => {
   const r = await run(flat, { enhance: true });
   for (const c of r.palette) {

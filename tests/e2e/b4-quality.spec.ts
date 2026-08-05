@@ -85,7 +85,11 @@ test('[B4] anti-aliasing suppresses near-duplicate halo layers', async ({ page }
           (fills[i].r - fills[j].r) ** 2 +
           (fills[i].g - fills[j].g) ** 2 +
           (fills[i].b - fills[j].b) ** 2;
-        if (d <= 24 * 24) pairs++;
+        // 32, matching instruments/lib/metrics.mjs: at 24 the metric could not
+        // see the two-cream patchwork the gold-standard output ships (layers
+        // 26.6 and 27.0 apart), while the real exemplar's own layers are never
+        // closer than 37.
+        if (d <= 32 * 32) pairs++;
       }
     }
     return pairs;
