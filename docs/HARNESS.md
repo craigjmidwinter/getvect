@@ -145,8 +145,8 @@ Reported per fixture (`artifacts/metrics.json`):
 | `regionInkRecall` / `regionStrictInkRecall` / `regionMeanColorError` / `regionSsim` | the same numbers **aggregated to the worst region** — min for the "more is better" ones, max for error | `minRegionInkRecall` 0.93 on the gold standard; `minRegionStrictInkRecall` 0.94 at the defaults |
 | `regions[].foreignColorRatio` / `regionForeignColorRatio` | share of a crop painted a colour the **source crop does not contain** (nearest source colour further than 40 in RGB, source colours quantized in 4-unit cells so its own antialiased in-betweens count as present). A *categorical* error rather than a metric one: 123 teal pixels inside a cream muzzle move MAE by hundredths, move SSIM by nothing and move ink recall by nothing, and are the first thing a person names. The table's `leak%` column is the worst region's | 0 for both real exemplars everywhere; gated per crop (`maxForeignColorRatio`) at 0.05 % |
 | `regionStrictInkRecallRatio` | our strict ink recall over the exemplar's, in the region where we are worst relative to it. Absolute strict recall cannot be gated globally — the exemplar itself scores 0.859 there because it drops antialiased skirts — but "the real product's line is more solid than ours" is a fair question anywhere | ≥ 0.98 on the gold standard |
-| `layerCompactness` / `layerCompactnessRatio` | mean `perimeter / (2·√(π·area))` over the `<g fill>` layers covering ≥ 1 % of the drawing (1.0 = a disc), and ours over the exemplar's. The sawtooth-vs-sweep difference between clipart and a posterized photo, which MAE cannot see (both sides of a ragged seam are nearly the right colour), ink recall cannot see (no ink) and sub-path count cannot see (one region either way). Computed from path data, not by rasterizing each layer, so it stays pure and deterministic | ≤ 1.1× the exemplar's on the gold standard (its mean is 2.67; ours is 3.35, i.e. 1.25× — inside the old 1.3 bar while our belly seam still wobbles where the exemplar sweeps) |
-| `layerWobble` / `layerWobbleRatio` | mean **turning per unit boundary length** over the same layers, and ours over the exemplar's. Compactness is a *global* perimeter-over-area ratio and cannot tell a genuinely intricate shape from a smooth one traced onto a noisy threshold; this walks every boundary at the same fraction of that drawing's own diagonal (so the exemplar's 10× viewBox needs no scale factor) and measures how much the heading changes per unit travelled. A soft shading gradient crossed by one arc scores low; the same gradient crossed by a sawtooth scores high **however few sub-paths it is written in and however many of its commands are cubics** — which is exactly the hole `curveCommandRatio` 0.872 left: our commands *are* curves, fitted to a wobble the real product never had. Flat fixtures score 8-14, the gold-standard exemplar 37.2, ours 55.4 | ≤ 1.15× the exemplar's on `reference-snorlax` (ours is 1.49×; `reference-snorlax-default` is 2.19× and `-noenhance` 2.14×, reported not gated) |
+| `layerCompactness` / `layerCompactnessRatio` | mean `perimeter / (2·√(π·area))` over the `<g fill>` layers covering ≥ 1 % of the drawing (1.0 = a disc), and ours over the exemplar's. The sawtooth-vs-sweep difference between clipart and a posterized photo, which MAE cannot see (both sides of a ragged seam are nearly the right colour), ink recall cannot see (no ink) and sub-path count cannot see (one region either way). Computed from path data, not by rasterizing each layer, so it stays pure and deterministic | ≤ 1.1× the exemplar's on the gold standard (its mean is 2.67; ours is 2.87, i.e. 1.08×, down from 1.25× — the pre-fit boundary low-pass, the linework moving to the silhouette layer and the Enhance area floors between them) |
+| `layerWobble` / `layerWobbleRatio` | mean **turning per unit boundary length** over the same layers, and ours over the exemplar's. Compactness is a *global* perimeter-over-area ratio and cannot tell a genuinely intricate shape from a smooth one traced onto a noisy threshold; this walks every boundary at the same fraction of that drawing's own diagonal (so the exemplar's 10× viewBox needs no scale factor) and measures how much the heading changes per unit travelled. A soft shading gradient crossed by one arc scores low; the same gradient crossed by a sawtooth scores high **however few sub-paths it is written in and however many of its commands are cubics** — which is exactly the hole `curveCommandRatio` 0.872 left: our commands *are* curves, fitted to a wobble the real product never had. Flat fixtures score 6-13, the gold-standard exemplar 37.2, ours 40.2 | ≤ 1.15× the exemplar's on `reference-snorlax` (ours is 1.08×, down from 1.49×; `reference-snorlax-default` is 1.67× and `-noenhance` 1.73×, reported not gated) |
 | `sourceColors` / `paletteShortfall` | the palette size **before** our own folds, and `min(requested, sourceColors) − delivered`. Separates "the image ran out" from "our cleanup merged them": 16 requested, 16 found, 8 delivered is a shortfall of 8 and nothing to do with the picture | ≤ 1 on the 6-colour and default gold-standard rows; ≤ 8 on the 16-colour row, because the exemplar the reference product produced for that artwork at that setting carries exactly 8 `<g fill>` layers — a bar of 1 would demand fifteen layers on a picture whose gold-standard rendering has eight, and `maxNearDuplicateFills: 0` forbids the near-duplicate creams a fifteen-layer palette would be made of |
 | `exemplarRegionInkRecall` / `regionInkRecallRatio` | the exemplar's ink recall in that same region, and ours over it — < 1 means the real product renders the salient region better than we do | reported; the A/B in one number |
 | `pathCount` / `shapeCount` | `<path>` count / all drawable elements | ≤ 200 on flat fixtures |
@@ -335,19 +335,24 @@ exactly six colours and palette assertions can be exact.
 `fixtures/reference/` is checked in, not generated: `npm run fixtures` lists those
 entries and reports `MISSING` rather than trying to recreate them.
 
-**Why a fixture row exists just to set `mergeThreshold: 0`.** `reference-snorlax` asks for
-16 colours on an image that has 16 and gets 8, and the exemplar justifies the number (the
-real product's own capture of this artwork carries eight `<g fill>` layers) — but the
-panel does not: the hint attributes the shortfall to "the cleanup settings", and the only
-cleanup control that speaks about colour groups cannot reach it, because
-`src/engine/index.ts` computes `groupThreshold = max(opts.mergeThreshold, opts.enhance ? 1
-: 0)`. With Enhance on, dragging MERGE THRESHOLD to 0 changes nothing. So
+**Why a fixture row exists just to set `mergeThreshold: 0`.** `reference-snorlax` used to
+ask for 16 colours on an image that has 16 and get 8, and the exemplar justified the
+number (the real product's own capture of this artwork carries eight `<g fill>` layers) —
+but the panel did not: the hint attributed the shortfall to "the cleanup settings", and
+the only cleanup control that speaks about colour groups could not reach it, because
+`src/engine/index.ts` computed `groupThreshold = max(opts.mergeThreshold, opts.enhance ? 1
+: 0)`. With Enhance on, dragging MERGE THRESHOLD to 0 changed nothing. So
 `reference-snorlax-16c-nomerge` runs exactly that configuration and gates
 `maxPaletteShortfall: 6` — not "16 delivered", but "at least what turning *Enhance* off
 already delivers on this same image" (10 groups, `nearDuplicateFillPairs` 0, measured in
-`reference-snorlax-noenhance`), so both halves of the row are known-reachable. It fails at
-8 today, which is the same output byte-for-byte as the row without the setting.
-`tests/engine/parity.test.mjs` asks the same question at the engine level.
+`reference-snorlax-noenhance`), so both halves of the row are known-reachable.
+
+It passes now at 11 groups. The `max(...)` is gone: `groupThreshold` is
+`opts.mergeThreshold` and nothing else, and what Enhance does about quantization debris
+instead is raise the *area* floors — a colour that only ever appears in 15×15 scraps loses
+the scraps on the picture rather than its seat in the palette, and a layer the floor would
+empty entirely is retraced at Minimum Area so no swatch names a colour the drawing does
+not contain. `tests/engine/parity.test.mjs` asks the same question at the engine level.
 
 libvips has no BMP loader, so `instruments/lib/decode.mjs` carries a small 24/32-bit BMP
 decoder. The app itself doesn't need it — Chromium decodes BMP natively.

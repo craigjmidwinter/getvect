@@ -41,6 +41,18 @@ export interface TraceOptions extends FitOptions {
    * the promise "no shape smaller than this is in the document" is literal.
    */
   minArea: number;
+  /**
+   * The Enhance *simplification* floor, in px² of bounding box — a soft one.
+   *
+   * `minArea` is a promise about the document and admits no exceptions.
+   * This is a judgement about noise, and noise has a shape: below this size a
+   * squiggle is a lobe the quantizer shed and a clean blob is a feature
+   * somebody drew (a fang, a highlight, the counter of a letter). So a shape
+   * under it survives if it is SIMPLE — see `SIMPLE_SHAPE_COMPACTNESS`.
+   *
+   * 0 disables it, which is what every configuration without Enhance uses.
+   */
+  softMinArea?: number;
 }
 
 /**
@@ -181,8 +193,49 @@ function fitOptionsFor(pts: Pt[], options: TraceOptions): TraceOptions {
   if (perimeter <= 0) return options;
   const thickness = (2 * Math.abs(polygonArea(pts))) / perimeter;
   const limit = Math.max(0.25, thickness * THIN_FIT_FRACTION);
-  if (limit >= options.tolerance) return options;
-  return { ...options, tolerance: limit };
+  // The boundary low-pass moves the outline before the fit ever sees it, so it
+  // is bound by the same promise and by the same measure of the shape: a
+  // hairline may be nudged by a fraction of its own width, never averaged into
+  // its background (src/engine/fit.ts `lowPassClosed`).
+  const boundaryShift = Math.min(options.boundaryShift, limit);
+  if (limit >= options.tolerance && boundaryShift >= options.boundaryShift) return options;
+  return { ...options, tolerance: Math.min(options.tolerance, limit), boundaryShift };
+}
+
+/**
+ * How much perimeter a small shape may spend on its own area and still count as
+ * a shape rather than as debris.
+ *
+ * `perimeter / (2·√(π·area))` is 1 for a disc and grows with raggedness, and is
+ * measured here on the *pixel* boundary — staircase and all, so a small disc
+ * already scores ~1.3 rather than 1. Bisecting it on the gold standard puts the
+ * drawn features (the two fangs, the claw highlights) below 1.5 and the scraps a
+ * quantized shading boundary sheds above it: at 1.35 the teeth go and the mouth
+ * closes into a blob, at 1.5 they stay and the layer boundaries still lose the
+ * squiggles. Raising it further stops removing anything — by ~1.7 every scrap on
+ * this artwork is inside the window and the floor is a no-op again.
+ */
+const SIMPLE_SHAPE_COMPACTNESS = 1.5;
+
+/**
+ * Is this small contour a shape somebody drew, or a scrap the quantizer shed?
+ *
+ * The whole reason the Enhance floor can be frank about size is that size alone
+ * is a bad test: a fang, a highlight and the counter of an 'o' are all ~150px²,
+ * and so is every lobe on a ragged shading seam. They are not alike in any
+ * other way — the drawn ones are convex-ish blobs and the shed ones are
+ * squiggles — so the floor asks about the shape as well as the area.
+ */
+function isSimpleShape(pts: Pt[]): boolean {
+  let perimeter = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    perimeter += Math.hypot(b.x - a.x, b.y - a.y);
+  }
+  const area = Math.abs(polygonArea(pts));
+  if (area <= 0 || perimeter <= 0) return false;
+  return perimeter / (2 * Math.sqrt(Math.PI * area)) <= SIMPLE_SHAPE_COMPACTNESS;
 }
 
 /**
@@ -205,6 +258,7 @@ export function traceMask(
   const scanned = ImageTracer.pathscan(nodes, 0);
 
   const minArea = Math.max(0, options.minArea);
+  const softMinArea = Math.max(minArea, options.softMinArea ?? 0);
   const preFilter = minArea > 0 ? minArea * 0.5 : 0;
   const subpaths: SubPath[] = [];
   const circles: CircleShape[] = [];
@@ -219,10 +273,10 @@ export function traceMask(
     }
     const fitted = fitClosedPolygon(pts, fitOptionsFor(pts, options));
     if (!fitted) return null;
-    if (minArea > 0) {
-      const box = subPathBox(fitted.subpath);
-      if (box.width * box.height < minArea) return null;
-    }
+    const box = subPathBox(fitted.subpath);
+    const area = box.width * box.height;
+    if (minArea > 0 && area < minArea) return null;
+    if (softMinArea > minArea && area < softMinArea && !isSimpleShape(pts)) return null;
     return fitted;
   };
 
