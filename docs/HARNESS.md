@@ -151,6 +151,7 @@ Reported per fixture (`artifacts/metrics.json`):
 | `regions[]` | one entry per `salientRegion` / `salientRegions` box: `inkRecall`, `strictInkRecall`, `inkComponentRatio`, `meanColorError`, `ssim`, plus the exemplar's own values and our ratio to them | see `salientRegions` below |
 | `regionInkRecall` / `regionStrictInkRecall` / `regionMeanColorError` / `regionSsim` | the same numbers **aggregated to the worst region** — min for the "more is better" ones, max for error | `minRegionInkRecall` 0.93 on the gold standard; `minRegionStrictInkRecall` 0.94 at the defaults |
 | `regions[].foreignColorRatio` / `regionForeignColorRatio` | share of a crop painted a colour the **source crop does not contain** (nearest source colour further than 32 in RGB — the same window `nearDuplicateFillPairs` uses; at 40 the teal that painted a fifth of the gold standard's lower jaw sat 40.2 from the nearest colour its crop contains and the muzzle reported 0.00 % — source colours quantized in 4-unit cells so its own antialiased in-betweens count as present). A *categorical* error rather than a metric one: 123 teal pixels inside a cream muzzle move MAE by hundredths, move SSIM by nothing and move ink recall by nothing, and are the first thing a person names. The table's `leak%` column is the worst region's | 0 for the real exemplar everywhere, and 0 for us on the transparent source; the white-flattened variant scores 0.46 % on the paw, which is what `reference-fox-white` pins. Gated per crop (`maxForeignColorRatio`) at 0.05 % |
+| `regions[].colorPresence` / `sourceColorPresence` / `colorPresenceRatio` / `colorPresenceOverExemplar` | only for a crop that **names a colour** (`salientRegions[].color`, tolerance 40 by default): the share of the crop within that RGB distance of the named hue, in our trace and in the source, their ratio, and ours over the real product's. The one question that catches a small hue-distinct feature losing its palette slot — a mascot's eyes are ~0.3 % of the canvas, so folding their green into the surrounding cream moves MAE by hundredths, SSIM by nothing, `foreignColorRatio` by nothing (the repaint uses a hue the crop legitimately has), ink recall by nothing, and `paletteShortfall` by nothing (the slot was spent, on another cream) | the real product keeps its `rgb(121,176,89)` eye layer; ours is the open question the mascot fixture reports as an `aspirations` entry rather than a gate |
 | `regionStrictInkRecallRatio` | our strict ink recall over the exemplar's, in the region where we are worst relative to it. Absolute strict recall cannot be gated globally — the exemplar itself scores 0.859 there because it drops antialiased skirts — but "the real product's line is more solid than ours" is a fair question anywhere | ≥ 0.87 on the gold standard (ours is 0.90 on the muzzle, the worst crop; 1.0 is the number to aim at) |
 | `strokeWidth` / `sourceStrokeWidth` / `strokeWidthRatio` | per region: the trace's local stroke width on the source's own medial axis (the shorter of the horizontal and vertical ink runs through each skeleton point, 0 where the trace has no ink there), the source's, and ours over it. Only where the source is drawing a *stroke* — a point whose longer run is at least 3× its shorter one — because inside a filled region every interior pixel is on some medial axis and its "width" is the region: with blobs counted, one eye outvoted every line in the gold standard's face box | reported |
 | `strokeWidthCv` / `strokeWidthCvRatio` | the coefficient of variation of that width, and ours over the exemplar's in the crop where we are worst. **The thing REFERENCE's blind A/B is decided on, and the thing every other ink metric here reads backwards**: a line that thickens, thins and breaks recalls more ink and joins more components than an even one, so `regionStrictInkRecall` once scored us 0.967 against an exemplar's 0.755 for a mouth arc that tapered to a spindle and detached from both fangs. Gated as a ratio because the absolute cv belongs to the artwork (a drawn line genuinely varies) while "less even than the real product's trace of the same line" belongs to us | `maxStrokeWidthCvRatio` on `reference-fox`. **A ratchet, not parity**: ours is 1.64x on the muzzle crop (cv 0.455 against the exemplar's 0.277) and the bar is 1.8; the number to aim at is 1.15x |
@@ -265,6 +266,35 @@ A fixture entry may also carry:
   9 pass / 0 fail on a build whose default output rendered a warm brown paw pad a cool
   teal at region MAE 33.5. Gates read the **worst** region, so adding a box can only
   tighten a fixture, never loosen it.
+
+  **A box may also NAME A COLOUR.** `salientRegions[].color` (plus an optional
+  `colorTolerance`, default 40) turns the crop into a survival test for one specific
+  hue: of the pixels in here, what share is within that distance of `rgb(r,g,b)`?
+  The fixture gets `colorPresence` (our share), `sourceColorPresence` (the source's),
+  `colorPresenceRatio` (ours over the source's — the gate-shaped number, 1.0 = we kept
+  all of it, 0 = the colour is gone) and, with an exemplar declared,
+  `exemplarColorPresence` and `colorPresenceOverExemplar`. Gated per crop with
+  `minColorPresenceRatio`, `minColorPresenceOverExemplar` and `minColorPresence`.
+
+  This exists because a **small, hue-distinct feature losing its palette slot** is
+  invisible to every other number here. A mascot's eyes are ~0.3 % of the canvas: fold
+  their green into the surrounding cream and whole-frame MAE moves by hundredths, SSIM
+  not at all, `foreignColorRatio` not at all (the repaint uses a hue the crop
+  legitimately contains), ink recall not at all (green is not ink), and even
+  `paletteShortfall` reports nothing — the slot *was* spent, just on another cream.
+  Naming the colour is the only way to ask. The real product spends a whole output layer
+  on the eyes (`rgb(121,176,89)` on the Frankie capture) and we do not, which is the
+  finding the mascot's `eyes` box carries.
+
+  **`aspirations` — a bar that is measured but never red.** Alongside `thresholds`, a
+  fixture or a region may declare `aspirations` in exactly the same syntax. They are
+  evaluated every run and printed as `aspiration (not gated) — …`, and they cannot
+  change the exit code. The alternative for a target the engine does not meet today is a
+  ratchet at today's number with the real target in a comment, which stops *measuring*
+  the distance: it can then drift either way unnoticed, and the day it is finally met,
+  nobody finds out. An aspiration can therefore be set at the right value rather than at
+  a survivable one. The mascot's eye colour is the case it was built for — a known engine
+  gap with an open issue, not a regression to gate.
 
 ### The D1 viewBox question
 
