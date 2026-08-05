@@ -703,13 +703,22 @@ function polylineAreaPerimeter(points) {
  * `<g … fill="…">` start: the exemplar nests a plain `<g>` inside each fill
  * group, so matching to the next `</g>` would truncate every layer.
  */
-export function layerGeometry(svg, { curveSamples = 8 } = {}) {
+export function fillLayerChunks(svg) {
   const starts = [...svg.matchAll(/<g\b[^>]*\bfill="([^"]+)"[^>]*>/g)];
+  return starts.map((start, i) => ({
+    fill: start[1],
+    body: svg.slice(
+      start.index + start[0].length,
+      i + 1 < starts.length ? starts[i + 1].index : svg.length,
+    ),
+  }));
+}
+
+export function layerGeometry(svg, { curveSamples = 8 } = {}) {
+  const starts = fillLayerChunks(svg);
   const layers = [];
   for (let i = 0; i < starts.length; i++) {
-    const from = starts[i].index + starts[i][0].length;
-    const to = i + 1 < starts.length ? starts[i + 1].index : svg.length;
-    const chunk = svg.slice(from, to);
+    const chunk = starts[i].body;
     let area = 0;
     let perimeter = 0;
     let box = null;
@@ -752,8 +761,8 @@ export function layerGeometry(svg, { curveSamples = 8 } = {}) {
       extend(cx - r, cy - r, cx + r, cy + r);
     }
     layers.push({
-      fill: starts[i][1],
-      color: parseColor(starts[i][1]),
+      fill: starts[i].fill,
+      color: parseColor(starts[i].fill),
       area,
       perimeter,
       box,
@@ -799,6 +808,123 @@ export function layerCompactness(svg, { minCoverage = 0.01, curveSamples = 8 } =
       coverage: l.area / canvas,
       compactness: l.compactness,
     })),
+  };
+}
+
+/**
+ * Resample a CLOSED polyline at a fixed arc-length step.
+ *
+ * Wobble has to be measured at one spatial frequency or it is not a
+ * measurement: a boundary written as 400 `l` segments and the same boundary
+ * written as 12 cubics carry the same shape but wildly different node spacing,
+ * and any "sum of turns" over raw nodes just counts nodes. Walking both at the
+ * same step makes the two comparable.
+ */
+export function resampleClosed(points, step) {
+  const out = [points[0]];
+  let carry = 0;
+  for (let i = 1; i <= points.length; i++) {
+    const prev = points[i - 1];
+    const p = points[i % points.length];
+    const segLen = Math.hypot(p[0] - prev[0], p[1] - prev[1]);
+    if (segLen === 0) continue;
+    let t = 0;
+    while (carry + (segLen - t) >= step) {
+      t += step - carry;
+      const f = t / segLen;
+      out.push([prev[0] + (p[0] - prev[0]) * f, prev[1] + (p[1] - prev[1]) * f]);
+      carry = 0;
+    }
+    carry += segLen - t;
+  }
+  return out;
+}
+
+/**
+ * Boundary WOBBLE — total absolute turning per unit boundary length, averaged
+ * over the colour layers that carry the picture.
+ *
+ * `layerCompactness` asks "how much perimeter does this layer spend on the area
+ * it encloses"; it is the right global question and it cannot separate a layer
+ * that is genuinely intricate (a hand, a row of teeth) from one whose smooth
+ * outline was placed on a noisy per-pixel threshold. This asks the local
+ * question instead: walking the boundary at a fixed step, how much does the
+ * heading change per unit travelled? One smooth arc through a soft shading
+ * gradient is near-zero; a jagged mountain range through the same gradient is
+ * large, *however few sub-paths it is written in and however many of its
+ * commands are cubics*. That is what the lap-6 critique measured by hand on the
+ * belly seam and the paw pad ("a jagged mountain range in ours where the source
+ * has a soft gradient and the exemplar draws one smooth arc") and what
+ * `curveCommandRatio` 0.872 could not see: our commands ARE curves, they are
+ * just fitted to a wobble the real product never had.
+ *
+ * Scale-invariant by construction: every coordinate is divided by the drawing's
+ * own bounding-box diagonal before the walk, so the exemplar's 10x viewBox and
+ * our 1x one are measured on the same footing without guessing a scale factor.
+ * `stepFraction` (0.002 of the diagonal, ~2.7 px on the 1046x833 gold standard)
+ * sets the frequency; sub-paths shorter than `minLengthFraction` of the diagonal
+ * are skipped because a 20 px contour is all corner in either product's output.
+ */
+export function layerBoundaryWobble(
+  svg,
+  { minCoverage = 0.01, curveSamples = 16, stepFraction = 0.002, minLengthFraction = 0.02 } = {},
+) {
+  const geometry = layerGeometry(svg, { curveSamples });
+  let box = null;
+  for (const l of geometry) {
+    if (!l.box) continue;
+    box = box
+      ? [
+          Math.min(box[0], l.box[0]),
+          Math.min(box[1], l.box[1]),
+          Math.max(box[2], l.box[2]),
+          Math.max(box[3], l.box[3]),
+        ]
+      : l.box;
+  }
+  if (!box) return { mean: null, counted: 0, layers: [] };
+  const canvas = Math.max(1, (box[2] - box[0]) * (box[3] - box[1]));
+  const diagonal = Math.max(1e-9, Math.hypot(box[2] - box[0], box[3] - box[1]));
+  const chunks = fillLayerChunks(svg);
+  const measured = [];
+
+  for (let i = 0; i < chunks.length; i++) {
+    const layer = geometry[i];
+    if (!layer || layer.compactness == null || layer.area / canvas < minCoverage) continue;
+    let turning = 0;
+    let length = 0;
+    for (const d of pathDataAttributes(chunks[i].body)) {
+      for (const poly of subPathPolylines(d, curveSamples)) {
+        const norm = poly.map(([x, y]) => [x / diagonal, y / diagonal]);
+        let raw = 0;
+        for (let k = 1; k < norm.length; k++) {
+          raw += Math.hypot(norm[k][0] - norm[k - 1][0], norm[k][1] - norm[k - 1][1]);
+        }
+        if (raw < minLengthFraction) continue;
+        const walk = resampleClosed(norm, stepFraction);
+        if (walk.length < 4) continue;
+        for (let k = 0; k < walk.length; k++) {
+          const a = walk[k];
+          const b = walk[(k + 1) % walk.length];
+          const c = walk[(k + 2) % walk.length];
+          let delta =
+            Math.atan2(c[1] - b[1], c[0] - b[0]) - Math.atan2(b[1] - a[1], b[0] - a[0]);
+          while (delta > Math.PI) delta -= 2 * Math.PI;
+          while (delta < -Math.PI) delta += 2 * Math.PI;
+          turning += Math.abs(delta);
+          length += Math.hypot(b[0] - a[0], b[1] - a[1]);
+        }
+      }
+    }
+    if (length > 0) {
+      measured.push({ fill: chunks[i].fill, coverage: layer.area / canvas, wobble: turning / length });
+    }
+  }
+
+  return {
+    mean: measured.length ? measured.reduce((s, l) => s + l.wobble, 0) / measured.length : null,
+    counted: measured.length,
+    layers: measured,
   };
 }
 
@@ -915,6 +1041,11 @@ export function svgStructure(svg) {
     // Boundary raggedness of the layers that carry the picture. The number that
     // separates "clipart" from "posterized photo" (see `layerCompactness`).
     layerCompactness: layerCompactness(svg).mean,
+    // ...and the LOCAL form of the same question: turning per unit boundary
+    // length, which sees a smooth-looking curve fitted to a noisy threshold
+    // where compactness (a global perimeter/area ratio) and curveCommandRatio
+    // (which only counts command letters) both report health.
+    layerWobble: layerBoundaryWobble(svg).mean,
     nearDuplicateFillPairs: nearDuplicateFillPairs(svg),
     bytes: Buffer.byteLength(svg, 'utf8'),
   };

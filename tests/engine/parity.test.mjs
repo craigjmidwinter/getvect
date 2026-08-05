@@ -363,6 +363,63 @@ test('[B3] the colour budget is spent on colours the user can tell apart', async
   }
 });
 
+test('[B3] the fold that costs the colours is one the user can turn off', async () => {
+  /**
+   * The check above settles how MANY colours a budget has to buy. This one
+   * settles whether the customer has a say.
+   *
+   * Ask for 16 with Enhance on and 8 come back: the panel's own hint says so
+   * ("8 colours in the result — 16 were found and the cleanup settings merged
+   * the rest") and `data-shortfall` blames the settings rather than the image,
+   * which is honest. The problem is the next click. The only cleanup control
+   * that speaks about colour groups is MERGE THRESHOLD, and
+   * `src/engine/index.ts` computes
+   *
+   *     groupThreshold = max(opts.mergeThreshold, opts.enhance ? 1 : 0)
+   *
+   * so with Enhance on, dragging that control to 0 changes nothing at all —
+   * the sub-1 % fold is unreachable from the panel and the shortfall the hint
+   * attributes to "the cleanup settings" is not, in fact, a setting. Two
+   * configurations of the same request deliver 8 and 10, and no surface in the
+   * product explains why.
+   *
+   * The bar is deliberately not "16 delivered": it is that turning the control
+   * off reaches at least what turning ENHANCE off already reaches on this same
+   * image (10 groups, zero pairs inside the 32-unit halo window — measured, in
+   * `artifacts/metrics.json` under `reference-snorlax-noenhance`). Either fix
+   * satisfies it: let `mergeThreshold` override the Enhance floor, or expose
+   * the floor as its own control and make THAT one reversible. What is not
+   * allowed is a documented cleanup with no off switch.
+   */
+  const folded = await engine.vectorize(snorlaxIn, { ...S, colorCount: 16, enhance: true });
+  const unfolded = await engine.vectorize(snorlaxIn, {
+    ...S,
+    colorCount: 16,
+    enhance: true,
+    mergeThreshold: 0,
+  });
+  const enhanceOff = await engine.vectorize(snorlaxIn, { ...S, colorCount: 16, enhance: false });
+
+  assert.ok(
+    unfolded.palette.length > folded.palette.length,
+    `mergeThreshold: 0 delivered the same ${unfolded.palette.length} colours as the default fold ` +
+      `on a ${folded.sourceColors}-colour image — the control the hint blames does nothing`,
+  );
+  assert.ok(
+    unfolded.palette.length >= enhanceOff.palette.length,
+    `with the merge threshold off, Enhance still delivers ${unfolded.palette.length} colours ` +
+      `where turning Enhance off delivers ${enhanceOff.palette.length} — the user has to abandon ` +
+      'the whole cleanup bundle to get colours back',
+  );
+  // ...and the colours have to be colours. `maxNearDuplicateFills: 0` is the
+  // standing guard against buying a palette back with near-identical creams.
+  assert.equal(
+    nearDuplicateFillPairs(unfolded.svg),
+    0,
+    'the recovered colours are near-duplicates of ones already in the palette',
+  );
+});
+
 // --- B4: noise reduction / anti-aliasing ------------------------------------
 
 test('[B4] the default pipeline keeps every colour family the image has', async () => {
