@@ -271,9 +271,32 @@ export function parseSvgShapes(svg: string): ParsedSvg {
   const height = viewBox ? Number(viewBox[2]) : Number(ATTR(svg, 'height') ?? 0);
 
   const shapes: Shape[] = [];
-  const elements = svg.match(/<(rect|path)\b[^>]*\/?>/g) ?? [];
+  // `<g fill="…">` layers carry the colour for the paths inside them (that is
+  // the structure renderSvg emits, and the one the reference product emits), so
+  // the walk keeps a stack of inherited fills rather than looking at each
+  // element in isolation.
+  const groupFills: Array<string | null> = [];
+  const inherited = (): string | null => {
+    for (let i = groupFills.length - 1; i >= 0; i--) {
+      if (groupFills[i]) return groupFills[i];
+    }
+    return null;
+  };
+
+  const elements = svg.match(/<\/?(g|rect|path)\b[^>]*\/?>/g) ?? [];
   for (const el of elements) {
-    const fill = normalizeFill(ATTR(el, 'fill'));
+    if (el.startsWith('</g')) {
+      groupFills.pop();
+      continue;
+    }
+    if (el.startsWith('<g')) {
+      // A self-closing `<g/>` opens nothing.
+      if (!el.endsWith('/>')) groupFills.push(normalizeFill(ATTR(el, 'fill')));
+      continue;
+    }
+    // An explicit `fill="none"` means "not filled", not "ask the group".
+    const own = ATTR(el, 'fill');
+    const fill = own !== null ? normalizeFill(own) : inherited();
     if (!fill) continue;
     if (el.startsWith('<rect')) {
       const x = Number(ATTR(el, 'x') ?? 0);
@@ -321,6 +344,14 @@ function normalizeFill(fill: string | null): string | null {
   if (/^#[0-9a-f]{6}$/.test(trimmed)) return trimmed;
   if (/^#[0-9a-f]{3}$/.test(trimmed)) {
     return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`;
+  }
+  // `rgb(r,g,b)` is what the reference product itself writes, so accepting it lets the
+  // converters read reference exemplars as well as our own output.
+  const rgb = /^rgb\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)\s*\)$/.exec(trimmed);
+  if (rgb) {
+    const hex = (v: string) =>
+      Math.max(0, Math.min(255, Number(v))).toString(16).padStart(2, '0');
+    return `#${hex(rgb[1])}${hex(rgb[2])}${hex(rgb[3])}`;
   }
   return null;
 }

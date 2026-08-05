@@ -10,7 +10,9 @@ export interface GetVectApi {
   saveExport(payload: {
     defaultName: string;
     contents: string;
-    format: 'svg' | 'eps' | 'dxf';
+    format: 'svg' | 'eps' | 'dxf' | 'pdf' | 'png';
+    /** `base64` for binary formats (PNG); defaults to `utf8`. */
+    encoding?: 'utf8' | 'base64';
   }): Promise<{ canceled: boolean; filePath: string | null }>;
   appInfo(): Promise<{ version: string; electron: string; e2e: boolean }>;
 }
