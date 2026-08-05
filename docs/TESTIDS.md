@@ -195,13 +195,30 @@ and the un-enhanced bitmap goes to the engine so `status-text` still reaches `re
 `GETVECT_E2E=1` `aiEnhance:run` routes to a deterministic local stub in
 `src/main/aiEnhance.ts` — a fixed **256×160 four-colour PNG**, a size and palette no
 fixture has, so "the enhanced bitmap became the working image" is an assertion about the
-traced document's own `viewBox`. Two hooks, both driven through the UI: a stored key of
+traced document's own `viewBox`. Three hooks, all driven through the UI: a stored key of
 `fail-auth` / `fail-network` / `fail-timeout` / `fail-bad-response` produces that typed
-failure, and `GETVECT_AI_STUB_DELAY_MS` widens the in-flight window. The key store is
+failure, a stored key of `reply-jpeg` answers with a **192×128 JPEG** instead of a PNG,
+and `GETVECT_AI_STUB_DELAY_MS` widens the in-flight window. The key store is
 redirected to `GETVECT_AI_DIR` (a temp dir per test) and `safeStorage` is not called, so a
 test run cannot read, overwrite or delete a developer's real key. **Only the provider and
-the store's location are swapped** — the IPC hop, the timeout, the PNG decode and the
+the store's location are swapped** — the IPC hop, the timeout, the image decode and the
 fallback are the production path, exactly as with `export:save`.
+
+**The provider's image type is sniffed, never assumed.** `aiEnhance:run` resolves with
+`{ ok: true, image, mimeType }` where `mimeType` is read from the returned bytes' magic
+number (`image/png` | `image/jpeg` | `image/webp`) and the renderer builds its `Blob` from
+it. This is not defensive dressing: `gemini-2.5-flash-image` (the `fast` tier) answers
+PNG and `gemini-3-pro-image-preview` (the `best` tier) answers **JPEG**, so a PNG-only
+check failed 100% of Best runs — the `reply-jpeg` hook above exists so that can never
+again be invisible to the suite. A consequence worth knowing: JPEG has no alpha, so a
+`transparent: true` request answered by the pro tier comes back flattened.
+
+**An undecryptable key is not a saved key.** `aiEnhance:hasKey` decrypts rather than
+checking for bytes on disk. `safeStorage` encrypts against an OS secret named after the
+application, so renaming the app (or moving the home directory to a new machine) leaves
+readable ciphertext that no longer opens — and answering "yes" there produces a "Key
+saved" label over an armed switch that fails on every run. `ai-key-status` therefore says
+`data-has-key="false"` in that state and the fix is to save the key again.
 
 ### Result styles (B6)
 
