@@ -310,6 +310,87 @@ test('[B5] circle detection finds every circular contour, not just the outermost
   );
 });
 
+test('[B5] circle detection works at every size, not just the big obvious one', async () => {
+  /**
+   * "Is this a feature or a demo?" is answered by scale, not by one hit: a
+   * detector tuned to one radius, or one that only fires on the biggest shape
+   * in the picture, is a demo. Six discs spanning a 10× range of radii are
+   * traced in one pass here, and every one of them has to come back as a
+   * `<circle>` with the radius and centre it was drawn at (within the fit
+   * tolerance), not merely as "some circles were found".
+   */
+  const radii = [4, 6, 10, 16, 24, 40];
+  const width = 640;
+  const height = 160;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const put = (x, y, [r, g, b]) => {
+    const i = (y * width + x) * 4;
+    data[i] = r;
+    data[i + 1] = g;
+    data[i + 2] = b;
+    data[i + 3] = 255;
+  };
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) put(x, y, [242, 239, 230]);
+  const centres = radii.map((r, i) => ({ r, cx: 60 + i * 100, cy: 80 }));
+  for (const { r, cx, cy } of centres) {
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const dx = x + 0.5 - cx;
+        const dy = y + 0.5 - cy;
+        if (dx * dx + dy * dy <= r * r) put(x, y, [27, 58, 92]);
+      }
+    }
+  }
+
+  const on = await run({ width, height, data }, { circleDetection: true });
+  const found = [...on.svg.matchAll(/<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)"/g)].map(
+    (m) => ({ cx: Number(m[1]), cy: Number(m[2]), r: Number(m[3]) }),
+  );
+  for (const want of centres) {
+    const hit = found.find((c) => Math.hypot(c.cx - want.cx, c.cy - want.cy) < 2);
+    assert.ok(
+      hit,
+      `the r=${want.r} disc at (${want.cx},${want.cy}) was not recognised as a circle — ` +
+        `found ${JSON.stringify(found)}`,
+    );
+    assert.ok(
+      Math.abs(hit.r - want.r) <= 1.5,
+      `the r=${want.r} disc came back as r=${hit.r} — the snapped circle is not the drawn one`,
+    );
+  }
+});
+
+test('[B5] circle detection does not round off shapes that are not circles', async () => {
+  /**
+   * The other half of the feature, and the half a keen detector gets wrong:
+   * `logo-flat-512.png` has exactly ONE circular shape — the ink ring, whose
+   * two edges collapse into a single stroked `<circle>`. Its navy disc looks
+   * round in a thumbnail but the green bar is painted across the bottom of it
+   * and the orange triangle sits inside it, so its contour is a truncated disc
+   * (`scripts/generate-fixtures.mjs` draws it that way deliberately). Snapping
+   * that to a circle would repaint the artwork, so "1 circle here" is the
+   * correct reading of this fixture, and this test pins it — including the
+   * ring's measured geometry, so a detector that finds a circle in the wrong
+   * place cannot pass by counting.
+   */
+  const on = await run(flat, { circleDetection: true });
+  const circles = [...on.svg.matchAll(/<circle[^>]*>/g)].map((m) => m[0]);
+  assert.equal(
+    circles.length,
+    1,
+    `expected exactly the ink ring; got ${circles.length}:\n${circles.join('\n')}`,
+  );
+  const [, cx, cy, r, strokeWidth] =
+    /<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)"[^>]*stroke-width="([\d.]+)"/.exec(
+      circles[0],
+    ) ?? [];
+  assert.ok(strokeWidth, `the ring must be a stroked circle, not a filled one: ${circles[0]}`);
+  // Drawn as ring(256, 232, outer 190, inner 172): mid-radius 181, width 18.
+  assert.ok(Math.abs(Number(cx) - 256) < 2 && Math.abs(Number(cy) - 232) < 2, `centre ${cx},${cy}`);
+  assert.ok(Math.abs(Number(r) - 181) < 2, `mid-radius ${r}, expected ~181`);
+  assert.ok(Math.abs(Number(strokeWidth) - 18) < 2, `ring width ${strokeWidth}, expected ~18`);
+});
+
 /**
  * 512x256 of flat artwork whose every shape boundary is exactly circular, drawn
  * without antialiasing so the contours are exact:

@@ -11,6 +11,7 @@ npm start          # build + launch the app
 npm test           # acceptance suite (red by design until features land)
 npm run instruments   # fidelity metrics -> artifacts/metrics.json
 npm run screenshots   # flow screenshots -> artifacts/screenshots/
+npm run docs:screenshots # the README's three screenshots -> docs/assets/
 ```
 
 ## npm scripts
@@ -30,6 +31,7 @@ npm run screenshots   # flow screenshots -> artifacts/screenshots/
 | `npm run instruments` | Measures the app engine on every fixture. |
 | `npm run instruments:selftest` | Measures the naive `instruments/reference-engine.mjs` instead — proves the measurement chain itself works. |
 | `npm run screenshots` | Drives the app through load → vectorize → settings → export, capturing labelled PNGs. |
+| `npm run docs:screenshots` | Re-captures the three screenshots README.md embeds, so the public shots cannot drift from the app. |
 | `npm run clean` | Removes `dist/`, `test-results/`, `playwright-report/`. |
 
 Useful environment variables:
@@ -66,7 +68,7 @@ title is prefixed with its REFERENCE.md checklist id:
 | `tests/e2e/q-decode-parity.spec.ts` | **quality-bar** a transparent PNG exports without an invented background · the app's exported SVG equals `engine.vectorize()` run headlessly on the same file (byte-identical on the flat fixture, structurally on the gold-standard one) |
 | `tests/e2e/a2-decode-failure.spec.ts` | **A2** a file that decodes to nothing leaves no `image-list-item`, does not poison the workspace, and does not leave a stale `export-size` |
 | `tests/e2e/c2-resize-fit.spec.ts` | **C2** shrinking the window re-fits the preview; a zoom the user chose survives a resize |
-| `tests/e2e/b-controls-affordance.spec.ts` | **B2** Drawing disables the colour controls it cannot use · **B3** `merge-threshold` / `color-sort` / the first `color-group-toggle` are on screen at the default window size, colour-count hint is not clipped |
+| `tests/e2e/b-controls-affordance.spec.ts` | **B2** Drawing disables the colour controls it cannot use · **B3** `merge-threshold` / `color-sort` / the first `color-group-toggle` are on screen at the default window size, none of the colour controls is clipped by a scrolling ancestor at an 18-colour palette, nothing inside the panel is hidden by unscrollable overflow at the app's 900x640 minimum, colour-count hint is not clipped |
 | `tests/e2e/b3-palette-state.spec.ts` | **B3** the colour-count hint attributes the shortfall to the image or to the settings (`data-shortfall`), and never blames the image for our own fold · **B3** `palette-auto-button` restores the palette and the candidate size the edit replaced |
 
 Selectors are `data-testid` only. The full DOM contract is
