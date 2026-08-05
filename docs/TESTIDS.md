@@ -88,7 +88,7 @@ never saw.
 | `progress-indicator` | spinner / bar | Visible while `data-status` is `loading` or `vectorizing`; hidden otherwise. **Required:** `data-progress` in `0..1`. |
 | `settings-panel` | container | Visible when an image is selected. |
 | `color-count` | `<input type="range">` | min 2, max 64, integer step. |
-| `color-count-hint` | label next to it | **Required:** `data-requested` (slider value) and `data-actual` (`result.palette.length`), and text naming the actual number. The image often has fewer colours than the slider asks for; the control and the result must not silently disagree. |
+| `color-count-hint` | label next to it | **Required:** `data-requested` (slider value), `data-actual` (`result.palette.length`), `data-shortfall` ∈ `none` \| `image` \| `settings`, and text naming the actual number. The image often has fewer colours than the slider asks for; the control and the result must not silently disagree — **and the hint must name the right culprit.** `image` = the pre-merge histogram genuinely had fewer distinct clusters than requested (a six-colour logo has six colours however far right you drag). `settings` = the shortfall came from our own fold (Enhance's <1 % colour-group merge, `merge-threshold`), in which case the text must not blame the image: the gold standard reads "10 colours in the result — the image has no more to give" at 16 colours with Enhance on, while the same image at the same 16 colours with Enhance off returns a full 16. |
 | `detail` | `<input type="range">` | min 0, max 100. |
 | `smoothing` | `<input type="range">` | min 0, max 100. |
 | `despeckle` | `<input type="range">` | min 0, max 100. |
@@ -141,7 +141,7 @@ matching that exactly is optional, disabling the dead ones is not.)
 | testid | element | required attributes / behaviour |
 | --- | --- | --- |
 | `noise-reduction` | `<select>` | Option values `off`, `low`, `high`. Each step must not increase the sub-path count. |
-| `anti-aliasing` | `<select>` | Option values `off`, `smart`, `mid`. `smart` must not leave more near-duplicate colour layers (RGB distance ≤ 24 between two `<g fill>` layers) than `off` — those are the halo layers antialiased sources produce. |
+| `anti-aliasing` | `<select>` | Option values `off`, `smart`, `mid`. `smart` must not leave more near-duplicate colour layers (RGB distance ≤ 32 between two `<g fill>` layers) than `off` — those are the halo layers antialiased sources produce. **The control must not lie under Enhance:** with `enhance` on, `off` and `smart` currently produce byte-identical documents because the Enhance bundle forces smart AA and ignores the setting. Either the explicit value wins, or the select is forced to `smart` and `disabled` while Enhance is on, the way the Drawing preset already disables the colour controls it cannot use. |
 
 Enhance must never introduce a colour the source does not contain (asserted against
 the flat fixture's exactly six colours).
@@ -162,7 +162,7 @@ the flat fixture's exactly six colours).
 | `palette-merge-target` | `<select>` | Options = the other palette entries; option `value` = target index. |
 | `palette-merge-button` | button | Merges selected swatch into `palette-merge-target`. Palette size drops by one. |
 | `palette-remove-button` | button | Removes the selected swatch. Palette size drops by one and the removed colour must no longer appear in the SVG. |
-| `palette-auto-button` | button | Optional; present only while the palette has been hand-edited. Clears `settings.palette` so the engine recomputes the palette from the image. |
+| `palette-auto-button` | button | Optional; present only while the palette has been hand-edited. Discards the edits and **restores the palette the edit replaced** — the last auto-computed palette *and* the candidate size that produced it. Clearing `settings.palette` alone is not enough: editing a swatch rewrites `colorCount` to the palette length, so a plain recompute lands somewhere new (16 → palette 10 → recolour → Auto → palette 8, with the `16` chip no longer `aria-checked` and no way back to the result the user was looking at). |
 | `palette-size-option` | one per candidate palette | **Required:** `data-size`. Exactly the eleven sizes the reference product offers, in order: 1, 2, 3, 4, 5, 6, 8, 12, 15, 16, 18. Selecting one drives `colorCount`. |
 
 ### Output colour groups (B3)
@@ -179,6 +179,15 @@ the flat fixture's exactly six colours).
 inside the viewport without scrolling, and `color-count-hint` must render its text
 without clipping (`scrollWidth`/`scrollHeight` within its client box). What scrolls
 inside the panel is the colour-group checkbox list, not the knobs that operate on it.
+
+**…and the list has to start above the fold.** B3's headline behaviour is "disable the
+background colour to get a transparent background", and the control that does it is a
+`color-group-toggle`. Measured live, the first toggle's box was `y=835 h=13` in an
+828 px viewport — the whole OUTPUT COLOURS list was off screen, so the feature was
+reachable only by a user who already knew to scroll for it. **At least the first
+`color-group-toggle` must be fully inside the viewport at the default window size.**
+Give the column its own scroll container with the list above the fold, or shrink the
+input-palette block above it.
 
 The palette editor and colour groups must not crowd out the artwork: at the app's
 minimum window size with a 64-colour palette, `settings-panel` must stay under 45 % of
@@ -214,7 +223,8 @@ the path count — denoising should simplify, not complicate.
 | `preview-side-by-side` | button | Sets `data-mode="side-by-side"`; both views visible. |
 | `zoom-in` / `zoom-out` / `zoom-fit` | buttons | Change zoom. `zoom-fit` must be idempotent and return the same value each time. |
 | `zoom-level` | label | **Required:** `data-zoom`, a number where `1` = 100%. |
-| `pan-state` | any element (may be the pane itself) | **Required:** `data-pan-x`, `data-pan-y` in image pixels. Must change when the user drags in `preview-pane` while zoomed in. |
+| `pan-state` | any element (may be the pane itself) | **Required:** `data-pan-x`, `data-pan-y` in image pixels. Must change when the user drags in `preview-pane` while zoomed in. Renders **no text** while `status-text` is `idle`: a bare "0, 0" in the header of an app with no image loaded is a coordinate for a thing that does not exist. |
+| `preview-view-label` | corner badge inside each view | The ORIGINAL / VECTOR tag, one per view. Must be fully inside its own view's bounding box in every mode — in side-by-side both badges were drawn cut off mid-glyph at the pane edge. Above the image layer (`z-index`), inset from the border. |
 | `preview-busy` | busy overlay | Shown while a trace is in flight. Must be **outside** the zoom/pan-transformed stage: its centre stays within 12 px of `preview-pane`'s centre at any zoom. |
 
 ### Viewer behaviour (C1/C2)

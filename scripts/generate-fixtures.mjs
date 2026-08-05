@@ -510,10 +510,26 @@ async function main() {
         distinctColors: null,
         settings: { colorCount: 16, enhance: true },
         exemplar: 'reference/snorlax.svg',
+        // The face: both eyes, both fangs and the mouth curve. 8 % of the
+        // canvas and all of the meaning — the region a blind A/B is decided on
+        // and the one every whole-frame score averages away.
+        salientRegion: { x: 300, y: 200, width: 360, height: 200 },
         thresholds: {
           meanColorError: 7,
           ssim: 0.9,
           minInkRecall: 0.94,
+          // Same image, Enhance off + Smart AA, scores 0.965 here, so this is
+          // not a bar the tracer cannot reach — it is the bar the Enhance
+          // bundle currently fails while every global gate passes.
+          minRegionInkRecall: 0.93,
+          // Now that an exemplar is rasterized from its content box instead of
+          // its declared viewBox (docs/HARNESS.md), the fidelity half of the
+          // A/B is a real number: the exemplar scores MAE 13.50 here, so "no
+          // worse than the real product" is a bar rather than a formality.
+          maxMeanColorErrorRatio: 1,
+          // D3: the DXF has to carry the curve fitting the SVG paid for.
+          minDxfSplines: 1,
+          maxDxfEpsBytesRatio: 3,
           // 32.5% of this artwork is transparent. The real product's output for
           // it has a white/transparent background; painting it opaque is the
           // blocker this gate names.
@@ -523,7 +539,11 @@ async function main() {
           maxBytesRatio: 5,
           maxTinySubPathRatio: 0.02,
           minCurveCommandRatio: 0.5,
-          maxNearDuplicateFills: 4,
+          // The exemplar's own eight layers are never closer than 37 RGB units
+          // apart. Ours emits pairs at 26.6 and 27.0 — the mottled two-cream
+          // patchwork across the belly — which the old 24-unit window could not
+          // see and a budget of 4 would have forgiven anyway.
+          maxNearDuplicateFills: 0,
           maxMs: 10000,
         },
         note:
@@ -532,6 +552,47 @@ async function main() {
           'records Smart anti-aliasing and Enhance on; our Enhance bundles that same cleanup). ' +
           'It anchors ECONOMY (paths/sub-paths/bytes/curve ratio); fidelity is gated absolutely ' +
           'here and relatively in reference-snorlax-6c.',
+      },
+      {
+        // The configuration a user actually gets. Every exemplar gate above
+        // runs at `enhance: true`, because that is the setting the captured
+        // output corresponds to — which left the DEFAULT (Enhance off) path
+        // completely ungated, and it is 13x the exemplar's bytes and 27x its
+        // sub-paths: 405 KB and 1747 shapes against 31 KB and 65. The limits
+        // here are deliberately looser than the enhance-on ones and still far
+        // inside what the engine has been measured doing: the same fixture with
+        // Smart anti-aliasing alone lands at 5.3x bytes / 9.3x sub-paths, so
+        // this is a bar an honest default reaches without the Enhance bundle.
+        id: 'reference-snorlax-noenhance',
+        file: 'reference/snorlax.png',
+        kind: 'clipart',
+        format: 'png',
+        width: 1046,
+        height: 833,
+        supported: true,
+        distinctColors: null,
+        settings: { colorCount: 16, enhance: false },
+        exemplar: 'reference/snorlax.svg',
+        salientRegion: { x: 300, y: 200, width: 360, height: 200 },
+        thresholds: {
+          meanColorError: 7,
+          ssim: 0.9,
+          minInkRecall: 0.92,
+          minRegionInkRecall: 0.9,
+          maxMeanColorErrorRatio: 1,
+          maxTransparentAreaColorError: 8,
+          maxBytesRatio: 8,
+          maxSubPathRatio: 12,
+          maxPathRatio: 3,
+          maxTinySubPathRatio: 0.02,
+          minCurveCommandRatio: 0.5,
+          maxMs: 10000,
+        },
+        note:
+          'REFERENCE economy at the DEFAULT quality settings (Enhance off), which no other ' +
+          'exemplar gate covers. Looser ratios than reference-snorlax on purpose — the point ' +
+          'is that the out-of-the-box configuration is measured at all, not that it matches a ' +
+          'run with every cleanup on.',
       },
       {
         // The DOM-extracted Clipart / 6-colour / Minimum Area 90px² output is
