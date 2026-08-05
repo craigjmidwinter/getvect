@@ -68,6 +68,9 @@
           <img class="mascot" src="assets/frankie-mascot.png"
                alt="Frankie, the GetVect mascot: an orange tabby cat sitting in a loaf, drawn as a die-cut sticker with a white border"
                width="300" height="231">
+          <p class="art-note">Frankie is the maintainer's cat; the mascot artwork was generated
+            with an image model from a photo of him, then hand-corrected for coat colour and
+            markings.</p>
         </div>
       </div>
     </div>
@@ -81,7 +84,8 @@
       <p class="lede">
         Same cat, twice. On the left, the source PNG — real pixels, and at 16× they are all
         you get. On the right, the SVG GetVect traced from it: curve-fitted outlines that stay
-        sharp at any magnification. Drag the divider, then change the zoom.
+        sharp at any magnification. Drag the divider, change the zoom, then drag the picture
+        itself to go looking somewhere else.
       </p>
 
       <div class="demo">
@@ -109,8 +113,11 @@
             <button type="button" data-z="4" aria-pressed="false">4×</button>
             <button type="button" data-z="16" aria-pressed="false">16×</button>
           </div>
-          <span class="demo-hint">Drag the divider · arrow keys work too</span>
+          <span class="demo-hint">Drag the divider · drag the picture to pan when zoomed · arrow keys do both</span>
         </div>
+
+        <p class="demo-note"><strong>This trace is the local engine alone.</strong> AI Enhance was
+          off, nothing was uploaded, and no model touched the image before or after it.</p>
       </div>
 
       <ul class="readout">
@@ -123,12 +130,21 @@
       <p style="margin-top:1.5rem">
         Frankie is both the mascot and the demo fixture. Traced at 8 colours with Smart
         anti-aliasing, his 568 KB raster becomes a 19 KB SVG in 7 colour layers and 59 shapes,
-        with the transparent background preserved. The same source through the reference product comes
-        back 21.7 KB in 40 paths — fewer shapes than ours, in more bytes, at settings where their
-        Enhance hands their tracer already-flattened art and ours is off. We publish both numbers
-        either way, because it is a
+        with the transparent background preserved. The same source through a leading web
+        vectorizer comes back 21.7 KB in 40 paths — fewer shapes than ours, in more bytes, at
+        settings where their AI step hands their tracer already-flattened art and ours is off. We
+        publish both numbers either way, because it is a
         <a href="https://github.com/craigjmidwinter/getvect/blob/main/docs/HARNESS.md">checked-in
         exemplar the test harness measures against on every run</a>, not a claim.
+      </p>
+
+      <p>
+        Being honest about the fixture: flat, sticker-style art like Frankie is favourable input
+        for a tracer — hard edges, few colours, nothing to guess at. That is why the acceptance
+        fixtures do not stop there. <code>logo-noisy</code>, <code>photo-gradient</code> and
+        <code>spikes-bands</code> are in the same suite specifically because they are noisy,
+        photographic and synthetically adversarial, and they are measured on every run alongside
+        the easy one.
       </p>
     </div>
   </section>
@@ -223,10 +239,11 @@
       <p class="eyebrow">AI Enhance — optional, bring your own key</p>
       <h2>Their best trick, running on your tracer.</h2>
       <p class="lede">
-        the reference product's "Enhance with AI" turned out not to be a filter at all. It is a
-        generative image-to-image <strong>re-illustration</strong> — background removed, soft
-        shading flattened into bands, outlines redrawn at even weight — after which their tracer
-        is tracing art that is already flat. That is most of its advantage on shaded artwork,
+        The "enhance with AI" toggle on the web vectorizer we benchmark against turned out not to
+        be a filter at all. It is a generative image-to-image <strong>re-illustration</strong> —
+        background removed, soft shading flattened into bands, outlines redrawn at even weight —
+        after which their tracer is tracing art that is already flat. That is most of its
+        advantage on shaded artwork,
         and no amount of median filtering reproduces it.
       </p>
       <p class="lede">
@@ -262,7 +279,7 @@
   <section id="built">
     <div class="wrap">
       <p class="eyebrow">How it was built</p>
-      <h2>A pit crew gauntlet, graded against the real product.</h2>
+      <h2>A pit crew gauntlet, graded against a shipping product.</h2>
       <p class="lede">
         GetVect was written almost entirely by a multi-agent loop where three roles take turns on
         one repo. <strong>Builders</strong> implement a slice at a time. <strong>Critics</strong>
@@ -271,8 +288,8 @@
         loop's speed limit is measurement, not intelligence.
       </p>
       <p class="lede">
-        The biggest correction came from refusing to grade against adjectives. "Matches
-        the reference product" doesn't fail CI — so the real product got driven live in a browser, its
+        The biggest correction came from refusing to grade against adjectives. "As good as the
+        web tools" doesn't fail CI — so a shipping web vectorizer got driven live in a browser, its
         output read at a dozen settings combinations, and those outputs checked in as exemplars
         with fully-known parameters. That recon rewrote the spec and surfaced the finding the
         engine now revolves around: <strong>Smart anti-aliasing collapses path count by ~81% at
