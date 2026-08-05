@@ -38,15 +38,15 @@ harness measures us against it on every run — including where it wins.
 
 ## Before / after
 
-![Frankie the cat: 573 KB PNG at 200% zoom next to the 31 KB SVG GetVect traced from it](docs/assets/frankie-before-after.png)
+![Frankie the cat: 568 KB PNG at 200% zoom next to the 19 KB SVG GetVect traced from it](docs/assets/frankie-before-after.png)
 
 Frankie is our mascot and our demo fixture. Traced at 8 colours with Smart anti-aliasing,
-a 573 KB raster becomes a **31 KB SVG in 7 colour layers and 158 shapes** — curve-fitted
+a 568 KB raster becomes a **19 KB SVG in 7 colour layers and 59 shapes** — curve-fitted
 outlines, transparent background preserved, and infinitely re-scalable. The same source
-through the real the reference product comes back 21.7 KB in 40 paths: **smaller than ours on this
-drawing**, at settings where their Enhance is a generative flatten and ours is switched
-off. That number is checked in and measured on every run, so it is reported here the same
-way it would be if it went the other way. The full output is
+through the real the reference product comes back 21.7 KB in 40 paths: **fewer shapes than ours,
+in more bytes**, at settings where their Enhance is a generative flatten and ours is
+switched off. Both halves of that are checked in and measured on every run, so they are
+reported here the same way they would be if they went the other way. The full output is
 [`docs/assets/frankie-vector.svg`](docs/assets/frankie-vector.svg); the source and the
 reference exemplar live in [`fixtures/reference/`](fixtures/reference/).
 
