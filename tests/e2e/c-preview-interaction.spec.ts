@@ -176,6 +176,80 @@ test('[C1] the preview chrome reads cleanly: no stray pan readout, no clipped ba
   }
 });
 
+test('[C1] the ORIGINAL / VECTOR badges stay readable over light artwork', async ({ page }) => {
+  /**
+   * The badges are only legible where they happen to sit over a dark part of
+   * the preview. Sampled on `artifacts/screenshots/18-preview-side-by-side.png`
+   * the chip reads luma ~20 with ~155 text where it overlaps the pane
+   * background, and luma ~155 with ~160-180 text where it overlaps the cream
+   * artwork — about 1.1:1, at which point the label is gone. Nobody caught it
+   * because the fixture the shots are taken on happens to be dark.
+   *
+   * The chip's background is translucent, so the worst case is a *white*
+   * preview: composite the badge's own background over white and ask whether
+   * its text still has 3:1 contrast — the WCAG bar for large text, and the
+   * least a corner label can be held to. Raising the chip's alpha, or giving it
+   * an opaque backdrop, satisfies this; a text-shadow alone does not, and is
+   * not what "readable over any artwork" means when the artwork can be the same
+   * colour as the shadow.
+   */
+  await loadViaPicker(page, FIXTURE.flat512);
+  await waitForReady(page);
+  await page.locator(tid(TESTIDS.previewSideBySide)).click();
+  await expect(page.locator(tid(TESTIDS.previewPane))).toHaveAttribute('data-mode', 'side-by-side');
+
+  for (const id of [TESTIDS.previewOriginal, TESTIDS.previewVector]) {
+    const measured = await page
+      .locator(`${tid(id)} ${tid(TESTIDS.previewViewLabel)}`)
+      .first()
+      .evaluate((el) => {
+        const parse = (value: string) => {
+          const m = /rgba?\(([^)]+)\)/.exec(value);
+          if (!m) return null;
+          const parts = m[1].split(',').map((p) => parseFloat(p.trim()));
+          return { r: parts[0], g: parts[1], b: parts[2], a: parts[3] ?? 1 };
+        };
+        const style = getComputedStyle(el);
+        const bg = parse(style.backgroundColor) ?? { r: 255, g: 255, b: 255, a: 0 };
+        const fg = parse(style.color) ?? { r: 0, g: 0, b: 0, a: 1 };
+        // Worst case: the artwork under the chip is white. Composite the chip
+        // over white, then the text over the chip.
+        type Rgb = { r: number; g: number; b: number };
+        const over = (c: { r: number; g: number; b: number; a: number }, base: Rgb): Rgb => ({
+          r: c.r * c.a + base.r * (1 - c.a),
+          g: c.g * c.a + base.g * (1 - c.a),
+          b: c.b * c.a + base.b * (1 - c.a),
+        });
+        const lum = (c: Rgb) => {
+          const ch = (v: number) => {
+            const s = v / 255;
+            return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+          };
+          return 0.2126 * ch(c.r) + 0.7152 * ch(c.g) + 0.0722 * ch(c.b);
+        };
+        const chip = over(bg, { r: 255, g: 255, b: 255 });
+        const text = over(fg, chip);
+        const l1 = lum(chip);
+        const l2 = lum(text);
+        const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+        return {
+          backgroundColor: style.backgroundColor,
+          color: style.color,
+          backdropFilter: style.backdropFilter ?? 'none',
+          alpha: bg.a,
+          ratio,
+        };
+      });
+
+    expect(
+      measured.ratio,
+      `${id}: the badge (${measured.backgroundColor} chip, ${measured.color} text) has ` +
+        `${measured.ratio.toFixed(2)}:1 contrast once its background is composited over a white ` +
+        'preview — over light artwork the label disappears',
+    ).toBeGreaterThanOrEqual(3);
+  }
+});
+
 test('[C2] the grab cursor only appears when there is somewhere to pan', async ({ page }) => {
   // A grab cursor at Fit invites a drag whose only possible effect is to push
   // the artwork away — the affordance has to follow the geometry.
