@@ -12,7 +12,8 @@
  *   3. rasterizes the produced SVG back to the SOURCE dimensions with resvg,
  *   4. measures mean/RMS colour error, SSIM, mismatch ratio, per-colour area
  *      drift, ink recall (loose AND strict), ink-component continuity, per-layer
- *      boundary compactness, palette shortfall, path AND sub-path counts, speck
+ *      boundary compactness, foreign-colour leak inside the salient regions,
+ *      palette shortfall, path AND sub-path counts, speck
  *      ratio, curve-command ratio, near-duplicate colour layers, SVG byte size
  *      and wall-clock ms,
  *   5. compares each against the fixture's thresholds (fixtures/manifest.json,
@@ -47,6 +48,7 @@ import { rasterizeExemplarContent, rasterizeSvg } from './lib/render.mjs';
 import {
   alphaMask,
   cropRegion,
+  foreignColorRatio,
   inkComponentRatio,
   inkRecall,
   layerCompactness,
@@ -150,6 +152,11 @@ const GATES = [
   // WORST region so adding a box can only tighten a fixture.
   ['minRegionInkRecall', 'regionInkRecall', 'min', (v) => v.toFixed(4)],
   ['maxRegionMeanColorError', 'regionMeanColorError', 'max', (v) => v.toFixed(2)],
+  // Colour LEAK, not colour distance: the share of a crop painted a hue the
+  // source crop does not contain at all. Teal specks inside a cream face move
+  // MAE by hundredths and SSIM by nothing, and are the first thing a person
+  // names (metrics.mjs `foreignColorRatio`).
+  ['maxRegionForeignColorRatio', 'regionForeignColorRatio', 'max', (v) => `${(v * 100).toFixed(2)}%`],
   ['minRegionSsim', 'regionSsim', 'min', (v) => v.toFixed(4)],
   // Continuity, not just survival. `inkRecall` accepts anything darker than 128,
   // so a contour thinned to a grey smear or broken into dashes still scores ~1;
@@ -182,15 +189,38 @@ const GATES = [
   ['maxMeanColorErrorRatio', 'exemplarMeanColorErrorRatio', 'max', (v) => `${v.toFixed(2)}x`],
 ];
 
-function checkThresholds(m, t) {
+/**
+ * Gates a fixture may hang on ONE named region instead of on the worst one.
+ *
+ * The aggregate `maxRegionMeanColorError` reads the worst crop, which is the
+ * right default (adding a box can only tighten a fixture) and the wrong tool
+ * when two crops deserve different numbers: on the gold standard at
+ * DEFAULT_SETTINGS the paw-pad bar is 22 because the real product's own
+ * six-colour output scores 21.89 there, while the face has to be held at the
+ * exemplar's 19.13 and at ~0 colour leak. One aggregate number cannot say both,
+ * and the old way to say the stricter one — raise the aggregate — would have
+ * failed the paw for the face's sake and taught nobody anything.
+ */
+const REGION_GATES = [
+  ['maxMeanColorError', 'meanColorError', 'max', (v) => v.toFixed(2)],
+  ['minSsim', 'ssim', 'min', (v) => v.toFixed(4)],
+  ['minInkRecall', 'inkRecall', 'min', (v) => v.toFixed(4)],
+  ['minStrictInkRecall', 'strictInkRecall', 'min', (v) => v.toFixed(4)],
+  ['maxInkComponentRatio', 'inkComponentRatio', 'max', (v) => `${v.toFixed(2)}x`],
+  ['maxForeignColorRatio', 'foreignColorRatio', 'max', (v) => `${(v * 100).toFixed(2)}%`],
+];
+
+function checkThresholds(m, t, gates = GATES) {
   if (!t) return [];
   const failures = [];
-  for (const [key, metric, dir, fmtV] of GATES) {
+  for (const [key, metric, dir, fmtV] of gates) {
     const limit = t[key];
     const value = m[metric];
     if (limit == null || value == null || !Number.isFinite(value)) continue;
     if (dir === 'max' ? value > limit : value < limit) {
-      failures.push(`${metric} ${fmtV(value)} ${dir === 'max' ? '>' : '<'} ${limit}`);
+      // The limit goes through the metric's own formatter too, so a ratio bar
+      // reads "0.50% > 0.05%" rather than "0.50% > 0.0005".
+      failures.push(`${metric} ${fmtV(value)} ${dir === 'max' ? '>' : '<'} ${fmtV(limit)}`);
     }
   }
   return failures;
@@ -220,6 +250,19 @@ function table(rows) {
     // mean boundary raggedness of the colour layers.
     ['sInk', (r) => fmt(r.metrics?.regionStrictInkRecall ?? r.metrics?.strictInkRecall, 3), 6],
     ['cmpct', (r) => fmt(r.metrics?.layerCompactness, 2), 6],
+    // Worst region's foreign-colour leak, as a percentage of the crop: a
+    // colour the source crop does not contain, painted into it.
+    [
+      'leak%',
+      (r) =>
+        fmt(
+          r.metrics?.regionForeignColorRatio != null
+            ? r.metrics.regionForeignColorRatio * 100
+            : null,
+          2,
+        ),
+      6,
+    ],
     ['SVG KB', (r) => fmt(r.metrics ? r.metrics.svgBytes / 1024 : null, 1), 8],
     ['ms', (r) => fmt(r.metrics?.wallClockMs, 0), 6],
   ];
@@ -280,6 +323,7 @@ async function main() {
             inkRecall: inkRecall(a, b),
             strictInkRecall: strictInkRecall(a, b),
             meanColorError: meanColorError(a, b),
+            foreignColorRatio: foreignColorRatio(a, b),
           };
         }),
       };
@@ -481,6 +525,9 @@ async function main() {
           inkComponentRatio: inkComponentRatio(refRegion, outRegion),
           meanColorError: meanColorError(refRegion, outRegion),
           ssim: ssim(refRegion, outRegion),
+          // "Is there a colour in here that is not in the picture?" — see the
+          // GATES note on maxRegionForeignColorRatio.
+          foreignColorRatio: foreignColorRatio(refRegion, outRegion),
         });
         const crop = join(
           artifactsDir,
@@ -507,6 +554,7 @@ async function main() {
       metrics.regionInkComponentRatio = worst('inkComponentRatio', 'max');
       metrics.regionMeanColorError = worst('meanColorError', 'max');
       metrics.regionSsim = worst('ssim', 'min');
+      metrics.regionForeignColorRatio = worst('foreignColorRatio', 'max');
     }
 
     /**
@@ -554,6 +602,7 @@ async function main() {
             r.exemplarInkRecall = e.inkRecall;
             r.exemplarStrictInkRecall = e.strictInkRecall;
             r.exemplarMeanColorError = e.meanColorError;
+            r.exemplarForeignColorRatio = e.foreignColorRatio;
             r.inkRecallRatio = r.inkRecall / Math.max(0.01, e.inkRecall);
             r.strictInkRecallRatio = r.strictInkRecall / Math.max(0.01, e.strictInkRecall);
           }
@@ -573,6 +622,14 @@ async function main() {
     }
 
     const failures = checkThresholds(metrics, fixture.thresholds);
+    // ...plus whatever a single named crop pins for itself (REGION_GATES).
+    for (const [i, region] of (metrics.regions ?? []).entries()) {
+      const own = regions[i]?.thresholds;
+      if (!own) continue;
+      for (const f of checkThresholds(region, own, REGION_GATES)) {
+        failures.push(`region "${region.name}" ${f}`);
+      }
+    }
     if (failures.length) failed++;
     results.push({
       id: fixture.id,
@@ -637,7 +694,11 @@ async function main() {
           (region.exemplarMeanColorError != null
             ? ` vs ${fmt(region.exemplarMeanColorError)}`
             : '') +
-          `, SSIM ${fmt(region.ssim, 4)}, ink components ${fmt(region.inkComponentRatio, 2)}x source`,
+          `, SSIM ${fmt(region.ssim, 4)}, ink components ${fmt(region.inkComponentRatio, 2)}x source` +
+          `, foreign colour ${fmt((region.foreignColorRatio ?? 0) * 100, 2)}%` +
+          (region.exemplarForeignColorRatio != null
+            ? ` vs ${fmt(region.exemplarForeignColorRatio * 100, 2)}%`
+            : ''),
       );
     }
     if (r.metrics?.paletteShortfall > 0) {

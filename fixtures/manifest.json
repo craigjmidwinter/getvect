@@ -165,6 +165,16 @@
           "height": 200
         },
         {
+          "name": "muzzle",
+          "x": 420,
+          "y": 290,
+          "width": 220,
+          "height": 90,
+          "thresholds": {
+            "maxForeignColorRatio": 0.0005
+          }
+        },
+        {
           "name": "paw-pad",
           "x": 60,
           "y": 670,
@@ -177,7 +187,7 @@
         "ssim": 0.9,
         "minInkRecall": 0.94,
         "minRegionStrictInkRecallRatio": 0.98,
-        "maxLayerCompactnessRatio": 1.3,
+        "maxLayerCompactnessRatio": 1.1,
         "maxPaletteShortfall": 8,
         "minRegionInkRecall": 0.93,
         "maxMeanColorErrorRatio": 1,
@@ -287,13 +297,37 @@
       "height": 833,
       "supported": true,
       "distinctColors": null,
+      "exemplar": "reference/snorlax.svg",
       "salientRegions": [
+        {
+          "name": "face",
+          "x": 300,
+          "y": 200,
+          "width": 360,
+          "height": 200,
+          "thresholds": {
+            "maxMeanColorError": 19.13
+          }
+        },
+        {
+          "name": "muzzle",
+          "x": 420,
+          "y": 290,
+          "width": 220,
+          "height": 90,
+          "thresholds": {
+            "maxForeignColorRatio": 0.0005
+          }
+        },
         {
           "name": "paw-pad",
           "x": 60,
           "y": 670,
           "width": 110,
-          "height": 80
+          "height": 80,
+          "thresholds": {
+            "maxForeignColorRatio": 0.0005
+          }
         }
       ],
       "thresholds": {
