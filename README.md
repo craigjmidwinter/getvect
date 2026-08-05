@@ -26,11 +26,14 @@ a full control surface for palette / detail / smoothing / speck removal, and nat
 save dialogs. There is no per-image cost and nothing to sign up for.
 
 **Ingest, tracing, preview and every export run offline**, with the renderer under a
-`default-src 'self'` CSP and no network calls at all. There is exactly one exception, and
-it is worth naming rather than burying: optional
-[AI Enhance](#ai-enhance-optional-bring-your-own-key) sends the image you are working on
-to Google under your own API key. It ships off, it needs a key you supply, and the switch
-says what it does before you flip it. Leave it off and nothing ever leaves the machine.
+`default-src 'self'` CSP and no network calls at all. There are exactly **two network
+touchpoints, both in your control**, and they are worth naming rather than burying:
+optional [AI Enhance](#ai-enhance-optional-bring-your-own-key), and a once-per-launch
+update check against GitHub Releases (disable with `GETVECT_NO_UPDATE_CHECK=1`). AI
+Enhance ships off, needs a key you supply, and sends the image you are working on to
+Google under that key. The update check asks one question — is there a newer GetVect —
+sends no identifier, and fails silently when you are offline. Nothing else, ever, leaves
+the machine.
 
 The quality bar is explicit and adversarial: the reference product — a leading online
 vectorizer we benchmark against — has its own output on the same source images checked
@@ -137,9 +140,42 @@ view, crop, pixel editing, gradient detection, drag-to-regroup colour circles, A
 VectorDrawable / STL / GCODE export, ZIP variants. Accounts, credits and a web API are
 out of scope permanently — that's the point.
 
+## Download
+
+**[Latest release →](https://github.com/craigjmidwinter/getvect/releases/latest)** — macOS
+on Apple Silicon (M1 and later). Grab `GetVect-<version>-arm64.dmg`. Intel Macs, Windows
+and Linux build from source (below) but are not tested and not published, so they are not
+offered as if they were.
+
+**The build is unsigned**, so macOS quarantines it on download and says it "cannot be
+opened". Nothing is wrong with the file — nobody has paid Apple to vouch for it. Either
+right-click GetVect in Applications and choose **Open**, or:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/GetVect.app
+```
+
+### Updates
+
+GetVect asks GitHub Releases once per launch whether there is a newer version, and if
+there is, shows a dismissible banner with a link. It does not download or install
+anything: macOS refuses to let an unsigned app update itself in place, and an updater that
+pulled 150 MB and then failed at the last step would be worse than none. The silent
+in-app updater is written and dormant — it switches on with the certificate, not with a
+rewrite ([`src/shared/update.ts`](src/shared/update.ts) explains the whole reasoning).
+
+The check sends no identifier, happens once, and fails silently when you are offline. To
+turn it off entirely:
+
+```bash
+GETVECT_NO_UPDATE_CHECK=1 open -a GetVect
+# or, permanently:
+launchctl setenv GETVECT_NO_UPDATE_CHECK 1
+```
+
 ## Quick start
 
-Requires Node 20+ and, for now, macOS.
+Building from source. Requires Node 20+ and, for now, macOS.
 
 ```bash
 git clone https://github.com/craigjmidwinter/getvect.git

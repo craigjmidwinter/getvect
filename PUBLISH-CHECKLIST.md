@@ -381,6 +381,71 @@ gh browse craigjmidwinter/getvect
   iconutil -c icns /tmp/GetVect.iconset -o build/icon.icns
   ```
 
+- **Cutting a release. Done — it is three commands and a tag.**
+  [`.github/workflows/release.yml`](./.github/workflows/release.yml) fires on any `v*` tag:
+  macOS runner, `npm ci`, typecheck, engine contracts, `npm run build`, then
+  `npm run dist -- --publish always`.
+
+  ```bash
+  npm version 0.1.1 --no-git-tag-version    # bump package.json only
+  git commit -am "Release 0.1.1" && git push
+  git tag v0.1.1 && git push origin v0.1.1  # this is what starts the workflow
+  ```
+
+  **The tag and `package.json` must agree** — the workflow's first step compares
+  `v$(node -p "require('./package.json').version")` against the tag and refuses to build on
+  a mismatch. That is not pedantry: `latest-mac.yml` carries the version the *app* reports,
+  so a release tagged 0.1.1 built from a package.json saying 0.1.0 produces a feed every
+  installed copy will read as "you already have this", forever.
+
+  Three things must be on the release page, and the workflow checks for all three before it
+  publishes: the **dmg**, the **zip**, and **`latest-mac.yml`**. The last one is the whole
+  reason `--publish always` is used instead of `gh release create` — only electron-builder
+  writes the feed file, with each artefact's sha512 and size, and a release assembled by
+  hand is a release no installed copy can ever discover.
+
+  The release is created as a **draft** (`publish.releaseType` in
+  [`electron-builder.yml`](./electron-builder.yml)) and un-drafted by the workflow's last
+  step. Otherwise it would be GitHub's "latest release" — and therefore what the site's
+  Download button resolves to — while its assets were still uploading.
+
+  Not run on a tag: the Playwright acceptance suite. Driving a real Electron window on a
+  hosted runner is still too flaky to stand between a tag and a release (same reasoning as
+  the disabled `e2e` job in `ci.yml`). The engine contracts are what would make a shipped
+  build *wrong*, and those do run.
+
+- **The update check, and the one line that turns it on properly.** The shipped app checks
+  GitHub Releases once per launch and, if something is newer, shows a dismissible banner
+  with a Download link (`src/main/updater.ts`, `src/renderer/components/UpdateBanner.tsx`).
+  It deliberately does **not** download or install, because Squirrel.Mac refuses to install
+  an update it cannot validate against the running app's signature and this app is
+  unsigned — see `src/shared/update.ts`.
+
+  The download-and-install path is written, shipped, and covered by a spec
+  (`tests/e2e/u-update-banner.spec.ts`, "the signed-build path"). **When signing lands, the
+  entire flip is one line** in `electron-builder.yml`:
+
+  ```yaml
+  extraMetadata:
+    updateMode: auto     # was: notify
+  ```
+
+  Then re-verify on a machine that has never built GetVect: install the previous version,
+  publish the new one, and confirm the banner goes `available → downloading → downloaded`
+  and that Restart actually relaunches into the new build. `GETVECT_UPDATE_MODE=auto`
+  exercises the UI locally without a certificate; it cannot exercise Squirrel.
+
+  Users can opt out with `GETVECT_NO_UPDATE_CHECK=1`, which is documented in the README and
+  on the site, and which the honest "two network touchpoints" sentence names by hand:
+
+  > Two network touchpoints, both in your control: optional AI Enhance, and a
+  > once-per-launch update check against GitHub Releases (disable with
+  > `GETVECT_NO_UPDATE_CHECK=1`).
+
+  That sentence must stay true. Anything that adds a third touchpoint changes the sentence
+  in three places (README, `site/index.html`, and the release-notes template in
+  `release.yml`) before it changes the code.
+
 - **Signing and notarization — still to do.** `npm run dist` produces
   `release/mac-arm64/GetVect.app` plus a dmg and a zip, and it is **unsigned on purpose**:
   `mac.identity: null` in `electron-builder.yml`. That is fine locally (the build machine
@@ -410,6 +475,17 @@ gh browse craigjmidwinter/getvect
   | `typescript`, `@playwright/test` | Apache-2.0 | dev only |
   | `sharp` | Apache-2.0 | bundles libvips (`@img/sharp-libvips-*`, **LGPL-3.0-or-later**) |
   | `@resvg/resvg-js` | MPL-2.0 | file-level copyleft |
+  | `electron-updater` | MIT | **ships**, vendored — see below |
+
+  `electron-updater` is the one runtime dependency other than Electron itself, and it does
+  not reach the app through `node_modules`: `scripts/bundle-updater.mjs` compiles it and its
+  transitive closure (`builder-util-runtime`, `js-yaml`+`argparse`, `semver`, `fs-extra`,
+  `lazy-val`, `tiny-typed-emitter`, two `lodash.*` singles, `debug`+`ms`, `sax`,
+  `graceful-fs`, `jsonfile`, `universalify`) into one file under `dist/`. All MIT or ISC bar
+  `argparse`, which is Python-2.0 — permissive, and its notice travels in the bundle's
+  `legalComments` footer along with everything else's. Bundling rather than allowlisting
+  sixteen `node_modules` paths in `files` is what keeps the "nothing from node_modules
+  ships" rule above intact instead of riddled with exceptions.
 
   **`sharp` and `@resvg/resvg-js` are not used by the shipped app at all** — they appear only
   in `instruments/`, `scripts/` and `tests/` (verified: no import in `src/`). They are
@@ -419,8 +495,10 @@ gh browse craigjmidwinter/getvect
   becomes MIT + Unlicense + MIT-licensed Electron. (Left undone here because `package.json`
   dependency edits were off-limits while the loop was running.)
 
-- **Release.** Tag `v0.1.0`, attach a notarized `.dmg`, and say plainly in the release notes
-  that it is unsigned/ad-hoc-signed if it is.
+- **Release. Done for 0.1.0** — see "Cutting a release" above. The release notes the
+  workflow writes say plainly that the build is unsigned and give the `xattr` incantation.
+  When notarization lands, delete that section from the template in `release.yml` rather
+  than leaving a warning that is no longer true.
 
 - **Second exemplar subject.** The katra devlog's own open question: every fidelity number
   comes from one image. Something photographic, and something with text, should join
