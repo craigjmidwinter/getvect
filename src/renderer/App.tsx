@@ -1092,6 +1092,12 @@ export function App() {
                   <select
                     data-testid={TESTIDS.exportDxfCurves}
                     className="export-variant"
+                    /*
+                      Gated on the same condition as the DXF button it belongs
+                      to. A live select in an otherwise greyed-out export row
+                      configures an export that cannot happen.
+                    */
+                    disabled={!ready || exporting !== null}
                     aria-label="DXF curve encoding"
                     title={
                       'How curves are written: SPLINE entities (smaller, what the tracer fitted) ' +
