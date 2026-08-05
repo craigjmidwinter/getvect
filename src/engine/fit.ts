@@ -198,7 +198,7 @@ function distanceToPinned(pinned: Uint8Array, radius: number): Int32Array {
  * the gradient, so the *true* seam sawtooths by two or three pixels before
  * anything is fitted. No fitter can remove that: a tolerance smaller than the
  * amplitude has to chase it, and the result is a faithfully-fitted mountain
- * range where the real product draws one arc. Measured on the gold standard,
+ * range where the reference product draws one arc. Measured on the gold standard,
  * that is the whole of the gap — mean layer compactness 3.33 against the
  * exemplar's 2.67, boundary wobble 55.4 against 37.2, with our curve-command
  * ratio (0.872) already well above the exemplar's (0.639).

@@ -2,7 +2,7 @@
  * DXF writer — REFERENCE D3.
  *
  * Geometry-level conversion: shapes are recovered from the result's SVG and
- * re-emitted as ASCII DXF, in the two variants the real product offers side by
+ * re-emitted as ASCII DXF, in the two variants the reference product offers side by
  * side in its download menu (`fixtures/reference/OBSERVED-UI.md`: "DXF
  * (splines)", "DXF (lines)"):
  *

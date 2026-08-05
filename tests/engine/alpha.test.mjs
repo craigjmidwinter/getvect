@@ -84,7 +84,7 @@ test('[quality-bar] transparent pixels do not win a palette slot', async () => {
 
 test('[quality-bar] the gold-standard source keeps its transparent background', async () => {
   // REFERENCE lines 73-83: fixtures/reference/fox-sticker.png is 76.5%
-  // transparent and the real product's output for it has no background-covering
+  // transparent and the reference product's output for it has no background-covering
   // path at all (its first path starts mid-canvas at M4460 8480), so this is a
   // stronger alpha guard than any other fixture in the suite.
   const { ingested, onWhite, decoded } = await loadPair('reference/fox-sticker.png');

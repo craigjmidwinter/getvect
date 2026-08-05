@@ -18,7 +18,7 @@ import {
  * `fixtures/reference/OBSERVED-UI.md` step ① is the ground truth: Clipart (with
  * a Detail Level dropdown of Maximum/Ultra/Very High/High/Medium/Low/Minimum),
  * Photo, Sketch (grayscale) and Drawing (black/white with a luminance threshold).
- * These are the first controls a user touches in the real product, and two of
+ * These are the first controls a user touches in the reference product, and two of
  * the four output modes (Sketch, Drawing) are unreachable without them.
  *
  * Each preset must observably change the output — not merely the bytes.

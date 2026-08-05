@@ -48,7 +48,7 @@ export async function svgToPngBase64(svg: string, width: number, height: number)
 /**
  * The largest edge we upload to an AI Enhance provider.
  *
- * The image model returns its own resolution regardless (the real product
+ * The image model returns its own resolution regardless (the reference product
  * resamples too, which is why the enhanced result becomes the new working
  * image), so sending a 6000px scan buys nothing and costs a multi-megabyte
  * base64 body that providers reject outright.

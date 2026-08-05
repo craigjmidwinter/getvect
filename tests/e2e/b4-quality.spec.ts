@@ -20,7 +20,7 @@ import {
  *
  * The enhance toggle is covered in b-engine.spec.ts; what is checked here is
  * the rest of the group and the two behaviours OBSERVED-UI.md recorded from the
- * real product: a busy patterned background collapses toward one colour, and
+ * reference product: a busy patterned background collapses toward one colour, and
  * antialiased edges do not spawn their own near-duplicate colour layers.
  */
 

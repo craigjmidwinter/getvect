@@ -16,7 +16,7 @@ import {
 /**
  * REFERENCE B6 — result styles: Filled Layers vs Stroked Layers.
  *
- * The real product's right pane leads with this pair ("color-filled vector
+ * The reference product's right pane leads with this pair ("color-filled vector
  * elements" vs "color-bordered vector elements"). It has to reach the exported
  * document, not just the preview CSS.
  */

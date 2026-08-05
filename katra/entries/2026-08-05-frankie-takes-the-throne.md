@@ -41,7 +41,7 @@ point the drawing was the asset and the colour was a parameter.
 
 The find of the day came from the new eyes-box instrument. Our engine drops
 Frankie's green eyes with Enhance on (0.6% survival) and keeps them with it off
-(99.2%) — one settings tick costs a palette slot. But measuring the real product
+(99.2%) — one settings tick costs a palette slot. But measuring the reference product
 against the same box turned up something better: its "preserved" green eye layer
 is 69 RGB units from the source's actual olive. It didn't preserve his eyes; its
 generative Enhance repainted them a nicer green. And the fox's cyan eyes are
@@ -57,6 +57,6 @@ at all, still the sharper claim.
 ```
 
 Also fixed on the way through: exemplar registration is now chosen by measuring
-candidate alignments instead of trusting declared sizes, because the real product
+candidate alignments instead of trusting declared sizes, because the reference product
 quietly trims transparent margins from its canvas — a bug that would have scored
 every future die-cut exemplar as garbage.

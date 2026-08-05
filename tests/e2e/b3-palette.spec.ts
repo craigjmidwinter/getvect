@@ -25,7 +25,7 @@ import {
  *     yields a genuinely transparent background.
  */
 
-/** OBSERVED-UI.md step ②: the exact sizes the real product offers. */
+/** OBSERVED-UI.md step ②: the exact sizes the reference product offers. */
 const PALETTE_SIZES = [1, 2, 3, 4, 5, 6, 8, 12, 15, 16, 18];
 
 test('[B3] the eleven documented candidate palette sizes are offered', async ({ page }) => {

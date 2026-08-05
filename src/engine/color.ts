@@ -63,7 +63,7 @@ export function hexOf(c: RgbColor): string {
 
 /**
  * `rgb(r, g, b)` — the notation REFERENCE D1 documents and the exemplars in
- * fixtures/reference use, so a diff against real product output is about
+ * fixtures/reference use, so a diff against reference product output is about
  * geometry rather than syntax.
  */
 export function rgbOf(c: RgbColor): string {
@@ -184,7 +184,7 @@ const CHROMA_WEIGHT = 0.5;
  * belongs to the stroke. A near-neutral ink slot has no hue for a warm pixel to
  * flip to, so charging it the chroma term only ever thins line art — measured
  * on the gold standard, exempting it puts the paw crop's strict ink recall back
- * to 0.99x of the real product's from 0.97x.
+ * to 0.99x of the reference product's from 0.97x.
  */
 const assignDist = (
   r: number,
@@ -505,7 +505,7 @@ export function computePaletteSync(
  * 0.05 % of the drawn area — sitting inside a cream face, so median cut folds
  * them into the cream and Lloyd never pulls a centre back out. Measured on that
  * fixture, our 16-colour + Enhance output returned ZERO pixels above luma 230
- * where the source has 382 above 245, and the real product returned 291: the
+ * where the source has 382 above 245, and the reference product returned 291: the
  * fangs came back as grey holes ringed by ink instead of white triangles.
  *
  * That is not a fidelity rounding error, it is the loss of a feature. REFERENCE's
@@ -1708,7 +1708,7 @@ const HALO_MAX_THICKNESS = 3;
  *  - **12.0 %** — the shaded illustration's dark outline skirt, `rgb(83,67,33)`
  *    against its ink. Must still collapse: sparing it keeps a near-ink layer
  *    the outline needs, and the paw crop's strict ink recall goes to 0.976x the
- *    real product's against a 0.99x bar.
+ *    reference product's against a 0.99x bar.
  *  - **15.2 %** — the mascot's biggest cheek stripe, 490 px. Must be spared.
  *  - **24.3 %** — the fox's eye cyan, 1,071 px down to 7. Must be spared.
  *

@@ -412,7 +412,7 @@ function normalizeFill(fill: string | null): string | null {
   if (/^#[0-9a-f]{3}$/.test(trimmed)) {
     return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`;
   }
-  // `rgb(r,g,b)` is what vectorizer.io itself writes, so accepting it lets the
+  // `rgb(r,g,b)` is what the reference product itself writes, so accepting it lets the
   // converters read reference exemplars as well as our own output.
   const rgb = /^rgb\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)\s*\)$/.exec(trimmed);
   if (rgb) {

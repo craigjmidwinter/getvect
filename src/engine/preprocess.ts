@@ -268,7 +268,7 @@ function smallRegionMask(
  * comes back as the spiked seam that makes a 16-colour output read as a
  * posterized photograph rather than as clipart. Measured on the gold standard,
  * our mid-tone layers scored 5.65 and 5.36 on perimeter/(2·√(π·area)) against
- * the real product's 4.35 and 2.87 for the equivalent cream and blue.
+ * the reference product's 4.35 and 2.87 for the equivalent cream and blue.
  *
  * So the seam gets a wider vote: a pixel that sits *on* a boundary (some
  * 4-neighbour disagrees with it) is flipped to whatever index owns more than
@@ -345,7 +345,7 @@ export function regularizeBoundaries(
       // run-continuation exemption. Only the middle of a run, though: an ink
       // pixel that is NOT in a run is a lobe on a ragged outline and is exactly
       // what this filter should be tidying (blanket-exempting the ink measured
-      // worse — 0.981x -> 0.972x of the real product's paw strict ink recall,
+      // worse — 0.981x -> 0.972x of the reference product's paw strict ink recall,
       // because the same vote also *adds* ink where a stroke had a notch).
       if (protect?.[self] && continuesRun(indices, width, height, x, y, self)) continue;
       const y0 = Math.max(0, y - radius);
@@ -626,7 +626,7 @@ const RAMP_STEP_TOLERANCE = 30;
  * mid-tone is nearest and the stroke comes back thin, notched or dashed.
  * Measured on the gold standard, exempting ink ramps put the 16-colour output's
  * layer compactness back to 3.73 (from 4.10) and its region strict-ink recall
- * back to 0.941x of the real product's (from 0.927x) while keeping the paw
+ * back to 0.941x of the reference product's (from 0.927x) while keeping the paw
  * pads' brown.
  */
 const RAMP_INK_LUMA = 60;
@@ -640,7 +640,7 @@ const RAMP_INK_LUMA = 60;
  * splitting each skirt down the middle hands back a line thinner than the one
  * the artist drew — and once it is thinner than a pixel it renders as a grey
  * smear and, wherever the skirt was asymmetric, as a break. Measured on the
- * gold standard, the real product's paw crop carries 2496 ink pixels where the
+ * gold standard, the reference product's paw crop carries 2496 ink pixels where the
  * source has 1210 and ours had 1755: it resolves the whole skirt to ink, and
  * that is why its outlines read as solid where ours read as dashed.
  *
@@ -649,7 +649,7 @@ const RAMP_INK_LUMA = 60;
  * 60 is ink") reads better on paper and measures worse — by the time this pass
  * runs, Enhance's median has already lifted the skirt above 60, so the anchor
  * has nothing left to catch and the gold standard's paw crop drops from 0.941
- * to 0.908 of the real product's strict ink recall. The ratio does not care how
+ * to 0.908 of the reference product's strict ink recall. The ratio does not care how
  * dark the ends are, which is exactly why it survives the pass in front of it.
  */
 const INK_RAMP_BIAS = 3;
