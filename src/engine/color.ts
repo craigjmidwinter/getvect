@@ -1580,6 +1580,19 @@ export function despeckleIndices(
         const db = dist(ownColor.r, ownColor.g, ownColor.b, b);
         const real = span >= 48 && da > 0 && db > 0;
         fringe = real && da + db <= span * 1.35;
+        /**
+         * `tally[own] === 0`: THE BAND'S COLOUR IS FOREIGN HERE.
+         *
+         * The tally counts the colours this region borders, so a non-zero entry
+         * for its OWN index means the same colour is also painted somewhere else
+         * in the immediate neighbourhood — across the stroke, or just past the
+         * band. That is what a shading band looks like: the region beside it,
+         * continuing. A halo looks like the opposite; the mascot's eye rim is
+         * painted with the MUZZLE's cream, which exists nowhere near the eye.
+         * This is `foreignColorRatio`'s question asked locally, and it is the
+         * one condition that separates the two cases on artwork where every
+         * colour of the ramp is nearly collinear with every other.
+         */
         rampBand =
           fringe ||
           (real &&

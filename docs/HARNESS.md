@@ -762,6 +762,36 @@ Two notes for anyone tuning it:
   opposite of what this artwork needs. The existing note on `assignDist` records the other
   half of the same finding (Lab ΔE stretches the dark end so far that ink pixels leave the
   ink slot: whole-frame ink recall 0.989 → 0.677).
+- **A fringe resolves to one of the two regions it separates — including when it
+  overshoots them.** The in-between test (`da + db <= span * 1.35`) asks whether a thin
+  band's colour lies on the *segment* between its two neighbours, which is right for a
+  blend and wrong for a **halo**: resampled artwork carries a rim brighter than the
+  region beside every hard edge, and that rim is the same ramp overshooting past its
+  light end. Rejected as "a genuine third shade", it keeps a slot of its own, and at
+  eight colours the nearest slot to the mascot's eye rim is the *muzzle cream* — a cream
+  ribbon threaded between a black outline and an olive iris, which `foreignColorRatio`
+  cannot see (the crop legitimately contains cream) and MAE moves by hundredths.
+  `onRamp` (src/engine/color.ts) therefore tests the corridor around the line rather
+  than the segment, under four conditions that each earned their place by breaking
+  something without them: lighter than **both** sides (the same sentence `seamSlivers`
+  is written in — a dark overshoot is indistinguishable from an outline), one side is
+  **ink** (on shaded art every colour of a soft ramp is collinear with every other), the
+  colour appears **nowhere else in the neighbourhood** (a shading band is the region
+  beside it continuing; a halo is not), and the band is at most **three pixels** thick in
+  absolute terms — a blend is as wide as the edge that made it, ringing is as wide as
+  the resampling kernel.
+- **A seam vote may not fill a feature it cannot see.** `regularizeBoundaries` spares a
+  whole shape smaller than its window; `narrowHere` extends that to a narrow *part* of a
+  bigger one — a run bounded both ways within a pixel. The mascot's nose is a 1000px²
+  region whose nostril is a corridor of pink a few pixels wide between two arms of the
+  outline, and the vote inside that corridor is mostly ink. A sawtooth tooth is not
+  bounded both ways (one direction runs into the region's interior), so the filter still
+  does its job. The reach is 1 and not the window radius because at 2 it also spares the
+  ragged lobes the filter exists to trim: the spikes fixture's bluntest corner reaches
+  the parked 112° target there, and `reference-fox-default`'s `strokeWidthCvRatio` goes
+  1.88x → 2.21x against a 2.20 bar with `strokeWidthOverExemplar` 1.13x → 1.25x against
+  1.25. The distance is left on the instruments as an aspiration rather than bought with
+  a loosened ratchet.
 - **Cleanups must not eat line art.** A one-pixel stroke is a *minority* in every 3×3
   window it passes through, so both the median filter and the majority filter would
   erase exactly the strokes REFERENCE's use cases are made of. Both now spare a pixel
