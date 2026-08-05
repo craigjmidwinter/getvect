@@ -218,7 +218,7 @@ product. There is now a decode-parity spec whose only job is to go red the momen
 and the harness disagree.
 
 The whole build is chronicled as it happened in [`katra/entries/`](katra/entries/) —
-[the loop design](katra/entries/2026-08-04-a-pit-crew-gauntlet-takes-on-vectorizer-io.md)
+[the loop design](katra/entries/2026-08-04-a-pit-crew-gauntlet-takes-on-a-leading-online-vectorizer.md)
 and
 [the ground-truth recon](katra/entries/2026-08-04-driving-the-real-vectorizer-for-ground-truth-smart-aa-is-the-whole-ballgame.md).
 Longer-form writing on the loop itself lives at

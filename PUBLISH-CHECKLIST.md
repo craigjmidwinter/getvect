@@ -199,7 +199,7 @@ that no longer exist:
 
 | entry slug | stale hashes |
 | --- | --- |
-| `2026-08-04-a-pit-crew-gauntlet-takes-on-vectorizer-io` | `5c66188` |
+| `2026-08-04-a-pit-crew-gauntlet-takes-on-a-leading-online-vectorizer` | `5c66188` |
 | `2026-08-04-driving-the-real-vectorizer-for-ground-truth-smart-aa-is-the-whole-ballgame` | `36db131`, `69cc521`, `ea13a03`, `f11b9d6` |
 
 `filter-repo` writes the old→new mapping to `.git/filter-repo/commit-map`. Translate:
@@ -220,7 +220,7 @@ PY
 Re-stamp with the new hashes (`--hash` accepts a comma-separated chapter):
 
 ```bash
-katra stamp --entry 2026-08-04-a-pit-crew-gauntlet-takes-on-vectorizer-io \
+katra stamp --entry 2026-08-04-a-pit-crew-gauntlet-takes-on-a-leading-online-vectorizer \
   --hash <new-5c66188>
 
 katra stamp --entry 2026-08-04-driving-the-real-vectorizer-for-ground-truth-smart-aa-is-the-whole-ballgame \
