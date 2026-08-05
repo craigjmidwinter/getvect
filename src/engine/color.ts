@@ -1629,9 +1629,9 @@ const FRINGE_TIE_WINDOW = 1.5;
  * How far OFF the line joining two regions a thin band between them may sit and
  * still count as their ramp, as a fraction of the distance between them.
  *
- * The in-between test above (`da + db <= span * 1.35`) asks whether a band's
- * colour lies on the SEGMENT between the two colours it separates, which is the
- * right question for a blend and the wrong one for a *halo*. Real artwork
+ * The in-between test above (`isBlendOf`) asks whether a band's colour lies on
+ * the SEGMENT between the two colours it separates, which is the right question
+ * for a blend and the wrong one for a *halo*. Real artwork
  * arrives resampled, and a resampler with any sharpening in it leaves an
  * overshoot beside every hard edge: the mascot's eye is drawn with a black
  * outline directly against an olive iris, and the source carries a one-pixel rim
@@ -1678,6 +1678,90 @@ const FRINGE_INK_LUMA = 60;
  */
 const HALO_MAX_THICKNESS = 3;
 
+/**
+ * How far OFF the line joining two regions a BLEND may sit, as a fraction of
+ * the distance between them.
+ *
+ * A blend is a mixture: `α·a + (1-α)·b` is on the segment by construction, and
+ * only quantization rounding takes it off. So this is tight, and much tighter
+ * than the halo corridor above — a halo is an overshoot, which is off the line
+ * by nature, while a band that is a *long way* off the line joining its two
+ * neighbours is not made of them at all.
+ *
+ * It replaces a triangle test in L1 — `da + db <= span * 1.35` — which was not
+ * measuring what it read as. L1 is additive along any monotone path between two
+ * corners of the RGB cube, so with `a` black and `b` white the test is
+ * satisfied by **every colour there is**, and with `a` any colour and `b` black
+ * it is satisfied by every darker shade of `a`. That is not an edge case, it is
+ * every drawing with an outline: measured, it deleted the mascot's three cheek
+ * stripes (a darker orange on the body orange, meeting the face outline — 490,
+ * 273 and 58 px, 45 % of the stripe-orange in that crop) and the fox's CYAN
+ * EYES (1071 px down to 7), both of which read as "between" only because L1
+ * says a saturated colour is between black and white.
+ *
+ * The number is bounded on both sides by the fixtures, and the window is
+ * narrow enough to be worth writing down. Measured as area-weighted
+ * perpendicular offset over every band this rule considers:
+ *
+ *  - **Below 4 %** — the fox's genuine blends (20,210 px) and the shaded
+ *    illustration's (10,378 px). Everything here must still collapse.
+ *  - **12.0 %** — the shaded illustration's dark outline skirt, `rgb(83,67,33)`
+ *    against its ink. Must still collapse: sparing it keeps a near-ink layer
+ *    the outline needs, and the paw crop's strict ink recall goes to 0.976x the
+ *    real product's against a 0.99x bar.
+ *  - **15.2 %** — the mascot's biggest cheek stripe, 490 px. Must be spared.
+ *  - **24.3 %** — the fox's eye cyan, 1,071 px down to 7. Must be spared.
+ *
+ * So the corridor has to sit inside (0.120, 0.152) and 0.13 is where it sits.
+ * That is one part in a hundred of margin on the low side, which is thin, and
+ * the two numbers bounding it are recorded above rather than rounded away so
+ * that a future fixture landing between them is recognisable as what it is.
+ */
+const FRINGE_BLEND_CORRIDOR = 0.13;
+
+/**
+ * How far past either end of the ramp a blend may sit.
+ *
+ * Small, and for the opposite reason `FRINGE_OVERSHOOT` is large: overshoot is
+ * the halo's signature, not the blend's, and the halo branch below is where an
+ * overshoot belongs. It is not zero because the two ends are cluster centres
+ * rather than the exact colours the edge ran between — measured on the fox, the
+ * near-duplicate ink bands land at t = -0.05 and 1.05, and on the shaded
+ * illustration the cream's own light rim at t = -0.11.
+ *
+ * 0.20 is too far: it readmits a 392 px band at t = 1.16, a *second* cream past
+ * the light end of the cream→ink ramp, and the shaded illustration's face crop
+ * loses strict ink recall (0.9651 against a 0.97 bar) to the layer it keeps.
+ */
+const FRINGE_BLEND_SLACK = 0.15;
+
+/**
+ * Is `c` a mixture of `a` and `b` — on the segment between them, within
+ * `FRINGE_BLEND_CORRIDOR`?
+ *
+ * Euclidean, like `onRamp` and for the same reason: this is a projection onto a
+ * line in RGB space, and "how far off the line" only means anything in the
+ * metric the projection is taken in.
+ */
+function isBlendOf(c: RgbColor, a: RgbColor, b: RgbColor): boolean {
+  const ux = b.r - a.r;
+  const uy = b.g - a.g;
+  const uz = b.b - a.b;
+  const len2 = ux * ux + uy * uy + uz * uz;
+  if (len2 <= 0) return false;
+  const vx = c.r - a.r;
+  const vy = c.g - a.g;
+  const vz = c.b - a.b;
+  const t = (vx * ux + vy * uy + vz * uz) / len2;
+  if (t < -FRINGE_BLEND_SLACK || t > 1 + FRINGE_BLEND_SLACK) return false;
+  const px = vx - t * ux;
+  const py = vy - t * uy;
+  const pz = vz - t * uz;
+  return (
+    px * px + py * py + pz * pz <=
+    FRINGE_BLEND_CORRIDOR * FRINGE_BLEND_CORRIDOR * len2
+  );
+}
 
 /**
  * Is `c` on the ramp between `a` and `b` — including past its ends?
@@ -2003,7 +2087,7 @@ export function despeckleIndices(
         const da = dist(ownColor.r, ownColor.g, ownColor.b, a);
         const db = dist(ownColor.r, ownColor.g, ownColor.b, b);
         const real = span >= 48 && da > 0 && db > 0;
-        fringe = real && da + db <= span * 1.35;
+        fringe = real && isBlendOf(ownColor, a, b);
         /**
          * `tally[own] === 0`: THE BAND'S COLOUR IS FOREIGN HERE.
          *
