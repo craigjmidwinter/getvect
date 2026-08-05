@@ -1,0 +1,64 @@
+# electron-builder configuration — `npm run dist`.
+#
+# Output lands in release/ (git-ignored): release/mac-<arch>/GetVect.app plus a
+# dmg and a zip. Run `npm run build` first; this packages dist/, it does not
+# compile it.
+#
+# UNSIGNED ON PURPOSE. `mac.identity: null` disables code signing, so what comes
+# out is a local/ad-hoc build that Gatekeeper will quarantine on another
+# machine. Signing and notarization are a release-time step and are deliberately
+# not configured here — see PUBLISH-CHECKLIST.md, "Post-publish".
+
+appId: com.craigmidwinter.getvect
+productName: GetVect
+copyright: © 2026 Craig Midwinter
+
+directories:
+  buildResources: build
+  output: release
+
+# The shipped app is the compiled bundle and nothing else. Vite inlines
+# react / react-dom / imagetracerjs into dist/renderer, and the main process
+# imports only `electron` plus node builtins — so node_modules is excluded
+# outright. That is what keeps sharp's LGPL libvips and resvg's MPL code (both
+# harness-only; see PUBLISH-CHECKLIST.md "Dependency licence hygiene") out of
+# the distributed bundle. Sourcemaps and .d.ts files are build artefacts of the
+# TypeScript step, not runtime inputs.
+files:
+  - dist/**/*
+  - package.json
+  - '!node_modules/**/*'
+  - '!dist/**/*.map'
+  - '!dist/**/*.d.ts'
+  - '!dist/.tsbuildinfo*'
+
+# src/main/main.ts resolves this through `process.resourcesPath` when packaged;
+# it is what puts the fox on the BrowserWindow on Linux and Windows. macOS takes
+# its icon from the bundle's icns instead and ignores the window icon.
+extraResources:
+  - from: build/icon.png
+    to: icon.png
+
+# Nothing native ships (see `files`), so there is no reason to rebuild sharp
+# against Electron's ABI — that step is slow and can fail on a clean machine.
+npmRebuild: false
+
+mac:
+  icon: build/icon.icns
+  category: public.app-category.graphics-design
+  target:
+    - dmg
+    - zip
+  # Unsigned local builds. See the header note.
+  identity: null
+
+linux:
+  icon: build/icon.png
+  category: Graphics
+  target:
+    - AppImage
+
+win:
+  icon: build/icon.png
+  target:
+    - nsis
