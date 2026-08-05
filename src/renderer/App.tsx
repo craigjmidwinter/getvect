@@ -10,6 +10,7 @@ import {
   type ExportFormat,
   type RasterImage,
   type RgbColor,
+  type VectorizePhase,
   type VectorizeResult,
   type VectorizeSettings,
 } from '../engine';
@@ -40,6 +41,8 @@ interface ImageEntry {
   settings: VectorizeSettings;
   status: ImageStatus;
   progress: number;
+  /** Phase of the in-flight trace, for the status line. */
+  phase: VectorizePhase | null;
   result: VectorizeResult | null;
   error: string | null;
   /**
@@ -48,7 +51,22 @@ interface ImageEntry {
    * it instead of racing it.
    */
   job: number;
+  /** Debounce for this job, in ms — see `DEBOUNCE_*`. */
+  delay: number;
 }
+
+/**
+ * Re-vectorization is debounced by intent, not by a single global constant.
+ *
+ * A slider emits an `input` event per pixel of travel, so a drag across the
+ * detail slider is ~100 settings changes; each one is a full trace if we take
+ * it at face value. Discrete controls (the enhance switch, a palette edit, the
+ * explicit re-vectorize button) are single deliberate acts and should feel
+ * instant. Both paths still go through the same queue, so at most one trace is
+ * ever in flight (see the job runner below).
+ */
+const DEBOUNCE_CONTINUOUS = 140;
+const DEBOUNCE_DISCRETE = 0;
 
 const MIN_ZOOM = 0.02;
 const MAX_ZOOM = 64;
@@ -94,7 +112,7 @@ export function App() {
   }, []);
 
   const requestVectorize = useCallback(
-    (id: string, settings?: Partial<VectorizeSettings>) => {
+    (id: string, settings?: Partial<VectorizeSettings>, delay: number = DEBOUNCE_DISCRETE) => {
       setImages((prev) =>
         prev.map((image) =>
           image.id === id
@@ -103,8 +121,10 @@ export function App() {
                 settings: settings ? { ...image.settings, ...settings } : image.settings,
                 status: image.raster ? 'vectorizing' : image.status,
                 progress: 0,
+                phase: null,
                 error: null,
                 job: image.job + 1,
+                delay,
               }
             : image,
         ),
@@ -145,9 +165,11 @@ export function App() {
       settings: { ...DEFAULT_SETTINGS },
       status: 'loading',
       progress: 0,
+      phase: null,
       result: null,
       error: null,
       job: 0,
+      delay: DEBOUNCE_DISCRETE,
     }));
 
     setImages((prev) => [...prev, ...entries]);
@@ -170,7 +192,9 @@ export function App() {
                   // REFERENCE B1: vectorization starts by itself on load.
                   status: 'vectorizing',
                   progress: 0,
+                  phase: null,
                   job: image.job + 1,
+                  delay: DEBOUNCE_DISCRETE,
                 }
               : image,
           ),
@@ -228,31 +252,69 @@ export function App() {
       ? `${selected.id}:${selected.job}`
       : null;
 
+  /**
+   * Tail of the trace queue. Every job links onto it, so exactly one trace runs
+   * at a time: dragging a slider cannot pile four traces into the worker and
+   * then wait for all of them to finish before the last one's SVG appears. A
+   * job that is superseded while it waits its turn is dropped rather than
+   * computed and thrown away (`cancelled` is checked *inside* the link).
+   */
+  const queueRef = useRef<Promise<void>>(Promise.resolve());
+
   useEffect(() => {
     if (!jobKey || !selected || !selected.raster) return;
-    const image = selected;
+    const id = selected.id;
     const raster = selected.raster;
     const settings = selected.settings;
+    const delay = selected.delay;
     let cancelled = false;
 
-    // Coalesce slider drags: a value that changes again within a frame or two
-    // should not cost a full trace.
+    // Coalesce continuous input: a value that changes again a frame later
+    // should not have cost a full trace.
     const timer = window.setTimeout(() => {
-      vectorizeImage(raster, settings, (p) => {
-        if (!cancelled) patchImage(image.id, { progress: p.progress });
-      })
-        .then((result) => {
-          if (cancelled) return;
-          patchImage(image.id, { result, status: 'ready', progress: 1, error: null });
+      queueRef.current = queueRef.current.then(() => {
+        if (cancelled) return;
+        return vectorizeImage(raster, settings, (p) => {
+          if (!cancelled) patchImage(id, { progress: p.progress, phase: p.phase });
         })
-        .catch((error: unknown) => {
-          if (cancelled) return;
-          patchImage(image.id, {
-            status: 'error',
-            error: error instanceof Error ? error.message : String(error),
+          .then((result) => {
+            if (cancelled) return;
+            setImages((prev) =>
+              prev.map((image) =>
+                image.id === id
+                  ? {
+                      ...image,
+                      result,
+                      status: 'ready',
+                      progress: 1,
+                      phase: 'done',
+                      error: null,
+                      // An edited palette is re-read from the result so the
+                      // swatch the user clicks is exactly the slot the engine
+                      // painted — a merge collapses two slots into one, and the
+                      // colour count follows the palette it now describes.
+                      settings: image.settings.palette
+                        ? {
+                            ...image.settings,
+                            palette: result.palette.map((c) => ({ ...c })),
+                            colorCount: Math.max(2, result.palette.length),
+                          }
+                        : image.settings,
+                    }
+                  : image,
+              ),
+            );
+          })
+          .catch((error: unknown) => {
+            if (cancelled) return;
+            patchImage(id, {
+              status: 'error',
+              phase: null,
+              error: error instanceof Error ? error.message : String(error),
+            });
           });
-        });
-    }, 80);
+      });
+    }, delay);
 
     return () => {
       cancelled = true;
@@ -321,19 +383,36 @@ export function App() {
 
   const palette: RgbColor[] = selected?.result?.palette ?? [];
   const activeSwatch = palette.length ? clamp(swatchIndex, 0, palette.length - 1) : 0;
+  /** True once the palette in the preview is the user's, not the engine's. */
+  const paletteEdited = Boolean(selected?.settings.palette);
+  const activeHex = hexOf(palette[activeSwatch] ?? { r: 0, g: 0, b: 0 });
+
+  /**
+   * The merge destination actually in force. `palette-merge-target` never lists
+   * the selected swatch, so a stale state value (the user picked a target, then
+   * selected that same swatch) must not silently become "merge into myself" —
+   * fall back to the first other entry, which is also what the `<select>` shows.
+   */
+  const effectiveMergeTarget = useMemo(() => {
+    if (palette.length < 2) return -1;
+    const wanted = clamp(mergeTarget, 0, palette.length - 1);
+    if (wanted !== activeSwatch) return wanted;
+    return activeSwatch === 0 ? 1 : 0;
+  }, [palette.length, mergeTarget, activeSwatch]);
 
   const setSetting = useCallback(
-    (patch: Partial<VectorizeSettings>) => {
+    (patch: Partial<VectorizeSettings>, delay: number = DEBOUNCE_DISCRETE) => {
       if (!selected) return;
-      requestVectorize(selected.id, patch);
+      requestVectorize(selected.id, patch, delay);
     },
     [selected, requestVectorize],
   );
 
+  /** Re-vectorize with an explicit colour table (REFERENCE B3). */
   const applyPalette = useCallback(
     (next: RgbColor[]) => {
       if (!selected || next.length === 0) return;
-      requestVectorize(selected.id, { palette: next, colorCount: next.length });
+      requestVectorize(selected.id, { palette: next, colorCount: Math.max(2, next.length) });
     },
     [selected, requestVectorize],
   );
@@ -347,21 +426,40 @@ export function App() {
     [palette, activeSwatch, applyPalette],
   );
 
+  /**
+   * Merge the selected swatch into another one: both slots are handed the
+   * target's colour, which the engine collapses into a single layer. The
+   * clustering is untouched, so the surviving colour keeps the geometry it
+   * already had and simply gains the merged region — the survivor lands at
+   * `min(selected, target)` once the duplicate is collapsed.
+   */
   const onMerge = useCallback(() => {
-    if (palette.length < 2) return;
-    // The merged-away slot's pixels are absorbed by the remaining clusters —
-    // dropping the slot is exactly the "merge" the engine documents.
-    applyPalette(palette.filter((_, i) => i !== activeSwatch));
-    setSwatchIndex(0);
+    if (palette.length < 2 || effectiveMergeTarget < 0 || effectiveMergeTarget === activeSwatch) return;
+    const target = palette[effectiveMergeTarget];
+    applyPalette(palette.map((color, i) => (i === activeSwatch ? { ...target } : color)));
+    setSwatchIndex(Math.min(activeSwatch, effectiveMergeTarget));
     setMergeTarget(0);
-  }, [palette, activeSwatch, applyPalette]);
+  }, [palette, activeSwatch, effectiveMergeTarget, applyPalette]);
 
+  /**
+   * Remove the selected swatch: the palette drops to k-1 entries and the
+   * orphaned pixels are re-quantized into whichever colours remain, so the
+   * removed colour cannot survive anywhere in the output.
+   */
   const onRemove = useCallback(() => {
     if (palette.length < 2) return;
     applyPalette(palette.filter((_, i) => i !== activeSwatch));
-    setSwatchIndex(0);
+    setSwatchIndex(Math.max(0, activeSwatch - 1));
     setMergeTarget(0);
   }, [palette, activeSwatch, applyPalette]);
+
+  /** Throw the edits away and let the engine compute the palette again. */
+  const onAutoPalette = useCallback(() => {
+    if (!selected) return;
+    setSwatchIndex(0);
+    setMergeTarget(0);
+    setSetting({ palette: null });
+  }, [selected, setSetting]);
 
   // --- export (REFERENCE D) ------------------------------------------------
 
@@ -491,7 +589,7 @@ export function App() {
       <section data-testid={TESTIDS.workspace} className="workspace" data-image-id={selected?.id ?? ''}>
         <div className="toolbar">
           <span data-testid={TESTIDS.statusText} data-status={status} className={`status status-${status}`}>
-            {statusLabel(status, selected?.error ?? null)}
+            {statusLabel(status, selected?.error ?? null, selected?.phase ?? null)}
           </span>
 
           {busy ? (
@@ -580,39 +678,47 @@ export function App() {
               <Slider
                 testid={TESTIDS.settingColorCount}
                 label="Colors"
+                hint={paletteEdited ? 'edited palette' : describeColors(selected.settings.colorCount)}
                 min={2}
                 max={64}
-                value={selected.settings.colorCount}
-                onChange={(value) => setSetting({ colorCount: value, palette: null })}
+                value={clamp(selected.settings.colorCount, 2, 64)}
+                onChange={(value) =>
+                  // A colour count is a fresh palette by definition, so an
+                  // earlier hand-edit is dropped rather than silently ignored.
+                  setSetting({ colorCount: value, palette: null }, DEBOUNCE_CONTINUOUS)
+                }
               />
               <Slider
                 testid={TESTIDS.settingDetail}
                 label="Detail"
+                hint={describeDetail(selected.settings.detail)}
                 min={0}
                 max={100}
                 value={selected.settings.detail}
-                onChange={(value) => setSetting({ detail: value })}
+                onChange={(value) => setSetting({ detail: value }, DEBOUNCE_CONTINUOUS)}
               />
               <Slider
                 testid={TESTIDS.settingSmoothing}
                 label="Smoothing"
+                hint={describeSmoothing(selected.settings.smoothing)}
                 min={0}
                 max={100}
                 value={selected.settings.smoothing}
-                onChange={(value) => setSetting({ smoothing: value })}
+                onChange={(value) => setSetting({ smoothing: value }, DEBOUNCE_CONTINUOUS)}
               />
               <Slider
                 testid={TESTIDS.settingDespeckle}
                 label="Despeckle"
+                hint={describeDespeckle(selected.settings.despeckle)}
                 min={0}
                 max={100}
                 value={selected.settings.despeckle}
-                onChange={(value) => setSetting({ despeckle: value })}
+                onChange={(value) => setSetting({ despeckle: value }, DEBOUNCE_CONTINUOUS)}
               />
             </div>
 
             <div className="settings-actions">
-              <label className="switch">
+              <label className="switch" title="Denoise and simplify colours before tracing">
                 <input
                   data-testid={TESTIDS.enhanceToggle}
                   type="checkbox"
@@ -631,15 +737,48 @@ export function App() {
               <button
                 data-testid={TESTIDS.resetSettingsButton}
                 type="button"
-                onClick={() => setSetting({ ...DEFAULT_SETTINGS })}
+                onClick={() => {
+                  setSwatchIndex(0);
+                  setMergeTarget(0);
+                  setSetting({ ...DEFAULT_SETTINGS });
+                }}
               >
                 Reset
               </button>
+              <div className="spacer" />
+              <span className="settings-summary">{summaryOf(selected)}</span>
             </div>
 
-            {ready && palette.length > 0 ? (
-              <div data-testid={TESTIDS.paletteEditor} className="palette-editor">
-                <div className="swatches">
+            {/*
+              The editor stays mounted while a re-trace is in flight — losing the
+              swatch you just clicked mid-drag would be hostile — but it is
+              flagged `data-stale` so it is obvious the swatches describe the
+              picture on screen, not the one being computed.
+            */}
+            {palette.length > 0 ? (
+              <div
+                data-testid={TESTIDS.paletteEditor}
+                className={`palette-editor${ready ? '' : ' is-stale'}`}
+                data-stale={String(!ready)}
+                data-palette-size={palette.length}
+              >
+                <div className="palette-head">
+                  <span className="palette-title">
+                    Palette<em>{palette.length}</em>
+                  </span>
+                  {paletteEdited ? (
+                    <button
+                      data-testid={TESTIDS.paletteAutoButton}
+                      type="button"
+                      className="link"
+                      onClick={onAutoPalette}
+                      title="Discard palette edits and recompute from the image"
+                    >
+                      Auto palette
+                    </button>
+                  ) : null}
+                </div>
+                <div className="swatches" role="listbox" aria-label="Computed palette">
                   {palette.map((color, index) => {
                     const hex = hexOf(color);
                     return (
@@ -649,7 +788,10 @@ export function App() {
                         data-color={hex}
                         data-index={index}
                         type="button"
-                        title={hex}
+                        role="option"
+                        aria-selected={index === activeSwatch}
+                        title={`${hex} — click to edit`}
+                        aria-label={`Palette colour ${index + 1}: ${hex}`}
                         className={`swatch${index === activeSwatch ? ' is-active' : ''}`}
                         style={{ background: hex }}
                         onClick={() => {
@@ -661,12 +803,17 @@ export function App() {
                   })}
                 </div>
                 <div className="palette-actions">
+                  <span className="palette-selected">
+                    <span className="swatch swatch-chip" style={{ background: activeHex }} />
+                    {activeHex}
+                  </span>
                   <label>
                     Color
                     <input
                       data-testid={TESTIDS.paletteColorInput}
                       type="color"
-                      value={hexOf(palette[activeSwatch] ?? { r: 0, g: 0, b: 0 })}
+                      aria-label="Change the selected palette colour"
+                      value={activeHex}
                       onChange={(event) => onSwatchColor(event.target.value)}
                     />
                   </label>
@@ -674,7 +821,8 @@ export function App() {
                     Merge into
                     <select
                       data-testid={TESTIDS.paletteMergeTarget}
-                      value={String(mergeTarget)}
+                      aria-label="Merge the selected colour into"
+                      value={String(effectiveMergeTarget)}
                       onChange={(event) => setMergeTarget(Number(event.target.value))}
                     >
                       {palette.map((color, index) =>
@@ -712,14 +860,18 @@ export function App() {
   );
 }
 
-function statusLabel(status: 'idle' | ImageStatus, error: string | null): string {
+function statusLabel(
+  status: 'idle' | ImageStatus,
+  error: string | null,
+  phase: VectorizePhase | null,
+): string {
   switch (status) {
     case 'idle':
       return 'Waiting for an image';
     case 'loading':
       return 'Decoding…';
     case 'vectorizing':
-      return 'Vectorizing…';
+      return `${phaseLabel(phase)}…`;
     case 'ready':
       return 'Ready';
     case 'error':
@@ -727,9 +879,48 @@ function statusLabel(status: 'idle' | ImageStatus, error: string | null): string
   }
 }
 
+function phaseLabel(phase: VectorizePhase | null): string {
+  switch (phase) {
+    case 'preprocess':
+      return 'Enhancing';
+    case 'quantize':
+      return 'Reducing colours';
+    case 'simplify':
+      return 'Removing specks';
+    case 'trace':
+      return 'Tracing';
+    case 'serialize':
+      return 'Building SVG';
+    default:
+      return 'Vectorizing';
+  }
+}
+
+/** One-line description of what the current result cost (REFERENCE "Economy"). */
+function summaryOf(image: ImageEntry): string {
+  if (!image.result) return '';
+  const { palette, pathCount, durationMs, width, height } = image.result;
+  const colors = `${palette.length} colour${palette.length === 1 ? '' : 's'}`;
+  const paths = `${pathCount} path${pathCount === 1 ? '' : 's'}`;
+  return `${width}×${height} · ${colors} · ${paths} · ${Math.round(durationMs)} ms`;
+}
+
+// Slider hints: the numbers alone say nothing about what the knob does to the
+// artwork, and the reference product's own controls are equally opaque. These read out
+// the *effect* so a first-time user can aim instead of scrub.
+
+const describeColors = (v: number) => (v <= 4 ? 'poster' : v <= 12 ? 'flat art' : 'shaded');
+const describeDetail = (v: number) =>
+  v <= 20 ? 'loose shapes' : v <= 45 ? 'simplified' : v <= 75 ? 'faithful' : 'every pixel step';
+const describeSmoothing = (v: number) =>
+  v <= 5 ? 'polylines' : v <= 40 ? 'gentle curves' : v <= 80 ? 'curve fitted' : 'long sweeps';
+const describeDespeckle = (v: number) =>
+  v === 0 ? 'keep everything' : v <= 30 ? 'grain' : v <= 70 ? 'small specks' : 'aggressive';
+
 function Slider({
   testid,
   label,
+  hint,
   min,
   max,
   value,
@@ -737,6 +928,7 @@ function Slider({
 }: {
   testid: string;
   label: string;
+  hint?: string;
   min: number;
   max: number;
   value: number;
@@ -755,8 +947,10 @@ function Slider({
         max={max}
         step={1}
         value={value}
+        aria-label={label}
         onChange={(event) => onChange(Number(event.target.value))}
       />
+      {hint ? <span className="slider-hint">{hint}</span> : null}
     </label>
   );
 }

@@ -502,19 +502,39 @@ export function indicesToRaster(
   return { width, height, data };
 }
 
-/** Normalize / clamp a caller-supplied palette override. */
-export function sanitizePalette(palette: RgbColor[] | null | undefined): RgbColor[] | null {
+/**
+ * Clamp a caller-supplied palette override and drop malformed entries,
+ * **keeping duplicates**.
+ *
+ * Duplicates are meaningful: two slots naming the same colour is how the
+ * palette editor expresses "merge slot A into slot B" (see `vectorize`). The
+ * length of the returned array is therefore the number of colour *slots* the
+ * quantizer should cluster into, which is not necessarily the number of
+ * distinct colours that end up in the SVG.
+ */
+export function normalizePalette(palette: RgbColor[] | null | undefined): RgbColor[] | null {
   if (!palette || palette.length === 0) return null;
   const out: RgbColor[] = [];
-  const seen = new Set<number>();
   for (const c of palette) {
     if (!c || typeof c.r !== 'number' || typeof c.g !== 'number' || typeof c.b !== 'number') continue;
-    const n = { r: clamp255(c.r), g: clamp255(c.g), b: clamp255(c.b) };
+    if (!Number.isFinite(c.r) || !Number.isFinite(c.g) || !Number.isFinite(c.b)) continue;
+    out.push({ r: clamp255(c.r), g: clamp255(c.g), b: clamp255(c.b) });
+    if (out.length >= 64) break;
+  }
+  return out.length ? out : null;
+}
+
+/** `normalizePalette` plus duplicate removal — the distinct colours of an override. */
+export function sanitizePalette(palette: RgbColor[] | null | undefined): RgbColor[] | null {
+  const normalized = normalizePalette(palette);
+  if (!normalized) return null;
+  const out: RgbColor[] = [];
+  const seen = new Set<number>();
+  for (const n of normalized) {
     const key = packRgb(n.r, n.g, n.b);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(n);
-    if (out.length >= 64) break;
   }
   return out.length ? out : null;
 }
