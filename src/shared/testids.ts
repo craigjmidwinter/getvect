@@ -117,6 +117,16 @@ export const TESTIDS = {
   exportPng: 'export-png', // REFERENCE D5
   exportStatus: 'export-status', // + data-last-export-path (cleared whenever it goes stale)
   exportSize: 'export-size', // + data-bytes — live size of the SVG in the preview
+
+  // --- U. Update banner -----------------------------------------------------
+  // Non-modal, dismissible, and absent unless the once-per-launch check found
+  // something newer. Under test the check never touches the network:
+  // `GETVECT_UPDATE_STUB=<version>` fakes the answer (docs/TESTIDS.md, "Update
+  // check under test").
+  updateBanner: 'update-banner', // + data-version, data-state, data-mode
+  updateDownloadButton: 'update-download', // notify: opens the release page
+  updateInstallButton: 'update-install', // auto mode only: restart into the download
+  updateDismissButton: 'update-dismiss', // remembered per version, in the main process
 } as const;
 
 export type TestId = (typeof TESTIDS)[keyof typeof TESTIDS];

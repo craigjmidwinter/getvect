@@ -465,6 +465,42 @@ that knows about tests.
 
 ---
 
+## U. Update banner
+
+The one piece of UI that is not about an image. It exists because GetVect ships unsigned:
+Squirrel.Mac refuses to install an update it cannot validate against the running app's
+signature, so the app **checks and tells you**, and you fetch the dmg yourself
+(`src/shared/update.ts` explains the whole reasoning; `src/main/updater.ts` implements it).
+
+| testid | element | required attributes / behaviour |
+| --- | --- | --- |
+| `update-banner` | fixed-position card | Absent unless the once-per-launch check found a newer version and the user has not dismissed *that* version. **Required:** `data-version` (the version on offer), `data-state` (`available` \| `downloading` \| `downloaded`), `data-mode` (`notify` \| `auto`). Must be non-modal: nothing behind it is overlaid, disabled or focus-trapped. |
+| `update-download` | button | Present in `notify` mode. Opens the release page in the user's browser via the main process; it does **not** download inside the app. |
+| `update-install` | button | Present only at `data-state="downloaded"` (`auto` mode). Quits and relaunches into the downloaded version. Never present in `notify` mode. |
+| `update-dismiss` | button | Hides the banner for this version, permanently. |
+
+**Dismissal is main-process state.** It is written to `update-state.json` in
+`app.getPath('userData')` (or `$GETVECT_UPDATE_DIR` under e2e) as
+`{"dismissedVersion":"x.y.z"}` — *not* localStorage, which the renderer can clear out from
+under itself and which a stricter CSP need not provide at all. A dismissal of one version
+must not swallow the banner for the next one: `dismissed` is derived per version, never
+stored as a standalone boolean.
+
+### Update check under test
+
+**No spec may hit the network.** A real check is refused in anything that is not a
+packaged build, so the suite reaches this UI through a stub instead:
+
+| env var | effect |
+| --- | --- |
+| `GETVECT_UPDATE_STUB=<version>` | Publish an available update for `<version>` without opening a socket. Honoured only when the build is unpackaged or `GETVECT_E2E=1`. |
+| `GETVECT_UPDATE_STUB_STATE=downloading\|downloaded` | Which state the stub publishes — how the dormant `auto` UI stays exercised. |
+| `GETVECT_UPDATE_MODE=notify\|auto` | Overrides the build's baked-in mode (`extraMetadata.updateMode`). Development and test only. |
+| `GETVECT_UPDATE_DIR=<dir>` | Where the dismissal store lives under e2e, so a spec never writes to the developer's own `userData`. |
+| `GETVECT_NO_UPDATE_CHECK=1` | The user-facing opt-out, consulted **before** everything above. No check, no banner, no exceptions. |
+
+---
+
 ## Preload API available to the renderer
 
 ```ts
@@ -488,4 +524,12 @@ window.getvect.aiEnhance.run({
   image,                             // PNG bytes of the working image
   transparent,                       // source has real alpha -> transparent-background prompt
 }): Promise<{ ok: true, image } | { ok: false, code, message }>
+
+// Update check. Note the absence of a check() — the main process checks once per
+// launch on its own schedule and the renderer can only read the answer.
+window.getvect.update.status(): Promise<UpdateStatus>
+window.getvect.update.dismiss(version): Promise<UpdateStatus>
+window.getvect.update.download(): Promise<UpdateStatus>  // notify: open the release page
+window.getvect.update.install(): Promise<UpdateStatus>   // auto only, after a download
+window.getvect.update.onChanged(cb): () => void          // returns its own unsubscribe
 ```
