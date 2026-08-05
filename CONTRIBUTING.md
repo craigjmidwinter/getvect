@@ -31,7 +31,12 @@ npm test              # engine contracts, then the Playwright acceptance suite
 npm run instruments   # fidelity metrics -> artifacts/metrics.json
 npm run screenshots   # labelled contact sheet -> artifacts/screenshots/
 npm run docs:screenshots # regenerate docs/assets/screenshot-*.png (the README's shots)
+npm run assets        # regenerate every derived asset (traced SVG, before/after, icons, site copies)
 ```
+
+The traced SVG, the before/after composite, the app icon family and everything in
+`site/assets/` are **generated** by `scripts/regenerate-derived-assets.mjs` — edit the mascot
+or the script, then run `npm run assets`; never hand-edit the outputs (CI runs `--check`).
 
 Useful slices:
 
