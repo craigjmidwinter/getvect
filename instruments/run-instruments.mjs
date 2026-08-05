@@ -6,10 +6,12 @@
  *   1. decodes the source raster (sharp; BMP via instruments/lib/decode.mjs),
  *   2. calls the engine's pure `vectorize()` headlessly (dist/engine/index.js),
  *   3. rasterizes the produced SVG back to the SOURCE dimensions with resvg,
- *   4. measures mean/RMS colour error, SSIM, mismatch ratio, path count,
- *      SVG byte size and wall-clock ms,
+ *   4. measures mean/RMS colour error, SSIM, mismatch ratio, per-colour area
+ *      drift, path AND sub-path counts, speck ratio, curve-command ratio,
+ *      near-duplicate colour layers, SVG byte size and wall-clock ms,
  *   5. compares each against the fixture's thresholds (fixtures/manifest.json,
- *      derived from REFERENCE.md "Quality bar").
+ *      derived from REFERENCE.md "Quality bar"), including ratios against a
+ *      real the reference product exemplar when the fixture declares one.
  *
  * Outputs:
  *   artifacts/metrics.json          machine-readable, one record per fixture
@@ -30,13 +32,13 @@ import sharp from 'sharp';
 import { Resvg } from '@resvg/resvg-js';
 import { decodeImageFile, flattenOnWhite } from './lib/decode.mjs';
 import {
-  countPaths,
-  countShapes,
   meanColorError,
+  perColorCoverageDelta,
   pixelMismatchRatio,
   psnr,
   rmsColorError,
   ssim,
+  svgStructure,
 } from './lib/metrics.mjs';
 
 const require = createRequire(import.meta.url);
@@ -104,18 +106,43 @@ async function writeDiff(a, b, file, amplify = 4) {
     .toFile(file);
 }
 
+/**
+ * Every gate the instruments enforce, as `[threshold key, metric key, direction,
+ * formatter]`. `max*` keys fail when the metric is above the threshold, `min*`
+ * when it is below.
+ */
+const GATES = [
+  ['meanColorError', 'meanColorError', 'max', (v) => v.toFixed(2)],
+  ['ssim', 'ssim', 'min', (v) => v.toFixed(4)],
+  ['maxPaths', 'pathCount', 'max', String],
+  // pathCount is not a shape count — one compound path per colour layer hides
+  // thousands of specks inside a single element, so the economy bar is only
+  // real when sub-paths are counted too (REFERENCE "Economy").
+  ['maxSubPaths', 'subPathCount', 'max', String],
+  ['maxTinySubPathRatio', 'tinySubPathRatio', 'max', (v) => v.toFixed(4)],
+  ['minCurveCommandRatio', 'curveCommandRatio', 'min', (v) => v.toFixed(3)],
+  ['maxNearDuplicateFills', 'nearDuplicateFillPairs', 'max', String],
+  ['maxPerColorCoverageDelta', 'perColorCoverageDelta', 'max', (v) => v.toFixed(4)],
+  ['maxBytes', 'svgBytes', 'max', String],
+  ['maxMs', 'wallClockMs', 'max', (v) => v.toFixed(0)],
+  // Relative to the gold-standard exemplar (REFERENCE lines 80-83).
+  ['maxBytesRatio', 'exemplarBytesRatio', 'max', (v) => `${v.toFixed(2)}x`],
+  ['maxSubPathRatio', 'exemplarSubPathRatio', 'max', (v) => `${v.toFixed(2)}x`],
+  ['maxPathRatio', 'exemplarPathRatio', 'max', (v) => `${v.toFixed(2)}x`],
+  ['maxMeanColorErrorRatio', 'exemplarMeanColorErrorRatio', 'max', (v) => `${v.toFixed(2)}x`],
+];
+
 function checkThresholds(m, t) {
   if (!t) return [];
   const failures = [];
-  if (t.meanColorError != null && m.meanColorError > t.meanColorError)
-    failures.push(`meanColorError ${m.meanColorError.toFixed(2)} > ${t.meanColorError}`);
-  if (t.ssim != null && m.ssim < t.ssim) failures.push(`ssim ${m.ssim.toFixed(4)} < ${t.ssim}`);
-  if (t.maxPaths != null && m.pathCount > t.maxPaths)
-    failures.push(`pathCount ${m.pathCount} > ${t.maxPaths}`);
-  if (t.maxBytes != null && m.svgBytes > t.maxBytes)
-    failures.push(`svgBytes ${m.svgBytes} > ${t.maxBytes}`);
-  if (t.maxMs != null && m.wallClockMs > t.maxMs)
-    failures.push(`wallClockMs ${m.wallClockMs.toFixed(0)} > ${t.maxMs}`);
+  for (const [key, metric, dir, fmtV] of GATES) {
+    const limit = t[key];
+    const value = m[metric];
+    if (limit == null || value == null || !Number.isFinite(value)) continue;
+    if (dir === 'max' ? value > limit : value < limit) {
+      failures.push(`${metric} ${fmtV(value)} ${dir === 'max' ? '>' : '<'} ${limit}`);
+    }
+  }
   return failures;
 }
 
@@ -128,13 +155,15 @@ function fmt(v, digits = 2) {
 function table(rows) {
   const cols = [
     ['fixture', (r) => r.id, 20],
-    ['status', (r) => r.status, 20],
+    ['status', (r) => r.status, 19],
     ['MAE/255', (r) => fmt(r.metrics?.meanColorError), 8],
     ['SSIM', (r) => fmt(r.metrics?.ssim, 4), 8],
-    ['PSNR', (r) => fmt(r.metrics?.psnrDb, 1), 7],
-    ['paths', (r) => (r.metrics ? String(r.metrics.pathCount) : '—'), 7],
+    ['paths', (r) => (r.metrics ? String(r.metrics.pathCount) : '—'), 6],
+    ['subpaths', (r) => (r.metrics ? String(r.metrics.subPathCount) : '—'), 9],
+    ['tiny%', (r) => fmt(r.metrics ? r.metrics.tinySubPathRatio * 100 : null, 1), 6],
+    ['curve', (r) => fmt(r.metrics?.curveCommandRatio, 3), 6],
     ['SVG KB', (r) => fmt(r.metrics ? r.metrics.svgBytes / 1024 : null, 1), 8],
-    ['ms', (r) => fmt(r.metrics?.wallClockMs, 0), 7],
+    ['ms', (r) => fmt(r.metrics?.wallClockMs, 0), 6],
   ];
   const head = cols.map(([h, , w]) => h.padEnd(w)).join(' ');
   const sep = cols.map(([, , w]) => '-'.repeat(w)).join(' ');
@@ -150,10 +179,37 @@ async function main() {
     await fs.mkdir(join(artifactsDir, sub), { recursive: true });
   }
 
-  const settings = { ...engine.DEFAULT_SETTINGS };
+  const baseSettings = { ...engine.DEFAULT_SETTINGS };
   const results = [];
   let notImplemented = 0;
   let failed = 0;
+  /** Cache of measured exemplar SVGs, keyed by file. */
+  const exemplarCache = new Map();
+
+  /**
+   * Measure a gold-standard exemplar (real the reference product output shipped in
+   * fixtures/reference/) the same way we measure ours, so the comparison
+   * REFERENCE lines 80-83 asks for is a number instead of an eyeball.
+   */
+  async function measureExemplar(relPath, source) {
+    if (exemplarCache.has(relPath)) return exemplarCache.get(relPath);
+    let measured = null;
+    try {
+      const svg = await fs.readFile(join(fixturesDir, relPath), 'utf8');
+      const rendered = await rasterizeSvg(svg, source.width, source.height);
+      const traced = flattenOnWhite(rendered.image);
+      measured = {
+        file: relPath,
+        ...svgStructure(svg),
+        meanColorError: meanColorError(source, traced),
+        ssim: ssim(source, traced),
+      };
+    } catch (err) {
+      measured = { file: relPath, error: err.message };
+    }
+    exemplarCache.set(relPath, measured);
+    return measured;
+  }
 
   for (const fixture of manifest.fixtures) {
     if (!fixture.supported) {
@@ -170,6 +226,10 @@ async function main() {
 
     const filePath = join(fixturesDir, fixture.file);
     const source = flattenOnWhite(await decodeImageFile(filePath));
+    // A fixture may pin the settings it is judged at (the reference exemplar
+    // was produced at ~16 colours, so measuring it at the 8-colour default
+    // would compare two different pictures).
+    const settings = { ...baseSettings, ...(fixture.settings ?? {}) };
 
     let result;
     const t0 = performance.now();
@@ -228,6 +288,7 @@ async function main() {
     const traced = flattenOnWhite(rendered.image);
     await writeDiff(source, traced, join(artifactsDir, 'diff', `${fixture.id}.png`));
 
+    const structure = svgStructure(result.svg);
     const metrics = {
       width: source.width,
       height: source.height,
@@ -236,14 +297,38 @@ async function main() {
       psnrDb: psnr(source, traced),
       ssim: ssim(source, traced),
       pixelMismatchRatio: pixelMismatchRatio(source, traced),
-      pathCount: countPaths(result.svg),
-      shapeCount: countShapes(result.svg),
+      // How much each palette colour's area drifted between source and trace:
+      // catches half-pixel erosion of hairlines that MAE/SSIM average away.
+      perColorCoverageDelta: Array.isArray(result.palette)
+        ? perColorCoverageDelta(source, traced, result.palette)
+        : null,
+      pathCount: structure.pathCount,
+      shapeCount: structure.shapeCount,
+      subPathCount: structure.subPathCount,
+      tinySubPathRatio: structure.tinySubPathRatio,
+      curveCommandRatio: structure.curveCommandRatio,
+      cubicCount: structure.cubicCount,
+      layerCount: structure.layerCount,
+      nearDuplicateFillPairs: structure.nearDuplicateFillPairs,
       paletteSize: Array.isArray(result.palette) ? result.palette.length : null,
       reportedPathCount: typeof result.pathCount === 'number' ? result.pathCount : null,
-      svgBytes: Buffer.byteLength(result.svg, 'utf8'),
+      svgBytes: structure.bytes,
       wallClockMs,
       engineReportedMs: typeof result.durationMs === 'number' ? result.durationMs : null,
     };
+
+    let exemplar = null;
+    if (fixture.exemplar) {
+      exemplar = await measureExemplar(fixture.exemplar, source);
+      if (!exemplar.error) {
+        metrics.exemplarBytesRatio = metrics.svgBytes / exemplar.bytes;
+        metrics.exemplarSubPathRatio = metrics.subPathCount / Math.max(1, exemplar.subPathCount);
+        metrics.exemplarPathRatio = metrics.pathCount / Math.max(1, exemplar.pathCount);
+        metrics.exemplarMeanColorErrorRatio =
+          metrics.meanColorError / Math.max(0.01, exemplar.meanColorError);
+        metrics.exemplarCurveCommandRatio = exemplar.curveCommandRatio;
+      }
+    }
 
     const failures = checkThresholds(metrics, fixture.thresholds);
     if (failures.length) failed++;
@@ -252,7 +337,9 @@ async function main() {
       file: fixture.file,
       kind: fixture.kind,
       status: failures.length ? 'FAIL' : 'pass',
+      settings,
       metrics,
+      exemplar,
       thresholds: fixture.thresholds ?? null,
       failures,
     });
@@ -262,7 +349,7 @@ async function main() {
     generatedAt: new Date().toISOString(),
     node: process.version,
     platform: `${process.platform}-${process.arch}`,
-    settings,
+    settings: baseSettings,
     summary: {
       total: results.length,
       passed: results.filter((r) => r.status === 'pass').length,
@@ -279,6 +366,17 @@ async function main() {
   console.log(table(results));
   console.log('');
   for (const r of results) {
+    if (r.exemplar && !r.exemplar.error) {
+      const e = r.exemplar;
+      console.log(
+        `  ${r.id}: vs exemplar ${e.file} — bytes ${fmt(r.metrics.exemplarBytesRatio)}x, ` +
+          `subpaths ${fmt(r.metrics.exemplarSubPathRatio)}x (${r.metrics.subPathCount} vs ${e.subPathCount}), ` +
+          `paths ${fmt(r.metrics.exemplarPathRatio)}x (${r.metrics.pathCount} vs ${e.pathCount}), ` +
+          `curve ratio ${fmt(r.metrics.curveCommandRatio, 3)} vs ${fmt(e.curveCommandRatio, 3)}, ` +
+          `MAE ${fmt(r.metrics.meanColorError)} vs ${fmt(e.meanColorError)}`,
+      );
+    }
+    if (r.exemplar?.error) console.log(`  ${r.id}: exemplar unreadable — ${r.exemplar.error}`);
     if (r.failures?.length) console.log(`  ${r.id}: ${r.failures.join('; ')}`);
     if (r.error) console.log(`  ${r.id}: ${r.error.split('\n')[0]}`);
   }

@@ -14,6 +14,11 @@
         "meanColorError": 8,
         "ssim": 0.9,
         "maxPaths": 200,
+        "maxSubPaths": 200,
+        "maxTinySubPathRatio": 0.02,
+        "minCurveCommandRatio": 0.5,
+        "maxNearDuplicateFills": 0,
+        "maxPerColorCoverageDelta": 0.01,
         "maxBytes": 102400,
         "maxMs": 10000
       },
@@ -32,6 +37,10 @@
         "meanColorError": 14,
         "ssim": 0.7,
         "maxPaths": 1200,
+        "maxSubPaths": 1200,
+        "maxTinySubPathRatio": 0.1,
+        "minCurveCommandRatio": 0.4,
+        "maxNearDuplicateFills": 2,
         "maxBytes": 409600,
         "maxMs": 10000
       },
@@ -50,6 +59,11 @@
         "meanColorError": 8,
         "ssim": 0.9,
         "maxPaths": 300,
+        "maxSubPaths": 300,
+        "maxTinySubPathRatio": 0.02,
+        "minCurveCommandRatio": 0.5,
+        "maxNearDuplicateFills": 0,
+        "maxPerColorCoverageDelta": 0.01,
         "maxBytes": 153600,
         "maxMs": 10000
       },
@@ -68,6 +82,8 @@
         "meanColorError": 28,
         "ssim": 0.6,
         "maxPaths": 4000,
+        "maxSubPaths": 6000,
+        "maxTinySubPathRatio": 0.3,
         "maxBytes": 1048576,
         "maxMs": 10000
       },
@@ -86,10 +102,67 @@
         "meanColorError": 8,
         "ssim": 0.88,
         "maxPaths": 200,
+        "maxSubPaths": 200,
+        "maxTinySubPathRatio": 0.02,
+        "minCurveCommandRatio": 0.5,
+        "maxNearDuplicateFills": 0,
+        "maxPerColorCoverageDelta": 0.01,
         "maxBytes": 102400,
         "maxMs": 10000
       },
       "note": "BMP ingest path (REFERENCE A1)."
+    },
+    {
+      "id": "reference-snorlax",
+      "file": "reference/snorlax.png",
+      "kind": "clipart",
+      "format": "png",
+      "width": 1046,
+      "height": 833,
+      "supported": true,
+      "distinctColors": null,
+      "settings": {
+        "colorCount": 16,
+        "enhance": true
+      },
+      "exemplar": "reference/snorlax.svg",
+      "thresholds": {
+        "meanColorError": 20,
+        "ssim": 0.85,
+        "maxPathRatio": 3,
+        "maxSubPathRatio": 3,
+        "maxBytesRatio": 5,
+        "maxTinySubPathRatio": 0.02,
+        "minCurveCommandRatio": 0.5,
+        "maxNearDuplicateFills": 4,
+        "maxMs": 10000
+      },
+      "note": "Gold-standard exemplar (REFERENCE \"blind A/B\"). Judged at 16 colours + enhance, the setting the captured output corresponds to. snorlax.svg is a low-colour capture, so it anchors ECONOMY (paths/sub-paths/bytes/curve ratio); fidelity is gated absolutely here and relatively in reference-snorlax-6c."
+    },
+    {
+      "id": "reference-snorlax-6c",
+      "file": "reference/snorlax.png",
+      "kind": "clipart",
+      "format": "png",
+      "width": 1046,
+      "height": 833,
+      "supported": true,
+      "distinctColors": null,
+      "settings": {
+        "colorCount": 6,
+        "enhance": true
+      },
+      "exemplar": "reference/snorlax-clipart-6colors-min90.svg",
+      "thresholds": {
+        "maxMeanColorErrorRatio": 1.5,
+        "maxPathRatio": 3,
+        "maxSubPathRatio": 3,
+        "maxBytesRatio": 5,
+        "maxTinySubPathRatio": 0.02,
+        "minCurveCommandRatio": 0.5,
+        "maxMs": 10000
+      },
+      "note": "Blind A/B against real Clipart 6-colour output (93 paths, 91KB, curve ratio 0.64)."
     },
     {
       "id": "unsupported-gif",

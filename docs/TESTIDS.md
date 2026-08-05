@@ -34,7 +34,18 @@ import { TESTIDS } from '../shared/testids';
 | `image-list` | sidebar container | Visible once ≥1 image is loaded. |
 | `image-list-item` | one per loaded image | **Required:** `data-image-id` (stable unique id), `data-selected` = `"true"`/`"false"` (the string, on every item — not just the selected one). Must contain the source filename as text. |
 | `image-list-item-name` | filename label | Optional; `image-list-item` need only *contain* the filename. |
-| `image-remove-button` | per-item remove | Optional for the checklist; wire it if you add it. |
+| `image-remove-button` | per-item remove | Removes that image. Removing the last image must return `status-text` to `idle` and clear `export-status` (see D). |
+
+**Drag feedback (A1).** `app-root` carries `data-dragging="true"` while a file is
+being dragged anywhere over the window (set on `dragenter`/`dragover`, cleared on
+`dragleave`/`drop`). A drop is accepted anywhere in the window, not only over
+`drop-zone`; the suite dispatches drag events at `preview-pane` too.
+
+**Newly ingested images win the selection (A1/A3).** After any successful ingest —
+drop or picker, first image or fifth — the first newly accepted entry becomes the
+selected one (`data-selected="true"`) and the workspace switches to it. Leaving the
+previous selection in place is a silent no-op from the user's point of view: the file
+they just dropped is neither shown nor vectorized.
 
 ### Drag-and-drop
 
@@ -53,6 +64,11 @@ Files arriving through `file-input` must go down the exact same ingest code path
 A rejected file must (a) show `error-toast`, and (b) **not** create an `image-list-item`.
 In a mixed drop, supported files still load and the toast reports the rejected ones.
 
+The toast must be **self-dismissing** (within ~10s) and **dismissable by hand** (it
+contains a button). It must *not* be cleared as a side effect of an unrelated
+successful ingest — a rejection the user never saw acknowledged is a rejection they
+never saw.
+
 ---
 
 ## B. Vectorization engine
@@ -64,6 +80,7 @@ In a mixed drop, supported files still load and the toast reports the rejected o
 | `progress-indicator` | spinner / bar | Visible while `data-status` is `loading` or `vectorizing`; hidden otherwise. **Required:** `data-progress` in `0..1`. |
 | `settings-panel` | container | Visible when an image is selected. |
 | `color-count` | `<input type="range">` | min 2, max 64, integer step. |
+| `color-count-hint` | label next to it | **Required:** `data-requested` (slider value) and `data-actual` (`result.palette.length`), and text naming the actual number. The image often has fewer colours than the slider asks for; the control and the result must not silently disagree. |
 | `detail` | `<input type="range">` | min 0, max 100. |
 | `smoothing` | `<input type="range">` | min 0, max 100. |
 | `despeckle` | `<input type="range">` | min 0, max 100. |
@@ -76,7 +93,48 @@ native setter and fires `input` + `change` (React-compatible). Custom div-based 
 will not work.
 
 Each of the four sliders must **observably change the SVG**: same image + different
-setting value ⇒ different `preview-vector` markup (REFERENCE B2).
+setting value ⇒ different `preview-vector` markup (REFERENCE B2). "Observably" is
+enforced at two levels: the e2e suite compares markup, and
+`tests/engine/rendered.test.mjs` rasterizes both results and requires more than 1 % of
+pixels to move. A geometry change no pixel can see does not count.
+
+### Model presets (B2)
+
+`fixtures/reference/OBSERVED-UI.md` step ① is the ground truth.
+
+| testid | element | required attributes / behaviour |
+| --- | --- | --- |
+| `preset-clipart` / `preset-photo` / `preset-sketch` / `preset-drawing` | buttons | **Required:** `data-selected` = `"true"`/`"false"` on every one. Clicking re-vectorizes. Each preset must produce a different SVG. |
+| `detail-level` | `<select>` | Clipart's Detail Level. Option values exactly `maximum`, `ultra`, `very-high`, `high`, `medium`, `low`, `minimum`, in that order. Minimum must produce a simpler drawing than Maximum. |
+| `bw-threshold` | `<input type="range">` 0..255 | Drawing preset only: the luminance split. Moving it must repaint. |
+
+Sketch must emit **grayscale only** (every layer colour has `r == g == b`); Drawing
+must emit **at most two** colours, black and white.
+
+### Advanced vectorization (B5)
+
+| testid | element | required attributes / behaviour |
+| --- | --- | --- |
+| `roundness` | `<select>` | Exactly three curve-fitting levels. The roundest must fit strictly more curve commands than the least round. |
+| `min-area` | `<select>` | Option values exactly `0`, `5`, `90` (px²). At 5 no shape smaller than 5 px² may survive; at 90 none smaller than 90 px². |
+| `overlap` | `<select>` | Option values `full`, `high`. `full` paints lower layers under the upper ones, so it carries at least as much geometry as `high`. |
+| `circle-detection` | checkbox | On must yield `<circle>`/`<ellipse>` elements or a higher curve-command ratio than Off. |
+
+### Quality enhancement (B4)
+
+| testid | element | required attributes / behaviour |
+| --- | --- | --- |
+| `noise-reduction` | `<select>` | Option values `off`, `low`, `high`. Each step must not increase the sub-path count. |
+| `anti-aliasing` | `<select>` | Option values `off`, `smart`, `mid`. `smart` must not leave more near-duplicate colour layers (RGB distance ≤ 24 between two `<g fill>` layers) than `off` — those are the halo layers antialiased sources produce. |
+
+Enhance must never introduce a colour the source does not contain (asserted against
+the flat fixture's exactly six colours).
+
+### Result styles (B6)
+
+| testid | element | required attributes / behaviour |
+| --- | --- | --- |
+| `result-style-filled` / `result-style-stroked` | buttons | **Required:** `data-selected`. Filled is the default. In stroked mode every colour layer becomes `<g fill="none" stroke="…" stroke-width="…">` and the exported document changes with it (C3 still holds). |
 
 ### Palette editor (B3)
 
@@ -89,6 +147,20 @@ setting value ⇒ different `preview-vector` markup (REFERENCE B2).
 | `palette-merge-button` | button | Merges selected swatch into `palette-merge-target`. Palette size drops by one. |
 | `palette-remove-button` | button | Removes the selected swatch. Palette size drops by one and the removed colour must no longer appear in the SVG. |
 | `palette-auto-button` | button | Optional; present only while the palette has been hand-edited. Clears `settings.palette` so the engine recomputes the palette from the image. |
+| `palette-size-option` | one per candidate palette | **Required:** `data-size`. Exactly the eleven sizes the reference product offers, in order: 1, 2, 3, 4, 5, 6, 8, 12, 15, 16, 18. Selecting one drives `colorCount`. |
+
+### Output colour groups (B3)
+
+| testid | element | required attributes / behaviour |
+| --- | --- | --- |
+| `color-groups` | container | Visible when `data-status` is `ready`. |
+| `color-group-toggle` | checkbox per output colour | **Required:** `data-index`, `data-color`. One per palette entry. Unchecking removes that colour's layer from the SVG — and unchecking the dominant (index 0) colour must leave a genuinely **transparent** background: no full-bleed backdrop `<rect>`, and the corner pixels render with alpha 0. Re-checking restores the previous document exactly. |
+| `merge-threshold` | `<select>` | Percentage thresholds (the real product defaults to 5 %). Raising it must not increase the layer count. |
+| `color-sort` | `<select>` | Layer sort order. Changing it reorders `<g>` layers without changing which colours exist. |
+
+The palette editor and colour groups must not crowd out the artwork: at the app's
+minimum window size with a 64-colour palette, `settings-panel` must stay under 45 % of
+the window height and `preview-pane` must keep more than 40 %.
 
 `palette-editor` also carries `data-palette-size` (entry count) and `data-stale`
 (`"true"` while a re-trace is in flight, so the swatches on screen describe the SVG in the
@@ -119,6 +191,20 @@ the path count — denoising should simplify, not complicate.
 | `zoom-in` / `zoom-out` / `zoom-fit` | buttons | Change zoom. `zoom-fit` must be idempotent and return the same value each time. |
 | `zoom-level` | label | **Required:** `data-zoom`, a number where `1` = 100%. |
 | `pan-state` | any element (may be the pane itself) | **Required:** `data-pan-x`, `data-pan-y` in image pixels. Must change when the user drags in `preview-pane` while zoomed in. |
+| `preview-busy` | busy overlay | Shown while a trace is in flight. Must be **outside** the zoom/pan-transformed stage: its centre stays within 12 px of `preview-pane`'s centre at any zoom. |
+
+### Viewer behaviour (C1/C2)
+
+- **Never blank.** While a re-trace is in flight the previous result stays mounted
+  (dimmed is fine) under `preview-busy`. `preview-vector svg` must exist in every
+  frame from the first successful trace onwards — including while switching images.
+- **The wheel zooms.** A `wheel` event over `preview-pane` changes `data-zoom`
+  (cursor-anchored), and both views stay synchronized.
+- **Pan is bounded.** No drag may push the artwork out of the view: after any drag the
+  rendered `<svg>` still overlaps `preview-pane` by more than 25 % of the smaller of
+  the two areas. "Fit" must not be the only way back.
+- **Inert when empty.** With no image loaded, `preview-toggle`, `preview-side-by-side`,
+  `zoom-in`, `zoom-out` and `zoom-fit` are `disabled`.
 
 ### C3 — the preview is the export
 
@@ -135,9 +221,21 @@ preview and generate a different SVG at export time.
 | `export-svg` / `export-eps` / `export-dxf` | buttons | Enabled when `data-status="ready"`. Each calls `window.getvect.saveExport({ defaultName, contents, format })`. |
 | `export-pdf` / `export-png` | buttons | REFERENCE D5. Same contract as the three above. PDF is a vector document from the engine; PNG is rasterized from the *same* SVG by the renderer (`src/renderer/lib/raster.ts`) and sent with `encoding: 'base64'`. |
 | `export-status` | status element | **Required after a successful export:** `data-last-export-path` = the absolute path returned by the main process. The suite waits on this attribute; without it every D-series test fails. Leave it absent (not empty) before the first export and after a cancelled one. |
+| `export-size` | label | **Required:** `data-bytes` = byte length of the SVG currently in the preview (the real product shows a live size next to Download). Must update when the result changes. |
 
 While a save is in flight every export button is disabled, so a click cannot land on a
 second format while the first dialog is open. They re-enable when the dialog resolves.
+
+**`data-last-export-path` means "this file matches what is on screen".** It must
+therefore be **cleared** whenever that stops being true: on a settings change, on a
+re-vectorize, on switching the selected image, and when the image is removed. A
+confirmation that outlives its result is a false statement about the user's disk.
+
+**The export row must not re-flow when it appears.** The status/size labels occupy a
+fixed box, so the buttons keep their positions: after an export, each export button's
+centre has moved by at most 1 px and `document.elementFromPoint` at the previous
+centre still resolves to the same button. Otherwise a two-format export (SVG then PDF)
+silently writes the wrong format.
 
 **Default filenames (D4):** `<source basename without extension>.<format>` — e.g.
 `logo-flat-512.png` → `logo-flat-512.svg`. The export must apply to the **currently
@@ -159,10 +257,12 @@ selected** image.
   source dimensions, `IEND`), rasterized from the exported SVG.
 
 **SVG document structure (D1).** `renderSvg` groups each colour's paths into a single
-`<g fill="#rrggbb">` layer — the structure the reference product emits — so a path element
-inherits its fill rather than repeating it. Anything parsing our SVG back into geometry
-must honour that inheritance; `parseSvgShapes` (src/engine/path.ts) does, and it is what
-the EPS/DXF/PDF writers use.
+`<g fill="rgb(r,g,b)">` layer — the structure *and the notation* the reference product
+emits (`fixtures/reference/snorlax.svg`) — so a path element inherits its fill rather
+than repeating it. Anything parsing our SVG back into geometry must honour that
+inheritance; `parseSvgShapes` (src/engine/path.ts) does, and it is what the EPS/DXF/PDF
+writers use. The `viewBox` stays at 1× source pixels; see docs/HARNESS.md "The D1
+viewBox question" for why that half of the exemplar is deliberately not reproduced.
 
 ### Export dialog under test
 
