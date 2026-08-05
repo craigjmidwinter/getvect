@@ -138,6 +138,10 @@
             "minFeatureComponentRatio": 0.87,
             "minSpikeCornerAngle": 60,
             "maxSliverRatio": 0.0001
+          },
+          "aspirations": {
+            "minSpikeCornerAngle": 112,
+            "minFeatureComponentRatio": 1
           }
         },
         {
@@ -451,6 +455,36 @@
           "height": 140
         },
         {
+          "name": "nose",
+          "x": 336,
+          "y": 396,
+          "width": 64,
+          "height": 38,
+          "aggregate": false,
+          "thresholds": {
+            "maxInkCoverageRatio": 1.1,
+            "minInkCoverageRatio": 0.9,
+            "maxMeanColorError": 18,
+            "minInkRecall": 0.93,
+            "minStrictInkRecall": 0.88,
+            "maxStrokeWidthCvRatio": 2
+          }
+        },
+        {
+          "name": "forehead-stripes",
+          "x": 350,
+          "y": 190,
+          "width": 70,
+          "height": 100,
+          "color": "rgb(209,95,21)",
+          "thresholds": {
+            "minColorPresenceRatio": 0.93
+          },
+          "aspirations": {
+            "minColorPresenceRatio": 0.976
+          }
+        },
+        {
           "name": "eyes",
           "x": 244,
           "y": 304,
@@ -458,6 +492,9 @@
           "height": 84,
           "color": "rgb(187,161,80)",
           "exemplarColor": "rgb(121,176,89)",
+          "thresholds": {
+            "maxSliverRatio": 0.0002
+          },
           "aspirations": {
             "minColorPresenceRatio": 0.9,
             "minColorPresenceOverExemplar": 0.9
@@ -473,6 +510,7 @@
         "minRegionStrictInkRecallRatio": 0.9,
         "maxRegionMeanColorError": 14,
         "maxRegionForeignColorRatio": 0.0005,
+        "maxRegionSliverRatio": 0.0002,
         "maxPaletteShortfall": 2,
         "maxPathRatio": 0.3,
         "maxSubPathRatio": 1.35,
@@ -514,6 +552,36 @@
           "height": 140
         },
         {
+          "name": "nose",
+          "x": 336,
+          "y": 396,
+          "width": 64,
+          "height": 38,
+          "aggregate": false,
+          "thresholds": {
+            "maxInkCoverageRatio": 1.1,
+            "minInkCoverageRatio": 0.9,
+            "maxMeanColorError": 18,
+            "minInkRecall": 0.93,
+            "minStrictInkRecall": 0.88,
+            "maxStrokeWidthCvRatio": 2
+          }
+        },
+        {
+          "name": "forehead-stripes",
+          "x": 350,
+          "y": 190,
+          "width": 70,
+          "height": 100,
+          "color": "rgb(209,95,21)",
+          "thresholds": {
+            "minColorPresenceRatio": 0.95
+          },
+          "aspirations": {
+            "minColorPresenceRatio": 0.976
+          }
+        },
+        {
           "name": "eyes",
           "x": 244,
           "y": 304,
@@ -521,7 +589,8 @@
           "height": 84,
           "color": "rgb(187,161,80)",
           "thresholds": {
-            "minColorPresenceRatio": 0.9
+            "minColorPresenceRatio": 0.9,
+            "maxSliverRatio": 0.0002
           }
         }
       ],
@@ -530,6 +599,7 @@
         "ssim": 0.94,
         "minInkRecall": 0.95,
         "minStrictInkRecall": 0.97,
+        "maxRegionSliverRatio": 0.0002,
         "minRegionInkRecall": 0.96,
         "minRegionStrictInkRecall": 0.95,
         "maxRegionMeanColorError": 8,
