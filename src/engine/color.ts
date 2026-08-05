@@ -207,6 +207,26 @@ const assignDist = (
  */
 const INK_LUMA = 60;
 
+/**
+ * L1 separation the delivered palette aims for.
+ *
+ * 8 % of the 765-unit L1 range — deliberately the same window the output-group
+ * fold (`mergeSimilarColors`) uses, because the two are the same statement made
+ * twice: colours closer than this are the halo/gradient debris a soft edge
+ * leaves behind, and shipping two of them costs a layer, a legend entry and a
+ * print run while showing the user one colour. If the quantizer stops producing
+ * them, the fold has nothing to take away, and the colour budget the user asked
+ * for is the colour budget they get.
+ *
+ * Declared up here with the other distance constants because the chromatic
+ * reservation (`reserveChromatic`) is built on it too, and a `const` used at
+ * module load time cannot be declared further down the file.
+ */
+const MIN_SEPARATION = 61;
+
+const l1 = (a: RgbColor, b: RgbColor): number =>
+  Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b);
+
 interface Box {
   lo: number;
   hi: number; // exclusive
@@ -372,9 +392,58 @@ export function computePaletteSync(
    * artwork's own colours into one.
    */
   const approximating = hist.distinct > k;
-  const { bands, pinned, inkReserved } = approximating
+  const { bands, pinned: tonal, inkReserved } = approximating
     ? reserveExtremes(hist, supportedHighlight(image, mask, hist.total), k, separateSlots)
     : { bands: [] as ReservedBand[], pinned: 0, inkReserved: false };
+  /*
+   * ...and the third reservation, which is about hue rather than tone. It has
+   * to run after the other two because its question is "can the centres this
+   * clustering is about to choose represent that region", and the reserved
+   * bands are two of those centres. See `reserveChromatic`.
+   *
+   * Only for the delivered palette. Inside the cleanup passes `colorCount` is a
+   * simplification strength rather than a promise (`SIMPLIFY_COLORS`,
+   * src/engine/preprocess.ts) and a reservation there would be an extra centre
+   * rather than a spent one — a free pass this guard has no way to price.
+   */
+  if (approximating && separateSlots) {
+    const budget0 = k - bands.length;
+    const seen = bands.length ? withoutBands(hist, bands) : hist;
+    if (budget0 > 0 && seen.distinct > 0) {
+      const families = distinguishable(
+        seen,
+        refine(seen, medianCut(seen, budget0).map((m) => centroid(m, seen)), 3),
+      );
+      /*
+       * TWO WAYS OF ASKING WHAT THE PICTURE CAN SPARE, and the reservation gets
+       * the smaller answer.
+       *
+       * The first is the floor every reservation in this file has:
+       * `CHROMATIC_MIN_PICTURE_SLOTS` families keep their slots whatever else
+       * happens. The second is sharper and is what makes this affordable at
+       * all — `distinguishable` has just counted how many of the centres the
+       * clustering picked are colours a user could tell apart, so the
+       * difference is the number of slots it was **about to spend on
+       * near-duplicates and lose to the fold anyway**. Taking one of those
+       * costs the picture nothing.
+       *
+       * It is also the guard that stops this from robbing a small budget.
+       * Measured on the fox at six colours: the free-slot count there is ZERO
+       * (five centres, five families) and the floor alone would have allowed
+       * one reservation, which took the eye cyan and left the delivered palette
+       * with two pinks and no dark warm brown — the socks and the ear linings
+       * with nothing to be painted with, which is exactly the contract
+       * `[B4] the default pipeline keeps every colour family the image has`
+       * exists to hold.
+       */
+      const room = Math.min(budget0 - CHROMATIC_MIN_PICTURE_SLOTS, budget0 - families.length);
+      if (room > 0) {
+        const offered = bands.map((b) => b.centre).concat(families);
+        bands.push(...reserveChromatic(image, mask, hist, seen, offered, room));
+      }
+    }
+  }
+  const pinned = Math.max(tonal, bands.length);
   const rest = bands.length ? withoutBands(hist, bands) : hist;
   /*
    * A reserved slot comes out of the budget when the budget is a promise — the
@@ -492,8 +561,8 @@ const HIGHLIGHT_MIN_PICTURE_SLOTS = 5;
 
 interface ReservedBand {
   centre: RgbColor;
-  /** Whether a histogram colour of this luma belongs to the band. */
-  holds: (luma: number) => boolean;
+  /** Whether a histogram colour belongs to the band. */
+  holds: (c: RgbColor, luma: number) => boolean;
 }
 
 /**
@@ -549,7 +618,7 @@ function reserveExtremes(
   // The highlight goes first because `refine`/`separate` take a count of
   // leading entries to hold rather than a set.
   if (k - 1 >= HIGHLIGHT_MIN_PICTURE_SLOTS + 1 && light && light.share >= HIGHLIGHT_MIN_COVERAGE) {
-    bands.push({ centre: light.centre, holds: (l) => l >= HIGHLIGHT_LUMA });
+    bands.push({ centre: light.centre, holds: (_c, l) => l >= HIGHLIGHT_LUMA });
     pinned = 1;
   }
   // Never spend the whole budget on the extremes: there has to be a slot left
@@ -561,7 +630,7 @@ function reserveExtremes(
     ink.share >= INK_MIN_COVERAGE &&
     ink.share <= INK_MAX_COVERAGE
   ) {
-    bands.push({ centre: ink.centre, holds: (l) => l < INK_LUMA });
+    bands.push({ centre: ink.centre, holds: (_c, l) => l < INK_LUMA });
     pinned = bands.length;
     inkReserved = true;
   }
@@ -634,6 +703,375 @@ function supportedHighlight(
   };
 }
 
+/**
+ * The centres a clustering would actually SHIP, which is not the same list as
+ * the centres it produces.
+ *
+ * Two entries closer than `MIN_SEPARATION` do not both reach the user: either
+ * `separate` folds them here, or the near-duplicate fold does it downstream
+ * (`mergeSimilarColors`, src/engine/index.ts `HALO_FOLD_PERCENT`). So a
+ * question of the form "is any centre going to represent this region" has to be
+ * asked of the survivors, and asking it of the raw list gets the answer wrong
+ * in exactly the case that matters: on the mascot the raw list DOES hold a
+ * salmon 29 units from the nose, and that salmon is the first thing the fold
+ * takes.
+ *
+ * Greedy in descending coverage, which is the order the fold itself keeps in.
+ */
+function distinguishable(hist: Histogram, centres: RgbColor[]): RgbColor[] {
+  if (centres.length < 2) return centres;
+  const coverage = new Float64Array(centres.length);
+  for (let i = 0; i < hist.distinct; i++) {
+    const c = hist.colors[i];
+    const r = (c >> 16) & 255;
+    const g = (c >> 8) & 255;
+    const b = c & 255;
+    let bestIdx = 0;
+    let bestD = Infinity;
+    for (let j = 0; j < centres.length; j++) {
+      const d = dist(r, g, b, centres[j]);
+      if (d < bestD) {
+        bestD = d;
+        bestIdx = j;
+      }
+    }
+    coverage[bestIdx] += hist.counts[i];
+  }
+  const order = centres.map((_, j) => j);
+  order.sort(
+    (a, b) =>
+      coverage[b] - coverage[a] ||
+      packRgb(centres[a].r, centres[a].g, centres[a].b) -
+        packRgb(centres[b].r, centres[b].g, centres[b].b),
+  );
+  const kept: RgbColor[] = [];
+  for (const j of order) {
+    if (kept.every((c) => l1(c, centres[j]) > MIN_SEPARATION)) kept.push(centres[j]);
+  }
+  return kept;
+}
+
+/**
+ * How far a colour has to sit from every centre the coverage optimizer would
+ * otherwise ship — in `assignDist`, the hue-aware metric — before it counts
+ * as chromatically ORPHANED.
+ *
+ * The bar is `MIN_SEPARATION`, the same 61 units the delivered palette already
+ * promises between any two of its entries, and it is the same statement turned
+ * around: if two colours that far apart are two colours a user can tell apart
+ * and must therefore get a slot each, then a *region* that far from every slot
+ * on offer is a region with no slot of its own. Measured in `assignDist` rather
+ * than in plain L1 because that is the whole defect — the mascot's nose salmon
+ * rgb(230,119,87) is 63 L1 units from the body orange it gets repainted as,
+ * which is a difference plain RGB shrugs at and a person names instantly.
+ */
+const CHROMATIC_ORPHAN_DIST = MIN_SEPARATION;
+
+/**
+ * How wrong the repaint has to be, in the units the *rest* of this repo calls a
+ * visible miss.
+ *
+ * 32 Euclidean RGB is `foreignColorRatio`'s window and
+ * `nearDuplicateFillPairs`' window (instruments/lib/metrics.mjs): inside it two
+ * colours are the same colour to the harness and to the eye, outside it they
+ * are not. So a region only earns a slot of its own when losing it would land
+ * its pixels further than that from their true colour — "the palette is a
+ * colour short" is not a defect until somebody can see it.
+ *
+ * It is also what keeps this reservation from creating the defect it is meant
+ * to fix: a reserved centre is by construction more than 32 Euclidean from
+ * every centre the optimizer chose, which is exactly the bar
+ * `maxNearDuplicateFills: 0` holds the delivered layers to.
+ */
+const CHROMATIC_MIN_MISS = 32;
+
+/**
+ * ...and how much of that miss has to be a HUE miss.
+ *
+ * The opponent-chroma disagreement — the red-green and blue-yellow term inside
+ * `assignDist`, and the only part of a colour difference that is not tone.
+ * Without this test the reservation reaches straight past what it is for and
+ * starts pinning SHADING BANDS: a mid-tone of a soft gradient is a long way
+ * from every centre a small budget can afford, entirely in lightness, and it is
+ * a tone the coverage optimizer is the right tool for. Measured on the shaded
+ * fixture at the default eight colours, reserving on distance alone pinned the
+ * body blue's mid-band and the belly brown's — 1.0 % of the canvas each, both
+ * of them the middle of a ramp whose ends already have slots — and the fold
+ * that freed cost the picture its fit (whole-frame colour error 5.92 -> 6.76,
+ * 167 sub-paths -> 175).
+ *
+ * The separation this draws is not a close-run thing. Chroma gap to the nearest
+ * centre on offer, measured: the shaded fixture's blue band **1**, its brown
+ * band **7** — against the mascot's nose salmon **51**, its eye olive **64**,
+ * the fox's nose pink **78** and its eye cyan **133**. 32 is the same window
+ * `CHROMATIC_MIN_MISS` uses and it sits in the middle of a gap an order of
+ * magnitude wide.
+ */
+const CHROMATIC_MIN_HUE_GAP = 32;
+
+/**
+ * The opponent-chroma difference between two colours: `assignDist`'s hue term,
+ * on its own. See `CHROMA_WEIGHT` for why these two axes are the ones hue lives
+ * on.
+ */
+const chromaGap = (a: RgbColor, b: RgbColor): number => {
+  const dr = b.r - a.r;
+  const dg = b.g - a.g;
+  const db = b.b - a.b;
+  return Math.abs(dr - dg) + Math.abs(db - dg);
+};
+
+/**
+ * Share of the counted area an orphaned region has to cover to be worth a slot.
+ *
+ * Between the ink bar (0.5 %) and the highlight bar (0.02 %), and for the
+ * reason both of those are where they are: this is not line art and it is not a
+ * glint, it is a FEATURE — a nose, an iris, an inner ear.
+ *
+ * Measured, on the two subjects that have one: the fox's eye cyan is 0.108 % of
+ * its canvas and its nose pink is 0.084 %. A tenth of a per cent therefore
+ * splits that pair, and splitting it is the worst available outcome — reserving
+ * the eyes alone takes the slot the nose had been riding on, and the nose's
+ * pale pink has NO warm neighbour to fall back to: its nearest survivor in
+ * `assignDist` is the eye cyan itself (192 against the body orange's 266), so a
+ * fox with rescued eyes came back with a **blue nose**. Both features or
+ * neither. 0.05 % takes both, and is still 2.5x the highlight bar under which a
+ * feature is a glint.
+ */
+const CHROMATIC_MIN_COVERAGE = 0.0005;
+
+/**
+ * How many of a pixel's eight neighbours share its band before it counts as
+ * part of a region rather than a stray.
+ *
+ * The same half-neighbourhood test, and the same number, as
+ * `HIGHLIGHT_SUPPORT_MIN` above, for the same reason: the interior of anything
+ * wider than a pixel clears it and no isolated pixel can. It is doing more work
+ * here than it does there, because the strays this has to reject are not noise
+ * but ANTIALIASING — the one-pixel ribbon along a boundary between two regions
+ * is genuinely far from both of their centres in hue, genuinely thousands of
+ * pixels, and reserving a slot for it would ship the halo layer that Smart
+ * anti-aliasing exists to remove. A ribbon one pixel wide has at most two
+ * neighbours in its own band; a nose has eight.
+ */
+const CHROMATIC_SUPPORT_MIN = 4;
+
+/**
+ * How wide a reserved band is allowed to be, and the guard that stops it eating
+ * the picture.
+ *
+ * A reserved band is *withheld from the clustering*, so its reach is not a
+ * cosmetic choice: every colour it holds is a colour no other centre can be
+ * spent on. `MIN_SEPARATION` alone is far too generous a radius for that — on
+ * the mascot the nose salmon and the body orange are 63 L1 apart, so a 61-unit
+ * ball around the nose swallows two thirds of the character and the delivered
+ * palette came back with a salmon and NO body orange.
+ *
+ * So the band is a Voronoi cell rather than a ball: it holds the colours whose
+ * nearest representative, in the hue-aware `assignDist`, is the reserved seed
+ * rather than any centre already on offer. The radius stays as an outer bound,
+ * because a cell is unbounded in the directions nothing else occupies and a
+ * reservation has no business claiming a colour it merely happens to be closest
+ * to from a long way off.
+ */
+const CHROMATIC_BAND_RADIUS = MIN_SEPARATION;
+
+/**
+ * How many slots the drawing's own colour families keep before a hue outlier
+ * may take one.
+ *
+ * The same trade `HIGHLIGHT_MIN_PICTURE_SLOTS` makes and one notch tighter,
+ * because there is no ceiling on how many hue outliers an image can contain: a
+ * photograph is nothing but small chromatically isolated patches, and a
+ * reservation per patch would hand an 8-colour request a palette of confetti.
+ * Four families is the floor at which the mascot still gets its orange, its
+ * stripe orange, its cream and its peach, and it caps the reservation at two
+ * bands at the eight colours the demo is cut at.
+ *
+ * It is a floor, not the whole rule — see `computePaletteSync`, where the
+ * budget the reservation actually gets is the smaller of this and the slots the
+ * clustering was going to waste on near-duplicates.
+ */
+const CHROMATIC_MIN_PICTURE_SLOTS = 4;
+
+/**
+ * Give a small, coherent, chromatically isolated region a cluster centre of its
+ * own — the third reservation, and the one that is about hue rather than tone.
+ *
+ * `reserveExtremes` withholds the two bands a *coverage* optimizer is
+ * systematically wrong about at the ends of the tonal range. This is the same
+ * argument made sideways. A mascot's nose, its inner ears, an iris: a couple of
+ * thousand pixels carrying a hue nothing else in the drawing has, which is to
+ * say a large share of the meaning and no share at all of the coverage
+ * argument. Median cut never puts a box round them, Lloyd drags whatever centre
+ * lands nearby back towards the big neighbouring region, and the near-duplicate
+ * fold (`mergeSimilarColors`, src/engine/index.ts `HALO_FOLD_PERCENT`) then
+ * reads the dragged centre as a halo of that neighbour and spends the slot.
+ *
+ * Measured on the mascot at the demo's eight colours: the quantizer DID find
+ * the nose, at rgb(234,135,96) — but the true salmon is rgb(230,119,87), Lloyd
+ * had pulled the centre 29 L1 units towards the body orange, and that put the
+ * pair 54 units apart against the fold's 55.4. The nose came back orange
+ * because its slot had been dragged to within a unit and a half of the fold
+ * window. Pinning the centre where the pixels actually are puts the pair 63
+ * apart and the layer survives — the reservation is not finding a colour the
+ * clustering missed, it is stopping the clustering from walking off the one it
+ * found.
+ *
+ * Four guards, in the order they are cheapest to fail:
+ *
+ *  1. **Orphaned** — further than `CHROMATIC_ORPHAN_DIST` in `assignDist` from
+ *     every centre on offer, reserved ones included.
+ *  2. **Visibly orphaned** — and further than `CHROMATIC_MIN_MISS` in plain
+ *     Euclidean RGB, so the slot is only spent when losing it is something a
+ *     person could point at.
+ *  3. **Orphaned in HUE** — and `CHROMATIC_MIN_HUE_GAP` of that miss has to be
+ *     hue rather than tone, which is what separates a nose from a shading band.
+ *  4. **A region** — `CHROMATIC_SUPPORT_MIN` neighbours, which is what
+ *     separates a nose from the antialiased ribbon along a boundary.
+ *  5. **Big enough, and affordable** — `CHROMATIC_MIN_COVERAGE` of the counted
+ *     area, and never so many that the picture's own families drop below
+ *     `CHROMATIC_MIN_PICTURE_SLOTS`.
+ */
+function reserveChromatic(
+  image: RasterImage,
+  mask: Uint8Array | null | undefined,
+  hist: Histogram,
+  /** The histogram the clustering will actually see — ink/highlight removed. */
+  rest: Histogram,
+  /** Every centre already on offer: the reserved ones plus what median cut would pick. */
+  offered: RgbColor[],
+  /** How many more bands may be reserved before the picture runs short. */
+  room: number,
+): ReservedBand[] {
+  if (room <= 0 || rest.distinct === 0 || offered.length === 0) return [];
+
+  /** How far this colour is from the nearest centre already on offer. */
+  const toOffered = (c: RgbColor): number => {
+    let best = Infinity;
+    for (const o of offered) {
+      const d = assignDist(c.r, c.g, c.b, o);
+      if (d < best) best = d;
+    }
+    return best;
+  };
+  /**
+   * The band a seed claims: the colours it represents better than anything
+   * already on offer does, out to `CHROMATIC_BAND_RADIUS`. See that constant —
+   * a plain ball round the seed takes the neighbouring region with it.
+   */
+  const claims = (seed: RgbColor, c: RgbColor): boolean => {
+    const d = assignDist(c.r, c.g, c.b, seed);
+    return d <= CHROMATIC_BAND_RADIUS && d < toOffered(c);
+  };
+
+  // 1 + 2. Which of the histogram's colours no offered centre can represent —
+  // not at all, not visibly, and not in hue.
+  const orphans: number[] = [];
+  for (let i = 0; i < rest.distinct; i++) {
+    const c = rest.colors[i];
+    const rgb = { r: (c >> 16) & 255, g: (c >> 8) & 255, b: c & 255 };
+    let plain = Infinity;
+    let hue = Infinity;
+    for (const o of offered) {
+      const e = (o.r - rgb.r) ** 2 + (o.g - rgb.g) ** 2 + (o.b - rgb.b) ** 2;
+      if (e < plain) plain = e;
+      const h = chromaGap(rgb, o);
+      if (h < hue) hue = h;
+    }
+    if (
+      toOffered(rgb) > CHROMATIC_ORPHAN_DIST &&
+      plain > CHROMATIC_MIN_MISS * CHROMATIC_MIN_MISS &&
+      hue > CHROMATIC_MIN_HUE_GAP
+    ) {
+      orphans.push(i);
+    }
+  }
+  if (orphans.length === 0) return [];
+
+  // Group them into candidate regions, heaviest first so a band is seeded on
+  // the colour a region actually is rather than on its darkest fringe pixel.
+  orphans.sort((a, b) => rest.counts[b] - rest.counts[a] || rest.colors[a] - rest.colors[b]);
+  const seeds: RgbColor[] = [];
+  const member = new Map<PackedRgb, number>();
+  for (const i of orphans) {
+    const c = rest.colors[i];
+    const rgb = { r: (c >> 16) & 255, g: (c >> 8) & 255, b: c & 255 };
+    let band = seeds.findIndex((s) => claims(s, rgb));
+    if (band < 0) {
+      // One candidate per slot there is room for, plus a little slack so a
+      // region that fails the support test does not take the budget with it.
+      if (seeds.length >= room + 2) continue;
+      band = seeds.length;
+      seeds.push(rgb);
+    }
+    member.set(c, band);
+  }
+  if (seeds.length === 0) return [];
+
+  // 4. Which of those groups are REGIONS: pixels with company of their own kind.
+  const { width, height, data } = image;
+  const bandAt = new Int32Array(width * height).fill(-1);
+  for (let p = 0; p < width * height; p++) {
+    if (mask && !mask[p]) continue;
+    const i = p * 4;
+    const b = member.get(packRgb(data[i], data[i + 1], data[i + 2]));
+    if (b !== undefined) bandAt[p] = b;
+  }
+  const sumR = new Float64Array(seeds.length);
+  const sumG = new Float64Array(seeds.length);
+  const sumB = new Float64Array(seeds.length);
+  const sumN = new Float64Array(seeds.length);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const p = y * width + x;
+      const b = bandAt[p];
+      if (b < 0) continue;
+      let support = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= height) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          if ((dx === 0 && dy === 0) || nx < 0 || nx >= width) continue;
+          if (bandAt[ny * width + nx] === b) support++;
+        }
+      }
+      if (support < CHROMATIC_SUPPORT_MIN) continue;
+      const i = p * 4;
+      sumR[b] += data[i];
+      sumG[b] += data[i + 1];
+      sumB[b] += data[i + 2];
+      sumN[b] += 1;
+    }
+  }
+
+  // 5. Spend the room on the biggest regions that clear the area floor. Ties
+  // broken by colour so the result cannot depend on scan order.
+  const drawn = Math.max(1, hist.total);
+  const ranked = seeds
+    .map((_, b) => b)
+    .filter((b) => sumN[b] / drawn >= CHROMATIC_MIN_COVERAGE)
+    .sort((a, b) => sumN[b] - sumN[a] || packRgb(seeds[a].r, seeds[a].g, seeds[a].b) - packRgb(seeds[b].r, seeds[b].g, seeds[b].b))
+    .slice(0, room);
+
+  const out: ReservedBand[] = [];
+  for (const b of ranked) {
+    // The centre is the mean of the SUPPORTED pixels, not of the histogram
+    // group: the fringe colours that joined the band are real members of it for
+    // the purpose of keeping a second centre out, and are exactly what must not
+    // be allowed to drag the centre off the region's own colour.
+    const centre = {
+      r: clamp255(sumR[b] / sumN[b]),
+      g: clamp255(sumG[b] / sumN[b]),
+      b: clamp255(sumB[b] / sumN[b]),
+    };
+    const seed = seeds[b];
+    out.push({ centre, holds: (c) => claims(seed, c) });
+  }
+  return out;
+}
+
 /** Coverage-weighted mean of every histogram colour in a luma band. */
 function bandMean(
   hist: Histogram,
@@ -669,8 +1107,9 @@ function withoutBands(hist: Histogram, bands: ReservedBand[]): Histogram {
   let total = 0;
   for (let i = 0; i < hist.distinct; i++) {
     const c = hist.colors[i];
-    const luma = lumaOf({ r: (c >> 16) & 255, g: (c >> 8) & 255, b: c & 255 });
-    if (bands.some((band) => band.holds(luma))) continue;
+    const rgb = { r: (c >> 16) & 255, g: (c >> 8) & 255, b: c & 255 };
+    const luma = lumaOf(rgb);
+    if (bands.some((band) => band.holds(rgb, luma))) continue;
     colors.push(c);
     counts.push(hist.counts[i]);
     total += hist.counts[i];
@@ -865,22 +1304,6 @@ function refine(
   }
   return current;
 }
-
-/**
- * L1 separation the delivered palette aims for.
- *
- * 8 % of the 765-unit L1 range — deliberately the same window the output-group
- * fold (`mergeSimilarColors`) uses, because the two are the same statement made
- * twice: colours closer than this are the halo/gradient debris a soft edge
- * leaves behind, and shipping two of them costs a layer, a legend entry and a
- * print run while showing the user one colour. If the quantizer stops producing
- * them, the fold has nothing to take away, and the colour budget the user asked
- * for is the colour budget they get.
- */
-const MIN_SEPARATION = 61;
-
-const l1 = (a: RgbColor, b: RgbColor): number =>
-  Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b);
 
 /**
  * The two closest palette entries `separate` is allowed to fold together.
@@ -1254,6 +1677,7 @@ const FRINGE_INK_LUMA = 60;
  * cost its muzzle 1.9 points of ink recall.
  */
 const HALO_MAX_THICKNESS = 3;
+
 
 /**
  * Is `c` on the ramp between `a` and `b` — including past its ends?
