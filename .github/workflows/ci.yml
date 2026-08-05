@@ -40,6 +40,15 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Derived assets are not stale
+        # The README's before/after, the landing page's demo SVG and the app
+        # icon are engine output. They went a week out of date once — the live
+        # demo served a trace made before the alpha-ingest fix — so the
+        # freshness is checked rather than remembered. Needs the build above
+        # (the SVG is re-traced and diffed byte-for-byte), and iconutil, which
+        # is why this job is on macOS.
+        run: node scripts/regenerate-derived-assets.mjs --check
+
   # ---------------------------------------------------------------------------
   # Playwright acceptance suite (tests/e2e). Not enabled yet: driving a real
   # Electron window on a hosted runner is flaky — window activation, GPU and
