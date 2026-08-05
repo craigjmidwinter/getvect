@@ -7,13 +7,13 @@ tags:
     - instruments
     - browser
 hashes:
-    - 36db131
-    - 69cc521
-    - ea13a03
-    - f11b9d6
+    - ce95b9a
+    - 11b09b3
+    - cb90c93
+    - 87ea4c9
 stat:
-    f: 6
-    a: 152
+    f: 4
+    a: 150
     d: 10
 ---
 
