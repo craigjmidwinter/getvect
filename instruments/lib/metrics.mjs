@@ -270,6 +270,71 @@ export function foreignColorRatio(reference, traced, { tolerance = 32, bin = 4 }
 }
 
 /**
+ * Colour PRESENCE — did a specific, named colour survive into the output at all?
+ *
+ * `foreignColorRatio` asks the opposite question (is there a hue in here the
+ * source does not have) and every other colour number in this file is a
+ * distance, which is exactly why none of them can see the defect this exists
+ * for: a small, hue-distinct feature losing its palette slot and being repainted
+ * in its neighbour.
+ *
+ * Take a mascot's eyes. They are ~0.3 % of the canvas, so folding their green
+ * into the surrounding cream moves whole-frame MAE by hundredths and SSIM by
+ * nothing. It does not register as a foreign colour, because the repaint uses a
+ * hue the crop legitimately contains. It does not register as ink, because green
+ * is not ink. It does not register as a palette *shortfall*, because the slot was
+ * spent — just on another cream. The only way to ask the question is to name the
+ * colour and count it: of the pixels in this crop, what share is within
+ * `tolerance` of rgb(...)?
+ *
+ * Measured identically on the source crop, on our trace and on the real
+ * product's, so the number that decides anything is a RATIO — the absolute share
+ * belongs to the artwork (how big are the eyes), while "we kept a third of what
+ * the source has and the real product kept all of it" belongs to the tracer.
+ *
+ * `tolerance` is 40 by default, wider than `foreignColorRatio`'s 32: this is a
+ * survival test, not a fidelity test, and a green that came back a shade off is
+ * a green that survived. A green that came back cream is 100+ units away and
+ * fails at any tolerance in this range.
+ */
+export function colorPresence(image, color, { tolerance = 40 } = {}) {
+  const limit = tolerance * tolerance;
+  const n = image.width * image.height;
+  let hits = 0;
+  for (let i = 0; i < image.data.length; i += 4) {
+    const d =
+      (image.data[i] - color.r) ** 2 +
+      (image.data[i + 1] - color.g) ** 2 +
+      (image.data[i + 2] - color.b) ** 2;
+    if (d <= limit) hits++;
+  }
+  return n === 0 ? 0 : hits / n;
+}
+
+/**
+ * The survival question as a record: how much of the named colour the source
+ * crop has, how much came back, and what fraction of it that is.
+ *
+ * `colorPresenceRatio` is the gate-shaped number — 1.0 means the trace painted
+ * as much of that colour as the source has, 0 means the colour is gone. It is
+ * capped at nothing: a trace that spreads the colour wider than the source
+ * scores above 1, which is also worth seeing.
+ */
+export function colorPresenceProfile(reference, traced, color, opts = {}) {
+  assertSameSize(reference, traced);
+  const source = colorPresence(reference, color, opts);
+  const ours = colorPresence(traced, color, opts);
+  return {
+    colorPresenceTarget: `rgb(${color.r},${color.g},${color.b})`,
+    sourceColorPresence: source,
+    colorPresence: ours,
+    // No source pixels of that colour at all: the question does not apply, and a
+    // flattering 1.0 or a damning 0 would both be inventions.
+    colorPresenceRatio: source > 0 ? ours / source : null,
+  };
+}
+
+/**
  * Shading-band quality — where does a soft gradient get cut, and what colour is
  * each side painted?
  *
