@@ -1133,8 +1133,8 @@ async function main() {
          * nose/ear PINK slot, rgb(227,139,105). The real product keeps a
          * distinct eye colour on the same upload (its generative Enhance
          * repaints the olive as rgb(121,176,89) and spends a whole output layer
-         * on it, 20.4 % of the crop). So the eye bar here is an ASPIRATION, not
-         * a gate — it is a known engine gap with an open issue, and
+         * on it, 22.9 % of the crop). So the eye bar here is an ASPIRATION, not
+         * a gate — it is a known engine gap, filed as issue #2, and
          * `reference-frankie-default` below proves it is reachable, because the
          * DEFAULT settings keep 99.2 % of the same colour.
          */
@@ -1176,6 +1176,7 @@ async function main() {
             // ours are gone.
             color: 'rgb(187,161,80)',
             exemplarColor: 'rgb(121,176,89)',
+            // Issue #2: small hue-distinct colours lose their palette slot.
             aspirations: {
               // 0.9 is the number to aim at and it is KNOWN-REACHABLE: the
               // DEFAULT configuration on this same artwork scores 0.992,
@@ -1307,6 +1308,7 @@ async function main() {
               // the eye colour. A ratchet on behaviour that is CORRECT today,
               // which is the cheapest kind to hold and the easiest to lose: the
               // fox's blue eyes went grey without a single number moving.
+              // The other half of issue #2.
               minColorPresenceRatio: 0.9,
             },
           },
