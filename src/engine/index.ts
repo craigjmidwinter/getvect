@@ -26,7 +26,8 @@ import {
   coverageOf,
   despeckleIndices,
   mapToPalette,
-  sanitizePalette,
+  normalizePalette,
+  packRgb,
 } from './color';
 import { resultToDxf, type DxfOptions } from './dxf';
 import { resultToEps } from './eps';
@@ -234,12 +235,18 @@ export async function vectorize(
   //            never appears in the output.
   //   remove — k drops by one, the orphaned region is absorbed by whichever
   //            cluster now covers it, and the removed colour cannot appear.
-  //   merge  — identical to remove; the two slots collapse into one.
+  //   merge  — two slots are given the *same* colour. k is unchanged, so the
+  //            clustering (and therefore every contour) is exactly what it was
+  //            before the merge; the two slots then collapse into one layer
+  //            painted with the target colour, and the palette shrinks by one.
+  //            That is what distinguishes merge from remove: merging keeps the
+  //            surviving colour's geometry identical and hands it the merged
+  //            region, where removing re-quantizes the whole image.
   //
   // Slots are paired with clusters by coverage rank, which is the order the
   // palette editor displays them in, so slot i is the swatch the user clicked.
   report(onProgress, 'quantize', 0.15);
-  const override = sanitizePalette(opts.palette);
+  const override = normalizePalette(opts.palette);
   const targetColors = override ? override.length : opts.colorCount;
   const clusters = computePaletteSync(source, Math.max(2, targetColors));
   let indices = mapToPalette(source, clusters);
@@ -262,18 +269,30 @@ export async function vectorize(
 
   let palette: RgbColor[];
   if (override) {
-    // Keep the caller's array verbatim — same length, same order — so the
-    // editor's swatch indices stay stable across a re-vectorize.
-    palette = override.map((c) => ({ ...c }));
-    if (clusters.length > override.length) {
-      // Quantization never drops below two clusters, so a one-colour override
-      // can come back with an index nothing in the palette answers to. Fold the
-      // surplus onto the last slot rather than leaving those pixels unpainted.
-      const last = override.length - 1;
-      for (let p = 0; p < indices.length; p++) {
-        if (indices[p] > last) indices[p] = last;
+    // Keep the caller's order — the editor's swatch indices must survive a
+    // re-vectorize — while collapsing slots that name the same colour into a
+    // single layer. Slot i keeps its pixels; it just may share an output entry
+    // with an earlier slot (that shared entry is a merge).
+    palette = [];
+    const entryOf = new Map<number, number>();
+    const slotToEntry = new Int32Array(Math.max(clusters.length, override.length));
+    for (let i = 0; i < override.length; i++) {
+      const key = packRgb(override[i].r, override[i].g, override[i].b);
+      let entry = entryOf.get(key);
+      if (entry === undefined) {
+        entry = palette.length;
+        entryOf.set(key, entry);
+        palette.push({ ...override[i] });
       }
+      slotToEntry[i] = entry;
     }
+    // Quantization never drops below two clusters, so a one-colour override can
+    // come back with a cluster index no slot answers to. Fold the surplus onto
+    // the last slot rather than leaving those pixels unpainted.
+    for (let i = override.length; i < slotToEntry.length; i++) {
+      slotToEntry[i] = slotToEntry[override.length - 1];
+    }
+    for (let p = 0; p < indices.length; p++) indices[p] = slotToEntry[indices[p]];
   } else {
     // Re-rank by what actually survived quantization + despeckle, and drop
     // entries no pixel ended up using.

@@ -392,6 +392,20 @@ code {
   color: var(--ink);
 }
 
+.slider-hint {
+  color: var(--ink-dim);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  min-height: 12px;
+}
+
+.settings-summary {
+  color: var(--ink-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .settings-actions {
   display: flex;
   align-items: center;
@@ -411,6 +425,45 @@ code {
   gap: 8px;
   border-top: 1px solid var(--line);
   padding-top: 10px;
+}
+
+/* A re-trace is in flight: the swatches still describe the SVG on screen. */
+.palette-editor.is-stale .swatches,
+.palette-editor.is-stale .palette-selected {
+  opacity: 0.55;
+}
+
+.palette-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.palette-title {
+  color: var(--ink-dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.palette-title em {
+  font-style: normal;
+  color: var(--ink);
+  margin-left: 6px;
+}
+
+.palette-selected {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+}
+
+.swatch-chip {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
 }
 
 .swatches {
