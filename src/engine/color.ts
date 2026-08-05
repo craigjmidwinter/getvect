@@ -11,6 +11,42 @@ import type { RasterImage, RgbColor } from './types';
 /** Packed 0xRRGGBB. */
 export type PackedRgb = number;
 
+/**
+ * Alpha at or above which a source pixel counts as part of the drawing.
+ *
+ * Half coverage is the natural split: an antialiased sprite edge ramps from 0
+ * to 255 across a pixel or two, and the silhouette a human sees is the 50 %
+ * contour.
+ */
+export const OPAQUE_ALPHA = 128;
+
+/**
+ * Index reserved, in every index image the engine builds, for pixels the source
+ * marks transparent.
+ *
+ * It is deliberately *not* a palette entry: transparent is the absence of ink,
+ * so it must never win a colour slot, never become a layer, and never become
+ * the full-bleed backdrop rect. 255 is safe because the palette is capped at 64.
+ */
+export const TRANSPARENT_INDEX = 255;
+
+/**
+ * 1 where the source pixel is opaque enough to draw, 0 where it is see-through.
+ * `null` when the image has no transparency at all, which lets every caller
+ * skip the alpha-aware code paths on ordinary opaque artwork.
+ */
+export function opacityMask(image: RasterImage): Uint8Array | null {
+  const n = image.width * image.height;
+  if (n <= 0 || image.data.length < n * 4) return null;
+  const mask = new Uint8Array(n);
+  let transparent = 0;
+  for (let p = 0, i = 3; p < n; p++, i += 4) {
+    if (image.data[i] >= OPAQUE_ALPHA) mask[p] = 1;
+    else transparent++;
+  }
+  return transparent === 0 ? null : mask;
+}
+
 export const packRgb = (r: number, g: number, b: number): PackedRgb =>
   ((r & 255) << 16) | ((g & 255) << 8) | (b & 255);
 
@@ -68,11 +104,20 @@ export interface Histogram {
   total: number;
 }
 
-export function buildHistogram(image: RasterImage): Histogram {
+/**
+ * `mask`, when given, is the opacity mask from `opacityMask()`: only pixels the
+ * source draws are counted, so a transparent background cannot win a palette
+ * slot (and `total` is the drawn area, which is what every coverage fraction
+ * downstream should be a fraction of).
+ */
+export function buildHistogram(image: RasterImage, mask?: Uint8Array | null): Histogram {
   const { data } = image;
   const pixels = image.width * image.height;
   const map = new Map<number, number>();
+  let counted = 0;
   for (let p = 0, i = 0; p < pixels; p++, i += 4) {
+    if (mask && !mask[p]) continue;
+    counted++;
     const key = packRgb(data[i], data[i + 1], data[i + 2]);
     map.set(key, (map.get(key) ?? 0) + 1);
   }
@@ -84,7 +129,7 @@ export function buildHistogram(image: RasterImage): Histogram {
   // Sorting makes every downstream decision independent of insertion order.
   colors.sort();
   for (let k = 0; k < distinct; k++) counts[k] = map.get(colors[k]) as number;
-  return { colors, counts, distinct, total: pixels };
+  return { colors, counts, distinct, total: counted };
 }
 
 /** L1 (rectilinear) RGB distance — the metric imagetracerjs uses internally. */
@@ -226,9 +271,13 @@ function centroid(members: Int32Array, hist: Histogram): RgbColor {
  * Compute a palette of at most `colorCount` colours, ordered by descending
  * pixel coverage. Deterministic; identical input ⇒ identical output.
  */
-export function computePaletteSync(image: RasterImage, colorCount: number): RgbColor[] {
+export function computePaletteSync(
+  image: RasterImage,
+  colorCount: number,
+  mask?: Uint8Array | null,
+): RgbColor[] {
   const k = Math.max(1, Math.min(64, Math.round(colorCount)));
-  const hist = buildHistogram(image);
+  const hist = buildHistogram(image, mask);
   if (hist.distinct === 0) return [{ r: 0, g: 0, b: 0 }];
 
   const clusters = medianCut(hist, k);
@@ -375,14 +424,28 @@ function orderByCoverage(hist: Histogram, palette: RgbColor[]): RgbColor[] {
   return out;
 }
 
-/** Nearest-palette-entry index per pixel. Cached per distinct source colour. */
-export function mapToPalette(image: RasterImage, palette: RgbColor[]): Uint8Array {
+/**
+ * Nearest-palette-entry index per pixel. Cached per distinct source colour.
+ *
+ * With an opacity `mask`, see-through pixels get `TRANSPARENT_INDEX` instead of
+ * a colour: they are not part of any layer, so whatever RGB the decoder left
+ * behind for them (a canvas hands back `(0,0,0,0)`) never reaches the output.
+ */
+export function mapToPalette(
+  image: RasterImage,
+  palette: RgbColor[],
+  mask?: Uint8Array | null,
+): Uint8Array {
   const pixels = image.width * image.height;
   const out = new Uint8Array(pixels);
   const { data } = image;
   const cache = new Map<number, number>();
   const k = palette.length;
   for (let p = 0, i = 0; p < pixels; p++, i += 4) {
+    if (mask && !mask[p]) {
+      out[p] = TRANSPARENT_INDEX;
+      continue;
+    }
     const r = data[i];
     const g = data[i + 1];
     const b = data[i + 2];
@@ -406,11 +469,30 @@ export function mapToPalette(image: RasterImage, palette: RgbColor[]): Uint8Arra
   return out;
 }
 
-/** Pixel coverage per palette entry. */
+/** Pixel coverage per palette entry. Transparent pixels count for nobody. */
 export function coverageOf(indices: Uint8Array, paletteSize: number): Uint32Array {
   const counts = new Uint32Array(paletteSize);
-  for (let i = 0; i < indices.length; i++) counts[indices[i]]++;
+  for (let i = 0; i < indices.length; i++) {
+    const c = indices[i];
+    if (c < paletteSize) counts[c]++;
+  }
   return counts;
+}
+
+/**
+ * Apply an index remap, leaving `TRANSPARENT_INDEX` alone.
+ *
+ * Every stage that renumbers the palette has to go through here: a bare
+ * `indices[p] = map[indices[p]]` reads past the end of the map for a
+ * transparent pixel, and `undefined` coerces to 0 — which silently repaints the
+ * whole see-through background with palette entry 0.
+ */
+export function remapIndices(indices: Uint8Array, map: ArrayLike<number>): void {
+  for (let p = 0; p < indices.length; p++) {
+    const v = indices[p];
+    if (v === TRANSPARENT_INDEX || v >= map.length) continue;
+    indices[p] = map[v];
+  }
 }
 
 export interface DespeckleOptions {
@@ -464,6 +546,15 @@ export interface DespeckleOptions {
    * region counts as a thin band. Only used with `onlyFringe`.
    */
   maxThickness?: number;
+  /**
+   * Leave the see-through part of the picture alone.
+   *
+   * A transparent region is not a speck however small it is — it is a hole the
+   * artwork asked for — so it is never merged into a colour. The reverse is
+   * allowed: an opaque speck floating in transparency with nothing else to
+   * merge into disappears, which is what a despeckle filter is for.
+   */
+  transparentIndex?: number;
 }
 
 /**
@@ -486,6 +577,7 @@ export function despeckleIndices(
   const elongation = options.elongation ?? 6;
   const onlyFringe = options.onlyFringe === true;
   const maxThickness = options.maxThickness ?? 3;
+  const transparentIndex = options.transparentIndex ?? -1;
   if (minArea <= 1 && !onlyFringe) return 0;
   const n = width * height;
   const labels = new Int32Array(n).fill(-1);
@@ -559,6 +651,8 @@ export function despeckleIndices(
 
   const small: number[] = [];
   for (let l = 0; l < labelCount; l++) {
+    // Transparency is not speckle: a hole never merges into a colour.
+    if (transparentIndex >= 0 && indices[members[offsets[l]]] === transparentIndex) continue;
     if (onlyFringe) {
       // Thin bands only — a fringe is by definition a couple of pixels wide.
       if (areas[l] / maxDims[l] <= maxThickness) small.push(l);
@@ -727,11 +821,12 @@ export function indicesToRaster(
 ): RasterImage {
   const data = new Uint8ClampedArray(width * height * 4);
   for (let p = 0, i = 0; p < indices.length; p++, i += 4) {
+    const transparent = indices[p] === TRANSPARENT_INDEX;
     const c = palette[indices[p]] ?? palette[0];
     data[i] = c.r;
     data[i + 1] = c.g;
     data[i + 2] = c.b;
-    data[i + 3] = 255;
+    data[i + 3] = transparent ? 0 : 255;
   }
   return { width, height, data };
 }
@@ -832,7 +927,7 @@ export function mergeSimilarColors(
     }
     map[i] = target;
   }
-  for (let p = 0; p < indices.length; p++) indices[p] = map[indices[p]];
+  remapIndices(indices, map);
   return { palette: kept, map };
 }
 
@@ -857,7 +952,12 @@ export function mergeSmallGroups(
 ): RgbColor[] {
   if (thresholdPercent <= 0 || palette.length < 2) return palette.map((c) => ({ ...c }));
   const coverage = coverageOf(indices, palette.length);
-  const limit = (thresholdPercent / 100) * indices.length;
+  // Fraction of the *drawn* area, not of the canvas: on a sticker two thirds of
+  // the frame can be see-through, and a colour should not be judged small
+  // because most of the picture is a hole.
+  let drawn = 0;
+  for (let i = 0; i < coverage.length; i++) drawn += coverage[i];
+  const limit = (thresholdPercent / 100) * drawn;
   const survives = palette.map((_, i) => coverage[i] >= limit);
   // Never merge everything away: the largest group always survives.
   if (!survives.some(Boolean)) {
@@ -893,7 +993,7 @@ export function mergeSmallGroups(
     }
     map[i] = best;
   }
-  for (let p = 0; p < indices.length; p++) indices[p] = map[indices[p]];
+  remapIndices(indices, map);
   return kept;
 }
 
