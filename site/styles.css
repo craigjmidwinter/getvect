@@ -131,7 +131,7 @@ pre .c { color: #6f7889; }
 }
 .bar-mark { display: flex; align-items: center; gap: 0.55rem; line-height: 0; }
 .bar-mark img { flex: none; }
-.bar-mark img.fox { width: 24px; height: 24px; }
+.bar-mark img.mascot { width: 30px; height: auto; }
 .bar-mark img.word { height: 17px; width: auto; }
 .bar nav {
   margin-left: auto;
@@ -233,8 +233,10 @@ section > .wrap > p:last-child { margin-bottom: 0; }
   max-width: 16ch;
 }
 .hero .lede { font-size: 1.13rem; }
-.hero img.fox {
-  width: clamp(150px, 20vw, 250px);
+.hero img.mascot {
+  /* Wider than tall, so it needs more width than a square mark to carry
+     the same visual weight beside the wordmark. */
+  width: clamp(180px, 24vw, 300px);
   height: auto;
   filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.55));
 }
@@ -636,7 +638,7 @@ footer {
 
 @media (max-width: 720px) {
   .hero-grid { grid-template-columns: 1fr; }
-  .hero img.fox { width: 130px; }
+  .hero img.mascot { width: 160px; }
   .hero-art { order: -1; }
   .demo-stage { height: min(86vw, 420px); }
   .bar nav { gap: 1rem; }
