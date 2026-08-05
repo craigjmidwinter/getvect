@@ -1154,6 +1154,7 @@ export async function vectorize(
 
   const layers: TracedLayer[] = [];
   const mask = new Uint8Array(width * height);
+  const trap = new Uint8Array(width * height);
   for (let position = 0; position < order.length; position++) {
     const i = order[position];
     if (i !== backgroundIndex) {
@@ -1171,6 +1172,7 @@ export async function vectorize(
         }
       } else {
         maskForIndex(indices, i, mask);
+        trapUnderLater(mask, indices, order, position, palette.length, width, height, trap);
       }
       const layerOptions = inkLayers?.[i] ? inkTraceOptions : traceOptions;
       let traced = traceMask(mask, width, height, i, layerOptions);
@@ -1221,6 +1223,66 @@ export async function vectorize(
     sourceColors,
     slots,
   };
+}
+
+/**
+ * Extend a layer one pixel UNDER everything painted after it — the trap that
+ * stops a shared boundary showing a crack.
+ *
+ * Two filled shapes that abut are not two halves of one picture to a
+ * rasterizer: each is composited on its own, so a pixel the boundary passes
+ * through is `0.6·A over background` and then `0.4·B over that`, and 24 % of the
+ * background survives *between* two regions that touch. Against a black outline
+ * over light paper the leak reads as a white hairline drawn down the side of
+ * every stroke — the single most visible thing a tracer can get wrong, and one
+ * that no averaging metric sees: 918 such pixels on a megapixel drawing move
+ * mean colour error by a tenth of a unit.
+ *
+ * The fix is the printer's one: spread the lower plate under the upper. Because
+ * the extension only ever covers pixels a LATER layer will paint over, the
+ * composite is unchanged everywhere except in the crack, where the blend is now
+ * between the two colours that meet rather than with whatever is underneath.
+ *
+ * One pixel, and it must be one: the trap is invisible only while it stays
+ * inside the seam. `overlap: 'full'` is the same idea taken to its limit — each
+ * layer is the union of itself and everything after it — and it costs what
+ * DEFAULT_SETTINGS says it costs (the gold standard's document grows 25 KB ->
+ * 44 KB, and circle detection stops seeing discs, because every layer inherits
+ * the outline of every shape above it). A one-pixel skirt on the layer's own
+ * outline changes its shape by nothing measurable and removes ~85 % of the
+ * slivers.
+ */
+function trapUnderLater(
+  mask: Uint8Array,
+  indices: Uint8Array,
+  order: number[],
+  position: number,
+  paletteSize: number,
+  width: number,
+  height: number,
+  scratch: Uint8Array,
+): void {
+  if (position + 1 >= order.length) return;
+  const later = new Uint8Array(paletteSize);
+  for (let q = position + 1; q < order.length; q++) later[order[q]] = 1;
+  scratch.set(mask);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const p = y * width + x;
+      if (scratch[p]) continue;
+      const v = indices[p];
+      // Only under a layer that will cover it again. A pixel nobody paints
+      // later — the background, another layer already emitted — must keep the
+      // colour it has, or the trap becomes a bleed.
+      if (v >= paletteSize || !later[v]) continue;
+      const up = y > 0 && scratch[p - width];
+      const down = y + 1 < height && scratch[p + width];
+      const left = x > 0 && scratch[p - 1];
+      const right = x + 1 < width && scratch[p + 1];
+      if (!(up || down || left || right)) continue;
+      mask[p] = 1;
+    }
+  }
 }
 
 /**
