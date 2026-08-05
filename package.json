@@ -2,7 +2,29 @@
   "name": "getvect",
   "version": "0.1.0",
   "private": true,
-  "description": "GetVect \u2014 local desktop raster-to-vector app (Electron + TypeScript + React)",
+  "description": "Local, offline desktop raster-to-vector app \u2014 PNG/JPEG/BMP to SVG/EPS/DXF/PDF/PNG. No account, no credits, no upload.",
+  "keywords": [
+    "vectorize",
+    "vectorizer",
+    "raster-to-vector",
+    "image-tracing",
+    "svg",
+    "eps",
+    "dxf",
+    "electron",
+    "offline",
+    "desktop-app"
+  ],
+  "homepage": "https://github.com/craigjmidwinter/getvect#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/craigjmidwinter/getvect.git"
+  },
+  "bugs": {
+    "url": "https://github.com/craigjmidwinter/getvect/issues"
+  },
+  "author": "Craig Midwinter (https://craigmidwinter.com)",
+  "license": "MIT",
   "main": "dist/main/main.js",
   "type": "commonjs",
   "scripts": {
