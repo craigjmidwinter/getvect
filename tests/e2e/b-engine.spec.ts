@@ -4,6 +4,7 @@ import {
   tid,
   TESTIDS,
   FIXTURE,
+  fillsIn,
   loadViaPicker,
   previewSvg,
   setSlider,
@@ -67,10 +68,7 @@ test('[B2] color count controls the number of distinct fills in the SVG', async 
   await waitForReady(page);
   await setSlider(page, TESTIDS.settingColorCount, 3);
   await waitForReady(page);
-  const svg = await previewSvg(page);
-  const fills = new Set([...svg.matchAll(/fill="([^"]+)"/g)].map((m) => m[1].toLowerCase()));
-  fills.delete('none');
-  expect(fills.size).toBeLessThanOrEqual(3);
+  expect(fillsIn(await previewSvg(page)).size).toBeLessThanOrEqual(3);
 });
 
 test('[B3] palette editor shows the computed palette', async ({ page }) => {
@@ -90,8 +88,9 @@ test('[B3] a palette colour can be changed and the result re-renders', async ({ 
   await swatch.click();
   await setColorInput(page, '#ff00ff');
   await waitForReady(page);
-  const svg = await previewSvg(page);
-  expect(svg.toLowerCase()).toContain('#ff00ff');
+  // Notation-agnostic: REFERENCE D1 documents `rgb(r, g, b)` layer fills, so
+  // the assertion is about which colour is painted, not how it is spelled.
+  expect([...fillsIn(await previewSvg(page))]).toContain('#ff00ff');
 });
 
 test('[B3] two palette colours can be merged', async ({ page }) => {
@@ -116,8 +115,9 @@ test('[B3] a palette colour can be removed', async ({ page }) => {
   await page.locator(tid(TESTIDS.paletteRemoveButton)).click();
   await waitForReady(page);
   await expect(swatches).toHaveCount(before - 1);
-  const svg = (await previewSvg(page)).toLowerCase();
-  expect(svg).not.toContain((removed ?? '#000000').toLowerCase());
+  expect([...fillsIn(await previewSvg(page))]).not.toContain(
+    (removed ?? '#000000').toLowerCase(),
+  );
 });
 
 test('[B4] enhance toggle observably changes a noisy image', async ({ page }) => {

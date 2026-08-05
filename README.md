@@ -3,18 +3,19 @@
 Local desktop raster → vector app (Electron + TypeScript + React). Target behaviour is
 specified in [REFERENCE.md](./REFERENCE.md).
 
-**Current state: engine + app shell landed; REFERENCE B2-B6 not started.** The renderer
-implements ingest, auto-vectorize in a worker, the four sliders, palette editing,
-original/vector/side-by-side preview with synchronised zoom & pan, and SVG/EPS/DXF/PDF/PNG
-export through the native save dialog — all green (46 e2e tests).
+**Current state: the REFERENCE checklist is implemented and measured green.** The app
+does ingest (drag-drop + picker, multi-image sidebar), auto-vectorize in a worker, the
+four model presets with Clipart's detail levels, candidate palettes and a palette
+editor, output colour groups with per-colour disable (transparent background), noise
+reduction / anti-aliasing / enhance, the advanced vectorization controls (roundness,
+minimum area, overlap, circle detection), filled-vs-stroked result styles,
+original/vector/side-by-side preview with synchronised zoom & pan, and
+SVG/EPS/DXF/PDF/PNG export through the native save dialog.
 
-The harness now also measures the parts that are missing or unfinished, so they show up
-as failures instead of prose: model presets, candidate palettes and output colour groups,
-noise reduction / anti-aliasing, the advanced vectorization controls, filled-vs-stroked
-layers, and — on the quality side — curve fitting, honest shape counts, and a blind A/B
-against the real the reference product exemplars. Those checks are **red by design** until the
-features land: `npm test` 46 pass / 48 fail, `npm run test:engine` and
-`npm run instruments` likewise. See docs/HARNESS.md for which is which.
+`npm test` 94 pass / 0 fail · `npm run test:engine` 49 pass / 0 fail ·
+`npm run instruments` 7 fixtures pass, including the blind A/B against the real
+the reference product exemplars (2.05x their sub-path count at 16 colours, 0.56x at 6, with
+lower mean colour error against the source in both cases).
 
 ```bash
 npm install
@@ -35,7 +36,7 @@ npm run screenshots   # flow contact sheet -> artifacts/screenshots/
 ```
 src/main/        Electron main process + preload bridge
 src/renderer/    React UI (workspace, preview, settings) + vectorization worker
-src/engine/      pure vectorization engine (trace / palette / EPS / DXF)
+src/engine/      pure vectorization engine (palette / trace / curve fit / SVG / EPS / DXF / PDF)
 src/shared/      testid constants shared by app and tests
 tests/e2e/       Playwright acceptance suite, one spec per checklist section
 tests/engine/    engine contract tests (node --test): contract, parity, rendered

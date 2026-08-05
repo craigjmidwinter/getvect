@@ -6,9 +6,16 @@ import {
   isSupportedInput,
   parseHex,
   serialize,
+  type AntiAliasing,
+  type DetailLevel,
   type ExportFormat,
+  type ModelPreset,
+  type NoiseReduction,
+  type Overlap,
   type RasterImage,
+  type ResultStyle,
   type RgbColor,
+  type SortOrder,
   type VectorizePhase,
   type VectorizeResult,
   type VectorizeSettings,
@@ -20,8 +27,9 @@ import { svgToPngBase64 } from './lib/raster';
 import { Preview, fmt, type PreviewMode } from './components/Preview';
 
 /**
- * GetVect workspace — REFERENCE sections A (launch & ingest) and C (preview),
- * wired to the engine in src/engine via a worker (see lib/engineClient).
+ * GetVect workspace — REFERENCE sections A (launch & ingest), B (the control
+ * surface), C (preview) and D (export), wired to the engine in src/engine via a
+ * worker (see lib/engineClient).
  *
  * The DOM contract this file implements is documented in docs/TESTIDS.md; every
  * `data-testid` comes from src/shared/testids.ts so a rename is a compile error
@@ -60,19 +68,29 @@ interface ImageEntry {
  *
  * A slider emits an `input` event per pixel of travel, so a drag across the
  * detail slider is ~100 settings changes; each one is a full trace if we take
- * it at face value. Discrete controls (the enhance switch, a palette edit, the
- * explicit re-vectorize button) are single deliberate acts and should feel
- * instant. Both paths still go through the same queue, so at most one trace is
- * ever in flight (see the job runner below).
+ * it at face value. Discrete controls (a preset button, the enhance switch, a
+ * palette edit) are single deliberate acts and should feel instant. Both paths
+ * still go through the same queue, so at most one trace is ever in flight (see
+ * the job runner below).
  */
 const DEBOUNCE_CONTINUOUS = 140;
 const DEBOUNCE_DISCRETE = 0;
 
+/** How long a rejection stays up before it dismisses itself (REFERENCE A2). */
+const TOAST_MS = 8_000;
+
 const MIN_ZOOM = 0.02;
 const MAX_ZOOM = 64;
 const ZOOM_STEP = 1.25;
+const WHEEL_STEP = 1.0015;
 /** Must match `.preview-pane { gap }` in styles.css — used for fit-zoom maths. */
 const VIEW_GAP = 10;
+/**
+ * How far the artwork may be dragged out of the view, as a fraction of the
+ * pane. Panning has to be free enough to inspect a corner at 40x and bounded
+ * enough that "Fit" is never the only way back (REFERENCE C2).
+ */
+const PAN_LIMIT = 0.35;
 
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -91,10 +109,62 @@ const EXPORT_BUTTONS: ReadonlyArray<{ format: ExportFormat; testid: string; titl
   { format: 'png', testid: TESTIDS.exportPng, title: 'PNG raster of the vector result' },
 ];
 
+/** REFERENCE B2 / OBSERVED-UI ①. */
+const PRESETS: ReadonlyArray<{ value: ModelPreset; testid: string; label: string; hint: string }> = [
+  { value: 'clipart', testid: TESTIDS.presetClipart, label: 'Clipart', hint: 'Few colours — flat artwork' },
+  { value: 'photo', testid: TESTIDS.presetPhoto, label: 'Photo', hint: 'Many colours — continuous tone' },
+  { value: 'sketch', testid: TESTIDS.presetSketch, label: 'Sketch', hint: 'Grayscale' },
+  { value: 'drawing', testid: TESTIDS.presetDrawing, label: 'Drawing', hint: 'Black & white by luminance' },
+];
+
+const DETAIL_LEVELS: ReadonlyArray<{ value: DetailLevel; label: string }> = [
+  { value: 'maximum', label: 'Maximum' },
+  { value: 'ultra', label: 'Ultra' },
+  { value: 'very-high', label: 'Very High' },
+  { value: 'high', label: 'High' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'low', label: 'Low' },
+  { value: 'minimum', label: 'Minimum' },
+];
+
+/** OBSERVED-UI ②: the exact candidate palette sizes the reference product offers. */
+const PALETTE_SIZES = [1, 2, 3, 4, 5, 6, 8, 12, 15, 16, 18] as const;
+
+const NOISE_LEVELS: ReadonlyArray<{ value: NoiseReduction; label: string }> = [
+  { value: 'off', label: 'Off' },
+  { value: 'low', label: 'Low' },
+  { value: 'high', label: 'High' },
+];
+
+const AA_LEVELS: ReadonlyArray<{ value: AntiAliasing; label: string }> = [
+  { value: 'off', label: 'Off' },
+  { value: 'smart', label: 'Smart' },
+  { value: 'mid', label: 'Mid' },
+];
+
+const ROUNDNESS_LEVELS: ReadonlyArray<{ value: 0 | 1 | 2; label: string }> = [
+  { value: 0, label: 'Angular' },
+  { value: 1, label: 'Balanced' },
+  { value: 2, label: 'Round' },
+];
+
+const MIN_AREAS = [0, 5, 90] as const;
+const OVERLAPS: ReadonlyArray<{ value: Overlap; label: string }> = [
+  { value: 'full', label: 'Full' },
+  { value: 'high', label: 'High' },
+];
+const MERGE_THRESHOLDS = [0, 2, 5, 10, 20] as const;
+const SORT_ORDERS: ReadonlyArray<{ value: SortOrder; label: string }> = [
+  { value: 'coverage', label: 'Coverage' },
+  { value: 'brightness', label: 'Brightness' },
+  { value: 'hue', label: 'Hue' },
+];
+
 export function App() {
   const [images, setImages] = useState<ImageEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   const [mode, setMode] = useState<PreviewMode>('vector');
   const [zoomOverride, setZoomOverride] = useState<number | null>(null);
@@ -109,6 +179,7 @@ export function App() {
 
   const paneRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragDepth = useRef(0);
 
   const selected = useMemo(
     () => images.find((image) => image.id === selectedId) ?? null,
@@ -127,6 +198,8 @@ export function App() {
 
   const requestVectorize = useCallback(
     (id: string, settings?: Partial<VectorizeSettings>, delay: number = DEBOUNCE_DISCRETE) => {
+      // The saved file no longer matches what will be on screen (REFERENCE D4).
+      setLastExportPath(null);
       setImages((prev) =>
         prev.map((image) =>
           image.id === id
@@ -161,11 +234,14 @@ export function App() {
       else rejected.push(file.name);
     }
 
-    setToast(
-      rejected.length === 0
-        ? null
-        : `Unsupported ${rejected.length === 1 ? 'file' : 'files'}: ${rejected.join(', ')} — GetVect accepts PNG, JPEG and BMP images.`,
-    );
+    // A rejection is only cleared by time or by the user (REFERENCE A2): a
+    // successful drop must not silently swallow the message about the file that
+    // did not make it.
+    if (rejected.length > 0) {
+      setToast(
+        `Unsupported ${rejected.length === 1 ? 'file' : 'files'}: ${rejected.join(', ')} — GetVect accepts PNG, JPEG and BMP images.`,
+      );
+    }
 
     if (accepted.length === 0) return;
 
@@ -187,7 +263,10 @@ export function App() {
     }));
 
     setImages((prev) => [...prev, ...entries]);
-    setSelectedId((current) => current ?? entries[0].id);
+    // The image you just dropped is the one you want to look at. Keeping the
+    // previous selection makes a drop look like a no-op: the new file is
+    // neither shown nor vectorized (the job runner only traces the selection).
+    setSelectedId(entries[0].id);
 
     // Decode sequentially: the selected image gets its pixels (and therefore
     // its trace) first, and a folder-sized drop cannot swamp the renderer.
@@ -225,6 +304,13 @@ export function App() {
     }
   }, []);
 
+  // A rejection nobody dismisses still has to go away on its own.
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), TOAST_MS);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
   const openWithPicker = useCallback(async () => {
     const bridge = api();
     if (!bridge) {
@@ -252,6 +338,7 @@ export function App() {
     const next = imagesRef.current.filter((image) => image.id !== id);
     setImages(next);
     setSelectedId((current) => (current === id ? (next[0]?.id ?? null) : current));
+    setLastExportPath(null);
   }, []);
 
   // --- the job runner ------------------------------------------------------
@@ -311,7 +398,7 @@ export function App() {
                         ? {
                             ...image.settings,
                             palette: result.palette.map((c) => ({ ...c })),
-                            colorCount: Math.max(2, result.palette.length),
+                            colorCount: Math.max(1, result.palette.length),
                           }
                         : image.settings,
                     }
@@ -373,17 +460,62 @@ export function App() {
 
   const zoom = zoomOverride ?? fitZoom;
 
+  /**
+   * Keep the artwork reachable: the pan is measured in image pixels, so the
+   * bound is the pane size converted into image pixels. Without it one flick of
+   * the mouse throws the picture off screen and "Fit" is the only way back
+   * (REFERENCE C2).
+   */
+  const clampPan = useCallback(
+    (next: { x: number; y: number }, atZoom: number) => {
+      const limitX = paneSize.w > 0 ? (paneSize.w * PAN_LIMIT) / atZoom : Infinity;
+      const limitY = paneSize.h > 0 ? (paneSize.h * PAN_LIMIT) / atZoom : Infinity;
+      return { x: clamp(next.x, -limitX, limitX), y: clamp(next.y, -limitY, limitY) };
+    },
+    [paneSize],
+  );
+
   const zoomBy = useCallback(
-    (factor: number) => setZoomOverride((current) => clamp((current ?? fitZoom) * factor, MIN_ZOOM, MAX_ZOOM)),
+    (factor: number) => {
+      setZoomOverride((current) => clamp((current ?? fitZoom) * factor, MIN_ZOOM, MAX_ZOOM));
+    },
     [fitZoom],
   );
   const zoomToFit = useCallback(() => {
     setZoomOverride(null);
     setPan({ x: 0, y: 0 });
   }, []);
-  const panBy = useCallback((dx: number, dy: number) => {
-    setPan((current) => ({ x: current.x + dx, y: current.y + dy }));
-  }, []);
+  const panBy = useCallback(
+    (dx: number, dy: number) => {
+      setPan((current) => clampPan({ x: current.x + dx, y: current.y + dy }, zoom));
+    },
+    [clampPan, zoom],
+  );
+
+  /**
+   * Wheel zoom, anchored on the pointer: the image point under the cursor stays
+   * under the cursor. `pan' = pan + offset * (1/z' - 1/z)` falls straight out of
+   * the stage transform in Preview.tsx.
+   */
+  const wheelZoom = useCallback(
+    (deltaY: number, offsetFromCentre: { x: number; y: number }) => {
+      if (!previewImage) return;
+      const from = zoom;
+      const to = clamp(from * WHEEL_STEP ** -deltaY, MIN_ZOOM, MAX_ZOOM);
+      if (to === from) return;
+      setZoomOverride(to);
+      setPan((current) =>
+        clampPan(
+          {
+            x: current.x + offsetFromCentre.x * (1 / to - 1 / from),
+            y: current.y + offsetFromCentre.y * (1 / to - 1 / from),
+          },
+          to,
+        ),
+      );
+    },
+    [zoom, previewImage, clampPan],
+  );
 
   // Switching images starts from a fit view of the new artwork.
   useEffect(() => {
@@ -391,15 +523,19 @@ export function App() {
     setPan({ x: 0, y: 0 });
     setSwatchIndex(0);
     setMergeTarget(0);
+    // The file on disk describes the image you were looking at a moment ago.
+    setLastExportPath(null);
   }, [selectedId]);
 
   // --- settings & palette (REFERENCE B2/B3) --------------------------------
 
+  const settings = selected?.settings ?? DEFAULT_SETTINGS;
   const palette: RgbColor[] = selected?.result?.palette ?? [];
   const activeSwatch = palette.length ? clamp(swatchIndex, 0, palette.length - 1) : 0;
   /** True once the palette in the preview is the user's, not the engine's. */
-  const paletteEdited = Boolean(selected?.settings.palette);
+  const paletteEdited = Boolean(settings.palette);
   const activeHex = hexOf(palette[activeSwatch] ?? { r: 0, g: 0, b: 0 });
+  const disabledColors = settings.disabledColors ?? [];
 
   /**
    * The merge destination actually in force. `palette-merge-target` never lists
@@ -426,7 +562,7 @@ export function App() {
   const applyPalette = useCallback(
     (next: RgbColor[]) => {
       if (!selected || next.length === 0) return;
-      requestVectorize(selected.id, { palette: next, colorCount: Math.max(2, next.length) });
+      requestVectorize(selected.id, { palette: next, colorCount: Math.max(1, next.length) });
     },
     [selected, requestVectorize],
   );
@@ -474,6 +610,17 @@ export function App() {
     setMergeTarget(0);
     setSetting({ palette: null });
   }, [selected, setSetting]);
+
+  /** Toggle one output colour group on or off (REFERENCE B3). */
+  const toggleColorGroup = useCallback(
+    (index: number) => {
+      const current = new Set(disabledColors);
+      if (current.has(index)) current.delete(index);
+      else current.add(index);
+      setSetting({ disabledColors: [...current].sort((a, b) => a - b) });
+    },
+    [disabledColors, setSetting],
+  );
 
   // --- export (REFERENCE D) ------------------------------------------------
 
@@ -529,10 +676,33 @@ export function App() {
   const ready = status === 'ready';
   const svg = selected?.result?.svg ?? null;
 
+  /**
+   * What the preview shows.
+   *
+   * The current result when there is one, otherwise the last document we had.
+   * Switching to a not-yet-traced image must not empty the pane — a blank frame
+   * reads as "the app lost my work" (REFERENCE C1). It is replaced the instant
+   * the new trace lands, so `ready` still means "this is the export".
+   */
+  const [displaySvg, setDisplaySvg] = useState<string | null>(null);
+  useEffect(() => {
+    if (svg) setDisplaySvg(svg);
+  }, [svg]);
+  useEffect(() => {
+    if (images.length === 0) setDisplaySvg(null);
+  }, [images.length]);
+
+  const svgBytes = useMemo(
+    () => (displaySvg ? new TextEncoder().encode(displaySvg).length : 0),
+    [displaySvg],
+  );
+
   const onDrop = useCallback(
     (event: React.DragEvent<HTMLElement>) => {
       event.preventDefault();
       event.stopPropagation();
+      dragDepth.current = 0;
+      setDragging(false);
       const dropped = event.dataTransfer?.files;
       void ingest(dropped ? Array.from(dropped) : []);
     },
@@ -541,10 +711,29 @@ export function App() {
   const allowDrop = useCallback((event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    setDragging(true);
+  }, []);
+  const onDragEnter = useCallback((event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    dragDepth.current += 1;
+    setDragging(true);
+  }, []);
+  const onDragLeave = useCallback((event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragging(false);
   }, []);
 
   return (
-    <main data-testid={TESTIDS.appRoot} className="app" onDragOver={allowDrop} onDrop={onDrop}>
+    <main
+      data-testid={TESTIDS.appRoot}
+      className="app"
+      data-dragging={String(dragging)}
+      onDragEnter={onDragEnter}
+      onDragOver={allowDrop}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
       <aside className="sidebar">
         <header className="brand">
           <h1>GetVect</h1>
@@ -554,8 +743,9 @@ export function App() {
         <section
           data-testid={TESTIDS.dropZone}
           className="drop-zone"
-          onDragEnter={allowDrop}
+          onDragEnter={onDragEnter}
           onDragOver={allowDrop}
+          onDragLeave={onDragLeave}
           onDrop={onDrop}
         >
           <p className="drop-headline">Drop images here</p>
@@ -639,30 +829,58 @@ export function App() {
 
           <div className="spacer" />
 
+          {/* REFERENCE B6 — filled layers vs stroked layers. */}
+          <div className="button-group">
+            <span className="group-label">Style</span>
+            {([
+              { value: 'filled' as ResultStyle, testid: TESTIDS.resultStyleFilled, label: 'Filled' },
+              { value: 'stroked' as ResultStyle, testid: TESTIDS.resultStyleStroked, label: 'Stroked' },
+            ]).map(({ value, testid, label }) => (
+              <button
+                key={value}
+                data-testid={testid}
+                type="button"
+                disabled={!selected}
+                data-selected={String((settings.resultStyle ?? 'filled') === value)}
+                className={`toggle${(settings.resultStyle ?? 'filled') === value ? ' is-on' : ''}`}
+                title={value === 'filled' ? 'Colour-filled vector elements' : 'Colour-bordered vector elements'}
+                onClick={() => setSetting({ resultStyle: value })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           <div className="button-group">
             <button
               data-testid={TESTIDS.previewToggle}
               type="button"
+              disabled={!selected}
               onClick={() => setMode((current) => (current === 'original' ? 'vector' : 'original'))}
             >
               {mode === 'original' ? 'Show vector' : 'Show original'}
             </button>
-            <button data-testid={TESTIDS.previewSideBySide} type="button" onClick={() => setMode('side-by-side')}>
+            <button
+              data-testid={TESTIDS.previewSideBySide}
+              type="button"
+              disabled={!selected}
+              onClick={() => setMode('side-by-side')}
+            >
               Side by side
             </button>
           </div>
 
           <div className="button-group">
-            <button data-testid={TESTIDS.zoomOut} type="button" onClick={() => zoomBy(1 / ZOOM_STEP)}>
+            <button data-testid={TESTIDS.zoomOut} type="button" disabled={!selected} onClick={() => zoomBy(1 / ZOOM_STEP)}>
               −
             </button>
             <span data-testid={TESTIDS.zoomLevel} data-zoom={fmt(zoom)} className="zoom-level">
               {Math.round(zoom * 100)}%
             </span>
-            <button data-testid={TESTIDS.zoomIn} type="button" onClick={() => zoomBy(ZOOM_STEP)}>
+            <button data-testid={TESTIDS.zoomIn} type="button" disabled={!selected} onClick={() => zoomBy(ZOOM_STEP)}>
               +
             </button>
-            <button data-testid={TESTIDS.zoomFit} type="button" onClick={zoomToFit}>
+            <button data-testid={TESTIDS.zoomFit} type="button" disabled={!selected} onClick={zoomToFit}>
               Fit
             </button>
             <span
@@ -690,9 +908,20 @@ export function App() {
                 {format.toUpperCase()}
               </button>
             ))}
+            {/*
+              Both labels occupy a fixed box whether they have anything to say or
+              not. A status line that grows when it appears drags the whole
+              right-packed row sideways, and the second click of a two-format
+              export lands on a different button than the one under the cursor
+              (REFERENCE D4).
+            */}
+            <span data-testid={TESTIDS.exportSize} className="export-size" data-bytes={String(svgBytes)}>
+              {svgBytes > 0 ? formatBytes(svgBytes) : ''}
+            </span>
             <span
               data-testid={TESTIDS.exportStatus}
               className="export-status"
+              title={lastExportPath ?? ''}
               {...(lastExportPath ? { 'data-last-export-path': lastExportPath } : {})}
             >
               {lastExportPath ? `Saved ${basename(lastExportPath)}` : ''}
@@ -705,96 +934,279 @@ export function App() {
           zoom={zoom}
           pan={pan}
           onPanBy={panBy}
+          onWheelZoom={wheelZoom}
           image={previewImage}
-          svg={svg}
+          svg={displaySvg}
           paneRef={paneRef}
           busy={busy}
         />
 
+        {/*
+          The control surface is mounted for the whole life of an image, at a
+          fixed height, and every panel inside it scrolls rather than growing.
+          A settings row that appears when the first result lands moves the
+          artwork twice per image (REFERENCE B1: the UI stays put while it
+          works), and a palette that reflows with its own length moves it again
+          on every setting change.
+        */}
         {selected ? (
           <div data-testid={TESTIDS.settingsPanel} className="settings-panel">
-            <div className="settings-grid">
-              <Slider
-                testid={TESTIDS.settingColorCount}
-                label="Colors"
-                hint={paletteEdited ? 'edited palette' : describeColors(selected.settings.colorCount)}
-                min={2}
-                max={64}
-                value={clamp(selected.settings.colorCount, 2, 64)}
-                onChange={(value) =>
-                  // A colour count is a fresh palette by definition, so an
-                  // earlier hand-edit is dropped rather than silently ignored.
-                  setSetting({ colorCount: value, palette: null }, DEBOUNCE_CONTINUOUS)
-                }
-              />
-              <Slider
-                testid={TESTIDS.settingDetail}
-                label="Detail"
-                hint={describeDetail(selected.settings.detail)}
-                min={0}
-                max={100}
-                value={selected.settings.detail}
-                onChange={(value) => setSetting({ detail: value }, DEBOUNCE_CONTINUOUS)}
-              />
-              <Slider
-                testid={TESTIDS.settingSmoothing}
-                label="Smoothing"
-                hint={describeSmoothing(selected.settings.smoothing)}
-                min={0}
-                max={100}
-                value={selected.settings.smoothing}
-                onChange={(value) => setSetting({ smoothing: value }, DEBOUNCE_CONTINUOUS)}
-              />
-              <Slider
-                testid={TESTIDS.settingDespeckle}
-                label="Despeckle"
-                hint={describeDespeckle(selected.settings.despeckle)}
-                min={0}
-                max={100}
-                value={selected.settings.despeckle}
-                onChange={(value) => setSetting({ despeckle: value }, DEBOUNCE_CONTINUOUS)}
-              />
+            <div className="settings-column">
+              <div className="control-row" role="group" aria-label="Model preset">
+                {PRESETS.map(({ value, testid, label, hint }) => (
+                  <button
+                    key={value}
+                    data-testid={testid}
+                    type="button"
+                    title={hint}
+                    data-selected={String((settings.preset ?? 'clipart') === value)}
+                    className={`toggle${(settings.preset ?? 'clipart') === value ? ' is-on' : ''}`}
+                    onClick={() => setSetting({ preset: value, palette: null })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <Field label="Detail level">
+                <select
+                  data-testid={TESTIDS.settingDetailLevel}
+                  aria-label="Detail level"
+                  value={settings.detailLevel ?? 'high'}
+                  onChange={(event) => setSetting({ detailLevel: event.target.value as DetailLevel })}
+                >
+                  {DETAIL_LEVELS.map(({ value, label }) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              {(settings.preset ?? 'clipart') === 'drawing' ? (
+                <Field label={`B/W threshold ${settings.bwThreshold ?? 128}`}>
+                  <input
+                    data-testid={TESTIDS.settingBwThreshold}
+                    type="range"
+                    min={0}
+                    max={255}
+                    step={1}
+                    aria-label="Black and white luminance threshold"
+                    value={settings.bwThreshold ?? 128}
+                    onChange={(event) =>
+                      setSetting({ bwThreshold: Number(event.target.value) }, DEBOUNCE_CONTINUOUS)
+                    }
+                  />
+                </Field>
+              ) : null}
+
+              <div className="settings-grid">
+                <Slider
+                  testid={TESTIDS.settingColorCount}
+                  label="Colors"
+                  hint={paletteEdited ? 'edited palette' : describeColors(settings.colorCount)}
+                  min={1}
+                  max={64}
+                  value={clamp(settings.colorCount, 1, 64)}
+                  onChange={(value) =>
+                    // A colour count is a fresh palette by definition, so an
+                    // earlier hand-edit is dropped rather than silently ignored.
+                    setSetting({ colorCount: value, palette: null, disabledColors: [] }, DEBOUNCE_CONTINUOUS)
+                  }
+                />
+                <Slider
+                  testid={TESTIDS.settingDetail}
+                  label="Detail"
+                  hint={describeDetail(settings.detail)}
+                  min={0}
+                  max={100}
+                  value={settings.detail}
+                  onChange={(value) => setSetting({ detail: value }, DEBOUNCE_CONTINUOUS)}
+                />
+                <Slider
+                  testid={TESTIDS.settingSmoothing}
+                  label="Smoothing"
+                  hint={describeSmoothing(settings.smoothing)}
+                  min={0}
+                  max={100}
+                  value={settings.smoothing}
+                  onChange={(value) => setSetting({ smoothing: value }, DEBOUNCE_CONTINUOUS)}
+                />
+                <Slider
+                  testid={TESTIDS.settingDespeckle}
+                  label="Despeckle"
+                  hint={describeDespeckle(settings.despeckle)}
+                  min={0}
+                  max={100}
+                  value={settings.despeckle}
+                  onChange={(value) => setSetting({ despeckle: value }, DEBOUNCE_CONTINUOUS)}
+                />
+              </div>
+
+              {/*
+                The slider asks for a number the image often cannot supply — a
+                six-colour logo has six colours however far right you drag. The
+                control and the result must not silently disagree.
+              */}
+              <span
+                data-testid={TESTIDS.settingColorCountHint}
+                className="hint"
+                data-requested={String(clamp(settings.colorCount, 1, 64))}
+                data-actual={String(palette.length)}
+              >
+                {palette.length > 0
+                  ? `${palette.length} colour${palette.length === 1 ? '' : 's'} in the result` +
+                    (palette.length < clamp(settings.colorCount, 1, 64)
+                      ? ` — the image has no more to give`
+                      : '')
+                  : 'computing colours…'}
+              </span>
             </div>
 
-            <div className="settings-actions">
+            <div className="settings-column">
               <label className="switch" title="Denoise and simplify colours before tracing">
                 <input
                   data-testid={TESTIDS.enhanceToggle}
                   type="checkbox"
-                  checked={selected.settings.enhance}
+                  checked={settings.enhance}
                   onChange={(event) => setSetting({ enhance: event.target.checked })}
                 />
-                <span>Enhance image (experimental)</span>
+                <span>Enhance image (Beta)</span>
               </label>
-              <button
-                data-testid={TESTIDS.revectorizeButton}
-                type="button"
-                onClick={() => requestVectorize(selected.id)}
-              >
-                Re-vectorize
-              </button>
-              <button
-                data-testid={TESTIDS.resetSettingsButton}
-                type="button"
-                onClick={() => {
-                  setSwatchIndex(0);
-                  setMergeTarget(0);
-                  setSetting({ ...DEFAULT_SETTINGS });
-                }}
-              >
-                Reset
-              </button>
-              <div className="spacer" />
+
+              <Field label="Noise reduction">
+                <select
+                  data-testid={TESTIDS.settingNoiseReduction}
+                  aria-label="Noise reduction"
+                  value={settings.noiseReduction ?? 'off'}
+                  onChange={(event) =>
+                    setSetting({ noiseReduction: event.target.value as NoiseReduction })
+                  }
+                >
+                  {NOISE_LEVELS.map(({ value, label }) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Anti-aliasing">
+                <select
+                  data-testid={TESTIDS.settingAntiAliasing}
+                  aria-label="Anti-aliasing"
+                  value={settings.antiAliasing ?? 'off'}
+                  onChange={(event) => setSetting({ antiAliasing: event.target.value as AntiAliasing })}
+                >
+                  {AA_LEVELS.map(({ value, label }) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Roundness">
+                <select
+                  data-testid={TESTIDS.settingRoundness}
+                  aria-label="Roundness"
+                  value={String(settings.roundness ?? 1)}
+                  onChange={(event) =>
+                    setSetting({ roundness: Number(event.target.value) as 0 | 1 | 2 })
+                  }
+                >
+                  {ROUNDNESS_LEVELS.map(({ value, label }) => (
+                    <option key={value} value={String(value)}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Minimum area">
+                <select
+                  data-testid={TESTIDS.settingMinArea}
+                  aria-label="Minimum area"
+                  value={String(settings.minArea ?? 5)}
+                  onChange={(event) => setSetting({ minArea: Number(event.target.value) })}
+                >
+                  {MIN_AREAS.map((value) => (
+                    <option key={value} value={String(value)}>
+                      {value} px²
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Overlap">
+                <select
+                  data-testid={TESTIDS.settingOverlap}
+                  aria-label="Overlap"
+                  value={settings.overlap ?? 'high'}
+                  onChange={(event) => setSetting({ overlap: event.target.value as Overlap })}
+                >
+                  {OVERLAPS.map(({ value, label }) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <label className="switch" title="Replace round contours with exact circles">
+                <input
+                  data-testid={TESTIDS.settingCircleDetection}
+                  type="checkbox"
+                  checked={Boolean(settings.circleDetection)}
+                  onChange={(event) => setSetting({ circleDetection: event.target.checked })}
+                />
+                <span>Circle detection</span>
+              </label>
+
+              <div className="control-row">
+                <button
+                  data-testid={TESTIDS.revectorizeButton}
+                  type="button"
+                  onClick={() => requestVectorize(selected.id)}
+                >
+                  Re-vectorize
+                </button>
+                <button
+                  data-testid={TESTIDS.resetSettingsButton}
+                  type="button"
+                  onClick={() => {
+                    setSwatchIndex(0);
+                    setMergeTarget(0);
+                    setSetting({ ...DEFAULT_SETTINGS });
+                  }}
+                >
+                  Reset
+                </button>
+              </div>
               <span className="settings-summary">{summaryOf(selected)}</span>
             </div>
 
-            {/*
-              The editor stays mounted while a re-trace is in flight — losing the
-              swatch you just clicked mid-drag would be hostile — but it is
-              flagged `data-stale` so it is obvious the swatches describe the
-              picture on screen, not the one being computed.
-            */}
-            {palette.length > 0 ? (
+            <div className="settings-column">
+              <div className="panel-title">Input palette</div>
+              <div className="palette-sizes" role="radiogroup" aria-label="Candidate palettes">
+                {PALETTE_SIZES.map((size) => (
+                  <button
+                    key={size}
+                    data-testid={TESTIDS.paletteSizeOption}
+                    data-size={String(size)}
+                    type="button"
+                    role="radio"
+                    aria-checked={settings.colorCount === size}
+                    className={`chip${settings.colorCount === size ? ' is-on' : ''}`}
+                    onClick={() =>
+                      setSetting({ colorCount: size, palette: null, disabledColors: [] })
+                    }
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+
               <div
                 data-testid={TESTIDS.paletteEditor}
                 className={`palette-editor${ready ? '' : ' is-stale'}`}
@@ -842,10 +1254,6 @@ export function App() {
                   })}
                 </div>
                 <div className="palette-actions">
-                  <span className="palette-selected">
-                    <span className="swatch swatch-chip" style={{ background: activeHex }} />
-                    {activeHex}
-                  </span>
                   <label>
                     Color
                     <input
@@ -891,7 +1299,61 @@ export function App() {
                   </button>
                 </div>
               </div>
-            ) : null}
+
+              {/* REFERENCE B3 — output colour groups. */}
+              <div data-testid={TESTIDS.colorGroups} className="color-groups">
+                <div className="panel-title">Output colours</div>
+                <div className="control-row">
+                  <Field label="Merge">
+                    <select
+                      data-testid={TESTIDS.colorMergeThreshold}
+                      aria-label="Merge threshold"
+                      value={String(settings.mergeThreshold ?? 0)}
+                      onChange={(event) => setSetting({ mergeThreshold: Number(event.target.value) })}
+                    >
+                      {MERGE_THRESHOLDS.map((value) => (
+                        <option key={value} value={String(value)}>
+                          {value}%
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Sort">
+                    <select
+                      data-testid={TESTIDS.colorSortOrder}
+                      aria-label="Sort order"
+                      value={settings.sortOrder ?? 'coverage'}
+                      onChange={(event) => setSetting({ sortOrder: event.target.value as SortOrder })}
+                    >
+                      {SORT_ORDERS.map(({ value, label }) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                <div className="group-list">
+                  {palette.map((color, index) => {
+                    const hex = hexOf(color);
+                    return (
+                      <label key={`${hex}-${index}`} className="group-row" title={`${hex}`}>
+                        <input
+                          data-testid={TESTIDS.colorGroupToggle}
+                          data-index={String(index)}
+                          data-color={hex}
+                          type="checkbox"
+                          checked={!disabledColors.includes(index)}
+                          onChange={() => toggleColorGroup(index)}
+                        />
+                        <span className="swatch swatch-chip" style={{ background: hex }} />
+                        <span className="group-hex">{hex}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           </div>
         ) : null}
       </section>
@@ -940,8 +1402,14 @@ function summaryOf(image: ImageEntry): string {
   if (!image.result) return '';
   const { palette, pathCount, durationMs, width, height } = image.result;
   const colors = `${palette.length} colour${palette.length === 1 ? '' : 's'}`;
-  const paths = `${pathCount} path${pathCount === 1 ? '' : 's'}`;
+  const paths = `${pathCount} layer${pathCount === 1 ? '' : 's'}`;
   return `${width}×${height} · ${colors} · ${paths} · ${Math.round(durationMs)} ms`;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 // Slider hints: the numbers alone say nothing about what the knob does to the
@@ -955,6 +1423,15 @@ const describeSmoothing = (v: number) =>
   v <= 5 ? 'polylines' : v <= 40 ? 'gentle curves' : v <= 80 ? 'curve fitted' : 'long sweeps';
 const describeDespeckle = (v: number) =>
   v === 0 ? 'keep everything' : v <= 30 ? 'grain' : v <= 70 ? 'small specks' : 'aggressive';
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="field">
+      <span className="field-label">{label}</span>
+      {children}
+    </label>
+  );
+}
 
 function Slider({
   testid,

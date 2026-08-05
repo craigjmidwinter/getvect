@@ -25,6 +25,32 @@ export function hexOf(c: RgbColor): string {
   return `#${h(c.r)}${h(c.g)}${h(c.b)}`;
 }
 
+/**
+ * `rgb(r, g, b)` — the notation REFERENCE D1 documents and the exemplars in
+ * fixtures/reference use, so a diff against real product output is about
+ * geometry rather than syntax.
+ */
+export function rgbOf(c: RgbColor): string {
+  return `rgb(${clamp255(c.r)}, ${clamp255(c.g)}, ${clamp255(c.b)})`;
+}
+
+/** Rec. 601 luma, 0..255. */
+export const lumaOf = (c: RgbColor): number => 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
+
+/** Hue angle in degrees, 0..360; 0 for greys. */
+export function hueOf(c: RgbColor): number {
+  const max = Math.max(c.r, c.g, c.b);
+  const min = Math.min(c.r, c.g, c.b);
+  const d = max - min;
+  if (d === 0) return 0;
+  let h: number;
+  if (max === c.r) h = ((c.g - c.b) / d) % 6;
+  else if (max === c.g) h = (c.b - c.r) / d + 2;
+  else h = (c.r - c.g) / d + 4;
+  h *= 60;
+  return h < 0 ? h + 360 : h;
+}
+
 export function parseHex(hex: string): RgbColor | null {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return null;
@@ -201,7 +227,7 @@ function centroid(members: Int32Array, hist: Histogram): RgbColor {
  * pixel coverage. Deterministic; identical input ⇒ identical output.
  */
 export function computePaletteSync(image: RasterImage, colorCount: number): RgbColor[] {
-  const k = Math.max(2, Math.min(64, Math.round(colorCount)));
+  const k = Math.max(1, Math.min(64, Math.round(colorCount)));
   const hist = buildHistogram(image);
   if (hist.distinct === 0) return [{ r: 0, g: 0, b: 0 }];
 
@@ -212,8 +238,62 @@ export function computePaletteSync(image: RasterImage, colorCount: number): RgbC
   if (hist.distinct > palette.length) {
     palette = refine(hist, palette, 6);
   }
+  palette = reserveDarkest(hist, palette);
 
   return orderByCoverage(hist, palette);
+}
+
+/**
+ * Keep the ink.
+ *
+ * Median cut plus Lloyd refinement is a *coverage* optimizer: it spends its
+ * slots where the pixels are. On line art that is exactly wrong at a small
+ * colour budget — the black outline is a few percent of the pixels but it is
+ * the whole drawing, and averaging it into the nearest dark mid-tone turns a
+ * character's outline into a dark teal smear (the failure REFERENCE's
+ * gold-standard A/B exposes at 6 colours).
+ *
+ * So when the source really does contain a dark ink and no palette entry
+ * landed on it, the entry that currently owns those dark pixels is moved onto
+ * their centroid. The count is unchanged; only where one slot sits changes.
+ */
+function reserveDarkest(hist: Histogram, palette: RgbColor[]): RgbColor[] {
+  const INK_LUMA = 60;
+  if (palette.length < 2) return palette;
+  if (palette.some((c) => lumaOf(c) < INK_LUMA)) return palette;
+
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  for (let i = 0; i < hist.distinct; i++) {
+    const c = hist.colors[i];
+    const cr = (c >> 16) & 255;
+    const cg = (c >> 8) & 255;
+    const cb = c & 255;
+    if (lumaOf({ r: cr, g: cg, b: cb }) >= INK_LUMA * 0.75) continue;
+    const w = hist.counts[i];
+    r += cr * w;
+    g += cg * w;
+    b += cb * w;
+    n += w;
+  }
+  // A handful of stray dark pixels is not an outline; 0.5 % of the canvas is.
+  if (n === 0 || n / hist.total < 0.005) return palette;
+  const ink = { r: clamp255(r / n), g: clamp255(g / n), b: clamp255(b / n) };
+
+  let owner = 0;
+  let bestD = Infinity;
+  for (let j = 0; j < palette.length; j++) {
+    const d = dist(ink.r, ink.g, ink.b, palette[j]);
+    if (d < bestD) {
+      bestD = d;
+      owner = j;
+    }
+  }
+  const out = palette.map((c) => ({ ...c }));
+  out[owner] = ink;
+  return out;
 }
 
 function refine(hist: Histogram, palette: RgbColor[], iterations: number): RgbColor[] {
@@ -522,6 +602,162 @@ export function normalizePalette(palette: RgbColor[] | null | undefined): RgbCol
     if (out.length >= 64) break;
   }
   return out.length ? out : null;
+}
+
+// ---------------------------------------------------------------------------
+// Preset colour transforms (REFERENCE B2)
+// ---------------------------------------------------------------------------
+
+/** Rec. 601 grayscale — the Sketch preset's colour space. */
+export function toGrayscale(image: RasterImage): RasterImage {
+  const data = new Uint8ClampedArray(image.data.length);
+  for (let i = 0; i < image.data.length; i += 4) {
+    const y = clamp255(
+      0.299 * image.data[i] + 0.587 * image.data[i + 1] + 0.114 * image.data[i + 2],
+    );
+    data[i] = y;
+    data[i + 1] = y;
+    data[i + 2] = y;
+    data[i + 3] = 255;
+  }
+  return { width: image.width, height: image.height, data };
+}
+
+/** Luminance threshold to pure black/white — the Drawing preset (REFERENCE B2). */
+export function toBlackAndWhite(image: RasterImage, threshold: number): RasterImage {
+  const t = Math.max(0, Math.min(255, threshold));
+  const data = new Uint8ClampedArray(image.data.length);
+  for (let i = 0; i < image.data.length; i += 4) {
+    const y = 0.299 * image.data[i] + 0.587 * image.data[i + 1] + 0.114 * image.data[i + 2];
+    const v = y >= t ? 255 : 0;
+    data[i] = v;
+    data[i + 1] = v;
+    data[i + 2] = v;
+    data[i + 3] = 255;
+  }
+  return { width: image.width, height: image.height, data };
+}
+
+// ---------------------------------------------------------------------------
+// Output colour groups (REFERENCE B3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Collapse palette entries that sit within `thresholdPercent` of each other.
+ *
+ * Distance is L1 over RGB as a percentage of the maximum (765), so 5 % — the
+ * reference product's default step — merges colours under ~38 units apart:
+ * the near-duplicates a soft edge or a gradient leaves behind, not the artwork.
+ *
+ * Returns the surviving palette plus the index remap, and rewrites `indices`.
+ */
+export function mergeSimilarColors(
+  indices: Uint8Array,
+  palette: RgbColor[],
+  thresholdPercent: number,
+): { palette: RgbColor[]; map: Uint8Array } {
+  const map = new Uint8Array(Math.max(1, palette.length));
+  const limit = (Math.max(0, thresholdPercent) / 100) * 765;
+  if (limit <= 0 || palette.length < 2) {
+    for (let i = 0; i < palette.length; i++) map[i] = i;
+    return { palette: palette.map((c) => ({ ...c })), map };
+  }
+  const kept: RgbColor[] = [];
+  for (let i = 0; i < palette.length; i++) {
+    const c = palette[i];
+    let target = -1;
+    for (let j = 0; j < kept.length; j++) {
+      if (dist(c.r, c.g, c.b, kept[j]) <= limit) {
+        target = j;
+        break;
+      }
+    }
+    if (target < 0) {
+      target = kept.length;
+      kept.push({ ...c });
+    }
+    map[i] = target;
+  }
+  for (let p = 0; p < indices.length; p++) indices[p] = map[indices[p]];
+  return { palette: kept, map };
+}
+
+/**
+ * Merge colour groups that cover less than `thresholdPercent` of the image into
+ * the nearest surviving colour — the reference product's output-colour-groups
+ * "merge threshold" (its default step is 5 %).
+ *
+ * Coverage, not colour distance, is the useful reading of that control: the
+ * groups panel draws each output colour as a circle sized by its area, and the
+ * threshold sits next to it. What a user wants from it is "stop giving a whole
+ * layer to a colour that barely appears" — a slice of quantization debris that
+ * costs a layer, a legend entry and a print run. Colour-distance merging is a
+ * different job and lives in `mergeSimilarColors`.
+ *
+ * Rewrites `indices` and returns the surviving palette.
+ */
+export function mergeSmallGroups(
+  indices: Uint8Array,
+  palette: RgbColor[],
+  thresholdPercent: number,
+): RgbColor[] {
+  if (thresholdPercent <= 0 || palette.length < 2) return palette.map((c) => ({ ...c }));
+  const coverage = coverageOf(indices, palette.length);
+  const limit = (thresholdPercent / 100) * indices.length;
+  const survives = palette.map((_, i) => coverage[i] >= limit);
+  // Never merge everything away: the largest group always survives.
+  if (!survives.some(Boolean)) {
+    let biggest = 0;
+    for (let i = 1; i < palette.length; i++) if (coverage[i] > coverage[biggest]) biggest = i;
+    survives[biggest] = true;
+  }
+
+  const kept: RgbColor[] = [];
+  const keptIndex: number[] = [];
+  for (let i = 0; i < palette.length; i++) {
+    if (survives[i]) {
+      keptIndex.push(i);
+      kept.push({ ...palette[i] });
+    }
+  }
+  if (kept.length === palette.length) return kept;
+
+  const map = new Uint8Array(palette.length);
+  for (let i = 0; i < palette.length; i++) {
+    if (survives[i]) {
+      map[i] = keptIndex.indexOf(i);
+      continue;
+    }
+    let best = 0;
+    let bestD = Infinity;
+    for (let k = 0; k < kept.length; k++) {
+      const d = dist(palette[i].r, palette[i].g, palette[i].b, kept[k]);
+      if (d < bestD) {
+        bestD = d;
+        best = k;
+      }
+    }
+    map[i] = best;
+  }
+  for (let p = 0; p < indices.length; p++) indices[p] = map[indices[p]];
+  return kept;
+}
+
+/** Emission order of the colour layers (REFERENCE B3 "sort order"). */
+export function sortedOrder(
+  palette: RgbColor[],
+  coverage: ArrayLike<number>,
+  order: 'coverage' | 'brightness' | 'hue',
+): number[] {
+  const idx = palette.map((_, i) => i);
+  if (order === 'brightness') {
+    idx.sort((a, b) => lumaOf(palette[a]) - lumaOf(palette[b]) || a - b);
+  } else if (order === 'hue') {
+    idx.sort((a, b) => hueOf(palette[a]) - hueOf(palette[b]) || a - b);
+  } else {
+    idx.sort((a, b) => (coverage[b] ?? 0) - (coverage[a] ?? 0) || a - b);
+  }
+  return idx;
 }
 
 /** `normalizePalette` plus duplicate removal — the distinct colours of an override. */

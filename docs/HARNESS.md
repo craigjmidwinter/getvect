@@ -24,7 +24,7 @@ npm run screenshots   # flow screenshots -> artifacts/screenshots/
 | `npm run build:renderer` | Renderer bundle only. |
 | `npm run typecheck` | Type-checks both projects without emitting. |
 | `npm test` | Playwright acceptance suite (`pretest` builds first). |
-| `npm run test:engine` | Engine contract tests (`node --test`, pure Node). Three files: `engine.test.mjs` (determinism, setting semantics, palette overrides, SVG grouping, EPS/DXF/PDF structure — must stay green), `parity.test.mjs` (the B2-B6 settings, D1 fill notation, D3 DXF colour distinctness — red until those land), `rendered.test.mjs` (rasterizes output: does the *picture* change, is it curve-fitted, is it economical in shapes, does it hold up against the exemplar). |
+| `npm run test:engine` | Engine contract tests (`node --test`, pure Node). Three files: `engine.test.mjs` (determinism, setting semantics, palette overrides, SVG grouping, EPS/DXF/PDF structure — must stay green), `parity.test.mjs` (the B2-B6 settings, D1 fill notation, D3 DXF colour distinctness), `rendered.test.mjs` (rasterizes output: does the *picture* change, is it curve-fitted, is it economical in shapes, does it hold up against the exemplar). |
 | `npm run test:headed` | Same, with a visible window. |
 | `npm run fixtures` | Regenerates `fixtures/` deterministically. |
 | `npm run instruments` | Measures the app engine on every fixture. |
@@ -130,8 +130,15 @@ deliberately loose because continuous-tone images are not the target use case.
 A fixture entry may also carry:
 
 - `settings` — an override merged over `DEFAULT_SETTINGS` for that fixture only. The
-  reference exemplar was produced at roughly 16 colours, so judging it at the 8-colour
-  default would compare two different pictures.
+  reference exemplar was produced at roughly 16 colours with Enhance on, so judging it
+  at the 8-colour default would compare two different pictures.
+- `compareTo` — the image fidelity is measured against, when that is not the source
+  itself. Exactly one kind of fixture needs it: a noisy one. Speck removal is a feature
+  (B4/B5 and the despeckle slider) and SSIM's variance term punishes it — the clean
+  artwork scores 0.35 against the speckled version of itself — so measuring a denoised
+  trace against the noise would reward reproducing every speck and call recovering the
+  drawing a failure. `logo-noisy-512` is therefore scored against `logo-flat-512.png`,
+  i.e. "did the artwork come back?", at the *flat* fixture's thresholds (MAE 8, SSIM 0.9).
 - `exemplar` — a path (relative to `fixtures/`) to real the reference product output for the
   same source. The runner measures it through the identical pipeline and reports
   `exemplarBytesRatio` / `exemplarSubPathRatio` / `exemplarPathRatio` /
@@ -226,15 +233,15 @@ interface VectorizeSettings {
   enhance: boolean;          // denoise + colour simplification preprocessing
   palette?: RgbColor[] | null;  // explicit palette overrides the computed one
 
-  // --- REFERENCE B2-B6. Not implemented yet; the checks below are red until
-  // they are. Names and value domains are fixed by docs/TESTIDS.md, because the
-  // e2e suite drives them through <select>/<input> values of the same spelling.
+  // --- REFERENCE B2-B6. Names and value domains are fixed by docs/TESTIDS.md,
+  // because the e2e suite drives them through <select>/<input> values of the
+  // same spelling.
   preset?: 'clipart' | 'photo' | 'sketch' | 'drawing';          // B2, default 'clipart'
   detailLevel?: 'maximum'|'ultra'|'very-high'|'high'|'medium'|'low'|'minimum';  // B2
   bwThreshold?: number;      // 0..255, Drawing preset luminance split          // B2
   disabledColors?: number[]; // palette indices to omit entirely (transparency) // B3
-  mergeThreshold?: number;   // percent; collapse output colours closer than it // B3
-  sortOrder?: 'coverage' | 'brightness';                                        // B3
+  mergeThreshold?: number;   // percent coverage; groups smaller than it merge   // B3
+  sortOrder?: 'coverage' | 'brightness' | 'hue';                                // B3
   noiseReduction?: 'off' | 'low' | 'high';                                      // B4
   antiAliasing?: 'off' | 'smart' | 'mid';                                       // B4
   roundness?: 0 | 1 | 2;     // three curve-fitting levels                      // B5
@@ -301,11 +308,12 @@ modules so each can be read on its own.
 
 | module | responsibility |
 | --- | --- |
-| `preprocess.ts` | "Enhance" — 3×3 median denoise, colour simplification, majority filter. |
-| `color.ts` | Histogram → median cut → Lloyd refinement → index image → despeckle. |
-| `trace.ts` | Contour tracing via imagetracerjs's low-level pipeline; stroke banding and speck reconstruction. |
-| `path.ts` | The geometry model, the compact path-data writer, and the parser the exporters read back. |
-| `svg.ts` | SVG serialization: a backdrop `<rect>` plus one compound path per colour per stroke band, each colour wrapped in its own `<g fill="…">` layer (REFERENCE D1). |
+| `preprocess.ts` | "Enhance" (median denoise → colour simplification → majority filter → snap back onto source colours), Noise Reduction, and the pixel-level anti-aliasing ramp snap. |
+| `color.ts` | Histogram → median cut → Lloyd refinement → dark-ink reservation → index image → despeckle, plus the output colour-group merges and sort orders. |
+| `trace.ts` | Boundary extraction: imagetracerjs's edge-node walk gives the *exact* pixel-corner polygon of each region, then Minimum Area filters it. |
+| `fit.ts` | Corner detection, staircase centring, Schneider cubic fitting and circle detection — everything that turns a boundary polygon into smooth geometry. |
+| `path.ts` | The geometry model, the path-data writer, and the parser the exporters read back. |
+| `svg.ts` | SVG serialization: a backdrop `<rect>` plus one compound path (and any detected `<circle>`s) per colour, each colour wrapped in its own `<g fill="rgb(…)">` layer (REFERENCE D1). |
 | `eps.ts` / `dxf.ts` / `pdf.ts` | Geometry-level converters. They recover shapes by parsing the result's SVG — which is what keeps preview, SVG, EPS, DXF and PDF the same drawing. PNG is the exception: it is a raster, so the renderer draws the exported SVG into a canvas (`src/renderer/lib/raster.ts`). |
 
 Two notes for anyone tuning it:
@@ -314,11 +322,22 @@ Two notes for anyone tuning it:
   Clustering always comes from the image with `k = palette.length`; slot *i* is then
   painted with `palette[i]`. That is what makes "change this swatch" repaint a region
   instead of stranding the new colour (see the comment in `vectorize`).
-- **Sub-pixel contours need help.** imagetracerjs puts nodes at midpoints between pixel
-  corners, so a one-pixel region collapses to a zero-area contour that a fill renders as
-  nothing. `trace.ts` rebuilds those from the index image as exact pixel squares, and
-  strokes whatever thin contours remain. Removing that costs ~0.11 SSIM on the noisy
-  fixture.
+- **Trace the exact boundary, then fit it.** imagetracerjs's own `internodes` +
+  `batchtracepaths` place every node at the midpoint between two pixel corners, which
+  halves every corner, erodes hairlines and collapses a one-pixel region to zero area —
+  the reason an earlier version of this engine carried a stroke-compensation table and a
+  pixel-rebuild fallback. The engine now takes `pathscan`'s integer pixel-corner polygon
+  (area-exact by construction) and does its own fitting in `fit.ts`, so those crutches
+  are gone: measured on the flat fixture, mean colour error fell 0.80 → 0.74 while the
+  curve-command ratio rose 0.31 → 0.88 and the SVG shrank.
+- **Every command letter is written out.** SVG lets a repeated command drop its letter;
+  this writer does not, because `curveCommandRatio` (and any human reading the file)
+  counts letters, and eliding them makes a staircase of a thousand `l` segments look
+  like a handful of commands. It costs about a byte per segment.
+- **Enhance is a bundle, not a filter.** It turns on the denoise pass *and* smart
+  anti-aliasing, folds away colour groups under 1 % coverage, and raises the minimum
+  shape area to one ten-thousandth of the canvas. That is what makes the gold-standard
+  A/B land inside REFERENCE's 3×/5× economy limits at the exemplar's own settings.
 
 ## Environment caveats
 
