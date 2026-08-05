@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GetVect — raster to vector, entirely on your machine</title>
+<meta name="description" content="A local desktop vectorizer for macOS. Drop in a PNG, JPEG or BMP; get SVG, EPS, DXF, PDF or PNG. No account, no credits, no upload.">
+<meta name="theme-color" content="#12141a">
+<link rel="icon" href="assets/favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/favicon.png">
+<link rel="stylesheet" href="styles.css">
+<meta property="og:type" content="website">
+<meta property="og:title" content="GetVect — raster to vector, entirely on your machine">
+<meta property="og:description" content="A local desktop vectorizer for macOS. No account, no credits, no upload.">
+<meta property="og:url" content="https://getvect.midwinter.io/">
+<meta property="og:image" content="https://getvect.midwinter.io/assets/fox-before-after.png">
+<meta name="twitter:card" content="summary_large_image">
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="bar">
+  <div class="wrap bar-in">
+    <a class="bar-mark" href="./" aria-label="GetVect home">
+      <img class="fox" src="assets/fox-mascot.png" alt="" width="24" height="24">
+      <img class="word" src="assets/getvect-wordmark.svg" alt="GetVect" width="70" height="24">
+    </a>
+    <nav aria-label="Primary">
+      <a class="opt" href="#demo">Demo</a>
+      <a class="opt" href="#features">Features</a>
+      <a class="opt" href="#enhance">AI Enhance</a>
+      <a href="docs.html">Docs</a>
+      <a href="https://github.com/craigjmidwinter/getvect">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ---- hero ---------------------------------------------------------- -->
+  <section class="hero">
+    <div class="wrap">
+      <div class="hero-grid">
+        <div>
+          <img class="word" src="assets/getvect-wordmark.svg" alt="GetVect" width="360" height="123">
+          <h1>Raster&nbsp;→&nbsp;vector, entirely on your machine.</h1>
+          <p class="lede">
+            Drop in a PNG, JPEG or BMP. Get back SVG, EPS, DXF, PDF or PNG — traced by an
+            offline engine, with a full control surface for palette, detail, smoothing and
+            speck removal, and saved through the native dialog.
+          </p>
+          <ul class="wedge">
+            <li>No account</li>
+            <li>No credits</li>
+            <li>No watermark</li>
+            <li>No upload</li>
+          </ul>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="docs.html">Read the docs</a>
+            <a class="btn" href="https://github.com/craigjmidwinter/getvect">Source on GitHub</a>
+            <span class="meta">MIT · macOS · Node 20+</span>
+          </div>
+        </div>
+        <div class="hero-art">
+          <img class="fox" src="assets/fox-mascot.png"
+               alt="The GetVect fox: an orange cartoon fox sticker with a white outline"
+               width="250" height="250">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- the demo ------------------------------------------------------ -->
+  <section id="demo">
+    <div class="wrap">
+      <p class="eyebrow">Before / after</p>
+      <h2>Zoom in until one of them breaks.</h2>
+      <p class="lede">
+        Same fox, twice. On the left, the source PNG — real pixels, and at 16× they are all
+        you get. On the right, the SVG GetVect traced from it: curve-fitted outlines that stay
+        sharp at any magnification. Drag the divider, then change the zoom.
+      </p>
+
+      <div class="demo">
+        <div class="demo-stage" id="stage">
+          <div class="demo-layer demo-raster">
+            <img src="assets/fox-raster.png"
+                 alt="The fox as a 1024 by 1024 source PNG; magnified, its edges break into square pixels"
+                 width="1024" height="1024">
+          </div>
+          <div class="demo-layer demo-vector">
+            <img src="assets/fox-vector.svg"
+                 alt="The same fox after tracing, as a 14 KB SVG; magnified, its outlines stay smooth curves"
+                 width="1024" height="1024">
+          </div>
+          <span class="demo-tag demo-tag-l">SOURCE PNG</span>
+          <span class="demo-tag demo-tag-r">TRACED SVG</span>
+          <input class="demo-range" id="reveal" type="range" min="0" max="100" value="50" step="0.5"
+                 aria-label="Reveal the traced SVG — drag right to show more of it">
+          <div class="demo-divider" aria-hidden="true"></div>
+        </div>
+
+        <div class="demo-controls">
+          <div class="zoom" id="zoom" role="group" aria-label="Zoom level">
+            <button type="button" data-z="1" aria-pressed="true">1×</button>
+            <button type="button" data-z="4" aria-pressed="false">4×</button>
+            <button type="button" data-z="16" aria-pressed="false">16×</button>
+          </div>
+          <span class="demo-hint">Drag the divider · arrow keys work too</span>
+        </div>
+      </div>
+
+      <ul class="readout">
+        <li><b>14 KB</b><span>SVG, from 352 KB</span></li>
+        <li><b>29</b><span>shapes, 6 layers</span></li>
+        <li><b>8</b><span>colours, Smart AA</span></li>
+        <li><b>0</b><span>network calls</span></li>
+      </ul>
+
+      <p style="margin-top:1.5rem">
+        The fox is both the mascot and the demo fixture. Traced at 8 colours with Smart
+        anti-aliasing, its 352 KB raster becomes a 14 KB SVG in 6 colour layers and 29 shapes,
+        with the transparent background preserved. The same source through the reference product comes
+        back 35.5 KB in 63 paths — and that comparison is not a boast, it is a
+        <a href="https://github.com/craigjmidwinter/getvect/blob/main/docs/HARNESS.md">checked-in
+        exemplar the test harness measures against on every run</a>.
+      </p>
+    </div>
+  </section>
+
+  <!-- ---- what it does -------------------------------------------------- -->
+  <section id="features">
+    <div class="wrap">
+      <p class="eyebrow">What it does</p>
+      <h2>Every control the job needs, on your own hardware.</h2>
+      <p class="lede">
+        Each of these has an acceptance spec behind it — one Playwright test per item in the
+        project's reference checklist, run against the packaged app.
+      </p>
+
+      <div class="grid">
+        <article class="card">
+          <span class="tag">Ingest</span>
+          <h3>Drag, drop, or pick</h3>
+          <p>PNG, JPEG and BMP, by drag-and-drop or file picker. Unsupported files are rejected
+             with a real message. Load several and switch between them in the sidebar.</p>
+        </article>
+
+        <article class="card">
+          <span class="tag">Presets</span>
+          <h3>Four tracing models</h3>
+          <p><strong>Clipart</strong> with seven detail levels, <strong>Photo</strong>,
+             <strong>Sketch</strong> (grayscale) and <strong>Drawing</strong> (black and white
+             with a luminance threshold). Tracing starts on load, off the UI thread, with
+             visible progress.</p>
+        </article>
+
+        <article class="card">
+          <span class="tag">Palette</span>
+          <h3>Candidate palettes, then edit them</h3>
+          <p>Auto-generated palettes at eleven fixed sizes from 1 to 18 colours, offered as
+             selectable rows — plus an editor that recolours a swatch, merges two, or removes
+             one.</p>
+        </article>
+
+        <article class="card">
+          <span class="tag">Output colours</span>
+          <h3>Transparency is a colour you switch off</h3>
+          <p>Every output colour group has a toggle: disable the background colour and the
+             export comes back transparent. Merge threshold and sort order sit beside it.</p>
+        </article>
+
+        <article class="card">
+          <span class="tag">Quality</span>
+          <h3>Smart anti-aliasing, on by default</h3>
+          <p>Enhance (denoise and colour simplification), Noise Reduction off/low/high, and
+             Anti-aliasing off/smart/mid. Smart is a pre-trace edge cleanup and it is worth
+             1747 sub-paths → 551 and 396 KB → 140 KB on the reference artwork.</p>
+        </article>
+
+        <article class="card">
+          <span class="tag">Advanced</span>
+          <h3>Roundness, minimum area, overlap, circles</h3>
+          <p>Three curve-fitting levels, speck removal at 0 / 5 / 90 px², layer overlap, and
+             circle detection. Results render as filled layers or stroked layers.</p>
+        </article>
+
+        <article class="card">
+          <span class="tag">Preview</span>
+          <h3>The preview is the file</h3>
+          <p>Original/vector toggle and side-by-side, with zoom and pan synchronised across
+             both panes. What you are looking at is the SVG that gets exported, not a re-render
+             of it.</p>
+        </article>
+
+        <article class="card">
+          <span class="tag">Export</span>
+          <h3>Five formats, native save dialog</h3>
+          <p>SVG with per-colour <code>&lt;g fill&gt;</code> layers that open in Illustrator or
+             Inkscape as editable colour groups. DXF keeps its curves as degree-3 splines — or
+             flattens to R12 polylines for older cutter firmware. Plus EPS, PDF and PNG.</p>
+        </article>
+      </div>
+
+      <figure>
+        <img src="assets/screenshot-side-by-side.png"
+             alt="The GetVect app: a noisy source raster in the left pane, the cleaned vector result in the right pane, and the full settings panel below with preset, palette, quality and advanced controls"
+             width="1280" height="828" loading="lazy">
+        <figcaption>Side-by-side view with the whole control surface below it. The speckle on the
+          left is gone from the trace on the right.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ---- AI enhance ---------------------------------------------------- -->
+  <section id="enhance">
+    <div class="wrap">
+      <p class="eyebrow">AI Enhance — optional, bring your own key</p>
+      <h2>Their best trick, running on your tracer.</h2>
+      <p class="lede">
+        the reference product's "Enhance with AI" turned out not to be a filter at all. It is a
+        generative image-to-image <strong>re-illustration</strong> — background removed, soft
+        shading flattened into bands, outlines redrawn at even weight — after which their tracer
+        is tracing art that is already flat. That is most of its advantage on shaded artwork,
+        and no amount of median filtering reproduces it.
+      </p>
+      <p class="lede">
+        GetVect can do the same step by asking an image model for it. Paste your own Google
+        Gemini API key, switch AI Enhance on, and the enhanced image becomes the working image
+        the engine traces. One call, about eight seconds on a 1024 px source.
+      </p>
+
+      <div class="callout">
+        <span class="tag">The trade, stated plainly</span>
+        <p>With AI Enhance on, <strong>that image is uploaded to Google</strong> under your own
+          API key and their terms — which is exactly the thing the rest of this app exists to
+          avoid. Nothing else changes: no other image, no other feature, no telemetry, and the
+          switch is off until you turn it on.</p>
+        <p>The key is encrypted at rest with Electron's <code>safeStorage</code> (Keychain on
+          macOS), lives only in the main process and is never returned to the UI. If the OS has
+          no keystore, GetVect refuses to store a key rather than writing it in the clear. If a
+          run fails — bad key, no network, 60 s timeout — the un-enhanced image is traced
+          instead and the app says why.</p>
+      </div>
+
+      <p style="margin-top:1.5rem">
+        The fully-local version — background removal, then an on-device generative flatten, with
+        nothing leaving the machine — is the plan of record in
+        <a href="https://github.com/craigjmidwinter/getvect/issues/1">issue #1</a>. The provider
+        layer was written for it. Setup, quality tiers and the debug switch are in the
+        <a href="docs.html#ai-enhance">docs</a>.
+      </p>
+    </div>
+  </section>
+
+  <!-- ---- how it was built ---------------------------------------------- -->
+  <section id="built">
+    <div class="wrap">
+      <p class="eyebrow">How it was built</p>
+      <h2>A pit crew gauntlet, graded against the real product.</h2>
+      <p class="lede">
+        GetVect was written almost entirely by a multi-agent loop where three roles take turns on
+        one repo. <strong>Builders</strong> implement a slice at a time. <strong>Critics</strong>
+        start with fresh context, read only the spec and the running app, and score it. And a
+        <strong>pit crew</strong> does nothing but build measurement. The bet under test: a
+        loop's speed limit is measurement, not intelligence.
+      </p>
+      <p class="lede">
+        The biggest correction came from refusing to grade against adjectives. "Matches
+        the reference product" doesn't fail CI — so the real product got driven live in a browser, its
+        output read at a dozen settings combinations, and those outputs checked in as exemplars
+        with fully-known parameters. That recon rewrote the spec and surfaced the finding the
+        engine now revolves around: <strong>Smart anti-aliasing collapses path count by ~81% at
+        otherwise identical settings</strong> — 637 paths to 63 on the fox.
+      </p>
+
+      <div class="callout callout--flat">
+        <span class="tag">And it caught itself cheating</span>
+        <p>For a whole lap the instruments fed the engine a white-flattened image no UI could
+          produce, while the app's own decode handed it black for transparent pixels. Every
+          transparent-background PNG — the entire sticker and decal use case — traced an invented
+          opaque background and scored green. A number measured on pixels the product never sees
+          is not a measurement of the product. There is now a decode-parity spec whose only job
+          is to go red the moment the app and the harness disagree.</p>
+      </div>
+
+      <div class="cta-row">
+        <a class="btn" href="https://github.com/craigjmidwinter/getvect/tree/main/katra/entries">Read the build log</a>
+        <a class="btn" href="https://github.com/craigjmidwinter/getvect">Browse the repo</a>
+        <span class="meta">Longer-form writing at <a href="https://craigmidwinter.com">craigmidwinter.com</a></span>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap foot-in">
+    <img src="assets/fox-mascot.png" alt="" width="30" height="30">
+    <span>MIT · © 2026 Craig Midwinter</span>
+    <span class="foot-links">
+      <a href="docs.html">Docs</a>
+      <a href="https://github.com/craigjmidwinter/getvect">GitHub</a>
+      <a href="https://github.com/craigjmidwinter/getvect/blob/main/LICENSE">License</a>
+    </span>
+  </div>
+</footer>
+
+<script src="demo.js" defer></script>
+</body>
+</html>
