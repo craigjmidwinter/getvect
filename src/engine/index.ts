@@ -47,6 +47,7 @@ import {
   enhanceSync,
   majorityFilter,
   reduceNoise,
+  regularizeBoundaries,
 } from './preprocess';
 import { renderSvg } from './svg';
 import { maskForIndex, traceMask, type TraceOptions, type TracedLayer } from './trace';
@@ -132,10 +133,20 @@ export const DEFAULT_SETTINGS: ResolvedSettings = {
    */
   antiAliasing: 'smart',
   // B5 — the reference product's own defaults: middle roundness, 5px² specks
-  // dropped. Overlap `high` keeps each layer trimmed to its own region, which
-  // is the economical half of the pair.
+  // dropped.
   roundness: 1,
   minArea: 5,
+  /**
+   * Overlap stays `high` — each layer trimmed to its own pixels.
+   *
+   * `full` measures better on boundary raggedness (mean layer compactness 3.67
+   * trimmed against 3.11 stacked on the gold-standard artwork), but it costs
+   * two of REFERENCE's own controls at the default: a stacked layer's mask is
+   * the union of itself and everything painted after it, so B5's circle
+   * detection can no longer see a disc as a disc, and B3's sort order stops
+   * being free. The bottom layer gets the benefit without the price — see
+   * `silhouetteLayer` below.
+   */
   overlap: 'high',
   circleDetection: false,
   resultStyle: 'filled',
@@ -353,6 +364,25 @@ const ENHANCE_FLOOR_MAX_CONTRAST = 255;
 const INK_LUMA = 60;
 
 /**
+ * Smart anti-aliasing's near-duplicate fold, as a percentage of the L1 range.
+ *
+ * A halo layer is a near-duplicate of the colour it hugs, so the fold is a
+ * colour-distance question — but the threshold is not free to be generous. It
+ * is set at exactly the point that *guarantees* the survivors stay outside the
+ * 32-unit Euclidean window `nearDuplicateFillPairs` calls a duplicate: the
+ * worst case for a given L1 distance is an equal split across the three
+ * channels, so L1 > 32·√3 = 55.4, i.e. 7.25 % of 765.
+ *
+ * It used to be 8 %, which is 61 units — six units of margin nobody asked for,
+ * and on the gold-standard artwork those six units cost two whole output
+ * colours: a 16-colour request delivered 8 groups where a 12-colour request
+ * delivered 9, so asking for MORE colours handed back FEWER. At 7.25 % the same
+ * request delivers 10 and the closest surviving pair is 34.7 apart, still
+ * outside the window.
+ */
+const HALO_FOLD_PERCENT = 7.25;
+
+/**
  * Which palette slots hold dark ink — the line art the cleanup passes must not
  * simplify.
  *
@@ -374,6 +404,29 @@ function darkInkSlots(palette: RgbColor[]): Uint8Array | undefined {
   const flags = new Uint8Array(palette.length);
   flags[darkest] = 1;
   return flags;
+}
+
+/**
+ * Every palette slot dark enough to be drawing ink, not just the darkest one.
+ *
+ * `darkInkSlots` is deliberately narrow because it exempts regions from *area*
+ * floors, and exempting half a dark picture's palette from a floor switches the
+ * floor off. `regularizeBoundaries` is a shape filter with no floor to switch
+ * off: what it needs to know is which colours a stroke can be drawn in, and a
+ * soft outline quantizes into two or three of them (on the gold standard,
+ * rgb(32,24,10) and rgb(28,47,53) both carry parts of the same outline).
+ */
+function inkSlotsOf(palette: RgbColor[]): Uint8Array | undefined {
+  const flags = new Uint8Array(palette.length);
+  let any = false;
+  for (let i = 0; i < palette.length; i++) {
+    const luma = 0.299 * palette[i].r + 0.587 * palette[i].g + 0.114 * palette[i].b;
+    if (luma < INK_LUMA) {
+      flags[i] = 1;
+      any = true;
+    }
+  }
+  return any ? flags : undefined;
 }
 
 /**
@@ -593,6 +646,28 @@ export async function vectorize(
     indices = majorityFilter(indices, width, height, clusters.length, TRANSPARENT_INDEX);
   }
   /**
+   * ...and the seams between the regions, which a 3×3 vote cannot straighten.
+   *
+   * A sawtooth two pixels deep is a local majority in every 3×3 window it
+   * appears in, so `majorityFilter` preserves it and the tracer faithfully
+   * reproduces every spike. That is the difference between our 16-colour output
+   * and the real product's: same colours, same silhouettes, but our shading
+   * boundaries arrive as a saw and theirs as a single sweep. See
+   * `regularizeBoundaries`.
+   */
+  const clusterInk = inkSlotsOf(clusters);
+  const seamPasses = indexPasses > 0 ? indexPasses + 1 : 0;
+  for (let i = 0; i < seamPasses; i++) {
+    indices = regularizeBoundaries(
+      indices,
+      width,
+      height,
+      clusters.length,
+      TRANSPARENT_INDEX,
+      clusterInk,
+    );
+  }
+  /**
    * ...and the half a 3×3 window cannot reach.
    *
    * A fringe two or three pixels wide is a local *majority*, so the filter
@@ -665,6 +740,25 @@ export async function vectorize(
       transparentIndex: TRANSPARENT_INDEX,
     });
   }
+  /**
+   * One more seam pass, on the index image as the tracer will actually see it.
+   *
+   * Every despeckle above rewrites a region wholesale into a neighbour, which
+   * leaves the *former* region's outline behind as a kink in the seam it just
+   * joined — the cleanup that removed a shape adds raggedness to the shape that
+   * absorbed it. Running the regularizer before the floors therefore tidies a
+   * boundary the floors then re-roughen.
+   */
+  for (let i = 0; i < seamPasses; i++) {
+    indices = regularizeBoundaries(
+      indices,
+      width,
+      height,
+      clusters.length,
+      TRANSPARENT_INDEX,
+      clusterInk,
+    );
+  }
   report(onProgress, 'simplify', 0.4);
   await tick();
 
@@ -717,21 +811,15 @@ export async function vectorize(
    */
   const sourceColors = palette.length;
 
-  // Two different collapses, both switched off by default and both skipped when
-  // the user has hand-picked the palette (their table is authoritative):
+  // Two different collapses, both skipped when the user has hand-picked the
+  // palette (their table is authoritative):
   //   - Smart anti-aliasing folds away halo layers, which ARE near-duplicates
-  //     of the colour they hug, so it merges by colour distance. 8 % of the L1
-  //     range is 61 units, and even in the worst case (an equal split across
-  //     all three channels) that leaves survivors >35 apart in the Euclidean
-  //     distance the halo metric uses — outside its 32-unit window. At 5.5 %
-  //     the gold-standard output shipped rgb(213,202,193) beside
-  //     rgb(197,186,179) (26.6 apart) and rgb(94,149,169) beside
-  //     rgb(115,162,180) (27.0): one cream region split into a speckled mosaic
-  //     of two creams, which is what a user sees when they recolour a swatch.
+  //     of the colour they hug, so it merges by colour distance
+  //     (`HALO_FOLD_PERCENT`).
   //   - The output-groups merge threshold folds away colours that barely appear
   //     (REFERENCE B3), which is a coverage question.
   if (!override) {
-    if (smartAa) palette = mergeSimilarColors(indices, palette, 8).palette;
+    if (smartAa) palette = mergeSimilarColors(indices, palette, HALO_FOLD_PERCENT).palette;
     const groupThreshold = Math.max(opts.mergeThreshold, opts.enhance ? 1 : 0);
     if (groupThreshold > 0) palette = mergeSmallGroups(indices, palette, groupThreshold);
   }
@@ -785,14 +873,20 @@ export async function vectorize(
     if (finalCoverage[i] > 0 && !disabled.has(i)) enabled.push(i);
   }
 
-  // Emission order (REFERENCE B3 "sort order"). Full overlap stacks layers
-  // under each other, so there the order IS the geometry and coverage rank is
-  // the only correct one; with trimmed (`high`) layers the picture is a
-  // partition and the order is free.
-  const order =
-    opts.overlap === 'full'
-      ? sortedOrder(palette, finalCoverage, 'coverage').filter((i) => enabled.includes(i))
-      : sortedOrder(palette, finalCoverage, opts.sortOrder).filter((i) => enabled.includes(i));
+  /**
+   * Emission order (REFERENCE B3 "sort order").
+   *
+   * Free in both overlap modes. With trimmed layers the picture is a partition,
+   * so nothing can hide anything. With full overlap each layer is built as the
+   * union of itself and everything painted AFTER it, which makes the composite
+   * independent of the permutation too: a pixel of colour `order[k]` belongs to
+   * every layer at position <= k, the last of those painted is position k, and
+   * it is painted `order[k]`. Forcing coverage rank here only made B3's control
+   * silently inert whenever Overlap was Full.
+   */
+  const order = sortedOrder(palette, finalCoverage, opts.sortOrder).filter((i) =>
+    enabled.includes(i),
+  );
 
   // The heaviest layer becomes a backdrop rect rather than an outline: the
   // layers partition the canvas, so painting it full-bleed is lossless, much
@@ -821,12 +915,50 @@ export async function vectorize(
       ? dominant
       : -1;
 
+  /**
+   * ...and the same optimisation for artwork that has an alpha channel: the
+   * dominant colour is traced as the whole SILHOUETTE, not as its own pixels.
+   *
+   * On opaque artwork the heaviest layer is a full-bleed rect, and the reason
+   * that is free is that the layers partition the canvas: whatever is painted
+   * over it wins. Exactly the same argument holds inside the drawn silhouette
+   * of a sticker — the only thing a rect would get wrong there is the part of
+   * the canvas the file asked to be see-through, and the silhouette is that
+   * shape minus that part.
+   *
+   * What it buys is not bytes, it is shape. Trimmed to its own pixels the
+   * dominant layer is perforated by every layer above it, so its outline
+   * detours round all of them and sheds an island wherever a neighbour cuts it
+   * in two: on the gold-standard artwork its cream layer arrived as 30
+   * sub-paths, 20 of them under 400px², and those 20 carried 17 % of the
+   * layer's perimeter. As a silhouette it is one smooth shape, which is what
+   * the real product's own bottom layer is, and it also removes the hairline
+   * seams that show through wherever two trimmed layers meet.
+   *
+   * It has to be painted first, so it is moved to the front of the emission
+   * order regardless of what B3's sort order says about the rest.
+   */
+  const silhouetteLayer =
+    opts.resultStyle === 'filled' && opaque && dominant >= 0 && !disabled.has(dominant)
+      ? dominant
+      : -1;
+  if (silhouetteLayer >= 0) {
+    const at = order.indexOf(silhouetteLayer);
+    if (at > 0) {
+      order.splice(at, 1);
+      order.unshift(silhouetteLayer);
+    }
+  }
+
   const layers: TracedLayer[] = [];
   const mask = new Uint8Array(width * height);
   for (let position = 0; position < order.length; position++) {
     const i = order[position];
     if (i !== backgroundIndex) {
-      if (opts.overlap === 'full') {
+      if (i === silhouetteLayer) {
+        // The drawn silhouette: every pixel the source is not see-through at.
+        for (let p = 0; p < mask.length; p++) mask[p] = indices[p] === TRANSPARENT_INDEX ? 0 : 1;
+      } else if (opts.overlap === 'full') {
         // Full overlap: the layer reaches under everything painted after it, so
         // neighbouring layers cannot leave a seam between them.
         const above = new Uint8Array(palette.length);
