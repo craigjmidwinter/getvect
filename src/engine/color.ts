@@ -275,6 +275,15 @@ export function computePaletteSync(
   image: RasterImage,
   colorCount: number,
   mask?: Uint8Array | null,
+  /**
+   * Whether to spend the budget on *distinguishable* colours (see `separate`).
+   *
+   * On for the palette the user is shown and the layers are cut from. Off for
+   * the internal quantizations the cleanup passes run — those exist to flatten
+   * noise, and there a least-squares fit tracks the picture more closely, which
+   * is what keeps region boundaries from turning ragged.
+   */
+  separateSlots = true,
 ): RgbColor[] {
   const k = Math.max(1, Math.min(64, Math.round(colorCount)));
   const hist = buildHistogram(image, mask);
@@ -286,6 +295,7 @@ export function computePaletteSync(
   // Lloyd refinement only matters when we are actually approximating.
   if (hist.distinct > palette.length) {
     palette = refine(hist, palette, 6);
+    if (separateSlots) palette = separate(hist, palette);
   }
   palette = reserveDarkest(hist, palette);
 
@@ -388,6 +398,201 @@ function refine(hist: Histogram, palette: RgbColor[], iterations: number): RgbCo
     if (!moved) break;
   }
   return current;
+}
+
+/**
+ * L1 separation the delivered palette aims for.
+ *
+ * 8 % of the 765-unit L1 range — deliberately the same window the output-group
+ * fold (`mergeSimilarColors`) uses, because the two are the same statement made
+ * twice: colours closer than this are the halo/gradient debris a soft edge
+ * leaves behind, and shipping two of them costs a layer, a legend entry and a
+ * print run while showing the user one colour. If the quantizer stops producing
+ * them, the fold has nothing to take away, and the colour budget the user asked
+ * for is the colour budget they get.
+ */
+const MIN_SEPARATION = 61;
+
+const l1 = (a: RgbColor, b: RgbColor): number =>
+  Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b);
+
+function closestPair(palette: RgbColor[]): { i: number; j: number; d: number } {
+  let bi = 0;
+  let bj = 1;
+  let bd = Infinity;
+  for (let i = 0; i < palette.length; i++) {
+    for (let j = i + 1; j < palette.length; j++) {
+      const d = l1(palette[i], palette[j]);
+      if (d < bd) {
+        bd = d;
+        bi = i;
+        bj = j;
+      }
+    }
+  }
+  return { i: bi, j: bj, d: bd };
+}
+
+/** Weighted L1 quantization error of a palette over the whole histogram. */
+function totalError(hist: Histogram, palette: RgbColor[]): number {
+  let sum = 0;
+  for (let i = 0; i < hist.distinct; i++) {
+    const c = hist.colors[i];
+    const r = (c >> 16) & 255;
+    const g = (c >> 8) & 255;
+    const b = c & 255;
+    let bestD = Infinity;
+    for (let j = 0; j < palette.length; j++) {
+      const d = dist(r, g, b, palette[j]);
+      if (d < bestD) bestD = d;
+    }
+    sum += bestD * hist.counts[i];
+  }
+  return sum;
+}
+
+/** Nearest entry per distinct histogram colour, plus each entry's total error. */
+function assign(hist: Histogram, palette: RgbColor[]): { owner: Int32Array; error: Float64Array } {
+  const owner = new Int32Array(hist.distinct);
+  const error = new Float64Array(palette.length);
+  for (let i = 0; i < hist.distinct; i++) {
+    const c = hist.colors[i];
+    const r = (c >> 16) & 255;
+    const g = (c >> 8) & 255;
+    const b = c & 255;
+    let bestIdx = 0;
+    let bestD = Infinity;
+    for (let j = 0; j < palette.length; j++) {
+      const d = dist(r, g, b, palette[j]);
+      if (d < bestD) {
+        bestD = d;
+        bestIdx = j;
+      }
+    }
+    owner[i] = bestIdx;
+    error[bestIdx] += bestD * hist.counts[i];
+  }
+  return { owner, error };
+}
+
+/** Split one cluster's members in two at the weighted median of its widest axis. */
+function splitCluster(hist: Histogram, members: number[]): [RgbColor, RgbColor] | null {
+  if (members.length < 2) return null;
+  const chan = (idx: number, shift: number) => (hist.colors[idx] >> shift) & 255;
+  let shift = 16;
+  let widest = -1;
+  for (const s of [16, 8, 0]) {
+    let lo = 255;
+    let hi = 0;
+    for (const m of members) {
+      const v = chan(m, s);
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    // Same perceptual weighting as the median cut above, so a split here and a
+    // split there cut the same way.
+    const w = (hi - lo) * (s === 16 ? 0.5 : s === 8 ? 0.6 : 0.4);
+    if (w > widest) {
+      widest = w;
+      shift = s;
+    }
+  }
+  if (widest <= 0) return null;
+  const sorted = [...members].sort(
+    (a, b) => chan(a, shift) - chan(b, shift) || hist.colors[a] - hist.colors[b],
+  );
+  let total = 0;
+  for (const m of sorted) total += hist.counts[m];
+  const half = total / 2;
+  let acc = 0;
+  let cut = 1;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    acc += hist.counts[sorted[i]];
+    cut = i + 1;
+    if (acc >= half) break;
+  }
+  const lo = centroid(Int32Array.from(sorted.slice(0, cut)), hist);
+  const hi = centroid(Int32Array.from(sorted.slice(cut)), hist);
+  if (l1(lo, hi) === 0) return null;
+  return [lo, hi];
+}
+
+/**
+ * Spend every palette slot on a colour the user can tell apart from the others.
+ *
+ * Median cut plus Lloyd is a least-squares fit, and least-squares is happy to
+ * park two slots a dozen units apart inside one big smooth region while a whole
+ * smaller colour family goes unrepresented — the fit barely notices, and the
+ * picture loses a hue. On the gold-standard artwork at eight colours it spent
+ * three slots on creams (two of them 14 units apart) and none on the browns, so
+ * the paw pads were repainted from the nearest survivor, a blue, and a warm
+ * brown came back teal.
+ *
+ * So: while two entries sit closer than `MIN_SEPARATION`, fold that pair into
+ * one and re-spend the freed slot on the cluster carrying the most error. Each
+ * round is accepted only if it actually pushes the palette further apart, and
+ * the best palette seen is what is returned, so this cannot oscillate and
+ * cannot make the separation worse than what it was handed.
+ */
+function separate(hist: Histogram, palette: RgbColor[], rounds = 8): RgbColor[] {
+  if (palette.length < 3) return palette;
+  let current = palette.map((c) => ({ ...c }));
+  let best = current;
+  let bestSep = closestPair(current).d;
+  let bestErr = totalError(hist, current);
+  for (let round = 0; round < rounds; round++) {
+    const pair = closestPair(current);
+    if (pair.d >= MIN_SEPARATION) break;
+    const { owner, error } = assign(hist, current);
+    // The slot to re-spend on: the worst-fitting cluster that is not one of the
+    // two being folded together (folding and splitting the same region is a
+    // no-op that would loop forever).
+    let target = -1;
+    let worst = 0;
+    for (let j = 0; j < current.length; j++) {
+      if (j === pair.i || j === pair.j) continue;
+      if (error[j] > worst) {
+        worst = error[j];
+        target = j;
+      }
+    }
+    if (target < 0) break;
+    const members: number[] = [];
+    for (let i = 0; i < hist.distinct; i++) if (owner[i] === target) members.push(i);
+    const halves = splitCluster(hist, members);
+    if (!halves) break;
+
+    const merged = centroid(
+      Int32Array.from(
+        (() => {
+          const m: number[] = [];
+          for (let i = 0; i < hist.distinct; i++) if (owner[i] === pair.i || owner[i] === pair.j) m.push(i);
+          return m;
+        })(),
+      ),
+      hist,
+    );
+    const next: RgbColor[] = [];
+    for (let j = 0; j < current.length; j++) {
+      if (j === pair.j) continue;
+      if (j === pair.i) next.push(merged);
+      else if (j === target) next.push(halves[0], halves[1]);
+      else next.push(current[j]);
+    }
+    current = refine(hist, next, 3);
+    const sep = closestPair(current).d;
+    const err = totalError(hist, current);
+    // A round is kept only if it is better on BOTH counts: the palette is more
+    // separated *and* it fits the picture at least as well. The second half is
+    // what keeps this from spending a slot on speckle — on a noisy scan the
+    // freed slot lands on a grain family, the fit gets worse, and the round is
+    // thrown away.
+    if (sep <= bestSep || err > bestErr) break;
+    bestSep = sep;
+    bestErr = err;
+    best = current;
+  }
+  return best;
 }
 
 function orderByCoverage(hist: Histogram, palette: RgbColor[]): RgbColor[] {
