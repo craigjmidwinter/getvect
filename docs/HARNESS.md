@@ -763,7 +763,7 @@ Two notes for anyone tuning it:
   half of the same finding (Lab ΔE stretches the dark end so far that ink pixels leave the
   ink slot: whole-frame ink recall 0.989 → 0.677).
 - **A fringe resolves to one of the two regions it separates — including when it
-  overshoots them.** The in-between test (`da + db <= span * 1.35`) asks whether a thin
+  overshoots them.** The in-between test (`isBlendOf`) asks whether a thin
   band's colour lies on the *segment* between its two neighbours, which is right for a
   blend and wrong for a **halo**: resampled artwork carries a rim brighter than the
   region beside every hard edge, and that rim is the same ramp overshooting past its
