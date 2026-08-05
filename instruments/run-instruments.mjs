@@ -94,10 +94,34 @@ function salientRegions(fixture) {
   const withColor = (r, i) => {
     const region = { name: r.name ?? `region${i + 1}`, ...r };
     if (r.color) {
-      const parsed = parseColor(r.color);
-      if (!parsed) throw new Error(`fixture ${fixture.id}: region "${region.name}" has an unparseable color "${r.color}"`);
-      region.colorTarget = parsed;
+      const parse = (value, field) => {
+        const parsed = parseColor(value);
+        if (!parsed) {
+          throw new Error(
+            `fixture ${fixture.id}: region "${region.name}" has an unparseable ${field} "${value}"`,
+          );
+        }
+        return parsed;
+      };
+      region.colorTarget = parse(r.color, 'color');
       region.colorOpts = r.colorTolerance != null ? { tolerance: r.colorTolerance } : {};
+      /**
+       * The exemplar may draw the same feature a DIFFERENT colour, and then
+       * measuring it against ours is a lie in both directions.
+       *
+       * The real product's Enhance is a generative re-illustration, so it does
+       * not preserve the source's colours — it repaints them. On the mascot it
+       * repaints the source's olive eyes, rgb(187,161,80), as a saturated green,
+       * rgb(121,176,89), and gives that green its own output layer. Scored
+       * against the source's olive the exemplar keeps 1.9 % of it and we keep
+       * 0.6 %, which reads as a photo finish and is the opposite of what the two
+       * pictures show: theirs has green eyes and ours has none. Each side is
+       * measured against the colour it actually uses; the comparison is then
+       * "how much of a distinct eye colour did each drawing deliver".
+       */
+      region.exemplarColorTarget = r.exemplarColor
+        ? parse(r.exemplarColor, 'exemplarColor')
+        : region.colorTarget;
     }
     return region;
   };
@@ -455,12 +479,18 @@ async function main() {
       const asDeclared = flattenOnWhite(
         (await rasterizeSvg(svg, source.width, source.height)).image,
       );
-      const fair = await rasterizeExemplarContent(svg, source.width, source.height);
+      // The source itself, so the registration is chosen by measuring both
+      // candidate alignments rather than by guessing from the declared size
+      // (see render.mjs).
+      const fair = await rasterizeExemplarContent(svg, source.width, source.height, source);
       const traced = fair.image;
       measured = {
         file: relPath,
         ...svgStructure(svg),
         contentBox: fair.contentBox,
+        registration: fair.registration,
+        registrationError: fair.registrationError,
+        registrationRejected: fair.registrationRejected,
         meanColorError: meanColorError(source, traced),
         ssim: ssim(source, traced),
         inkRecall: inkRecall(source, traced),
@@ -478,8 +508,8 @@ async function main() {
             // Did the region's named colour survive into the REAL PRODUCT's
             // output? This is the half of the eyes question that makes ours a
             // finding rather than an opinion.
-            ...(region.colorTarget
-              ? colorPresenceProfile(a, b, region.colorTarget, region.colorOpts)
+            ...(region.exemplarColorTarget
+              ? colorPresenceProfile(a, b, region.exemplarColorTarget, region.colorOpts)
               : {}),
             ...(strokeWidthProfile(a, b) ?? {}),
             // Soft-shading banding: where the gradient got cut and what colour
@@ -856,7 +886,7 @@ async function main() {
             // away is the whole finding; if it folds the colour too, the defect
             // is the artwork's and not ours.
             r.exemplarColorPresence = e.colorPresence;
-            r.exemplarColorPresenceRatio = e.colorPresenceRatio;
+            r.exemplarColorPresenceTarget = e.colorPresenceTarget;
             if (r.colorPresence != null && e.colorPresence > 0) {
               r.colorPresenceOverExemplar = r.colorPresence / e.colorPresence;
             }
@@ -1003,7 +1033,12 @@ async function main() {
           `(${fmt(r.metrics.layerCompactnessRatio)}x), ` +
           `boundary wobble ${fmt(r.metrics.layerWobble, 1)} vs ${fmt(e.layerWobble, 1)} ` +
           `(${fmt(r.metrics.layerWobbleRatio)}x) ` +
-          `(exemplar rasterized at ${e.contentBox?.width}x${e.contentBox?.height})`,
+          `(exemplar registered by ${e.registration}` +
+          (e.registrationError != null ? ` at MAE ${fmt(e.registrationError)}` : '') +
+          (e.registrationRejected?.length
+            ? `, rejected ${e.registrationRejected.map((r) => `${r.registration} at ${fmt(r.meanColorError)}`).join(' / ')}`
+            : '') +
+          `, content ${e.contentBox?.width}x${e.contentBox?.height})`,
       );
     }
     for (const region of r.metrics?.regions ?? []) {
@@ -1034,8 +1069,9 @@ async function main() {
               `vs source ${fmt((region.sourceColorPresence ?? 0) * 100, 2)}% ` +
               `(kept ${fmt((region.colorPresenceRatio ?? 0) * 100, 1)}%)` +
               (region.exemplarColorPresence != null
-                ? `, real product ${fmt(region.exemplarColorPresence * 100, 2)}% ` +
-                  `(kept ${fmt((region.exemplarColorPresenceRatio ?? 0) * 100, 1)}%)`
+                ? `, real product ${region.exemplarColorPresenceTarget ?? region.colorPresenceTarget} ` +
+                  `${fmt(region.exemplarColorPresence * 100, 2)}% of crop ` +
+                  `(ours ${fmt(region.colorPresenceOverExemplar, 3)}x theirs)`
                 : '')
             : '') +
           (region.bandFit != null
