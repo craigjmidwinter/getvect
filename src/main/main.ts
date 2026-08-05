@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import { registerAiEnhanceIpc } from './aiEnhance';
 
 /**
  * Electron main process.
@@ -11,6 +12,26 @@ import * as path from 'node:path';
  */
 
 const isE2E = process.env.GETVECT_E2E === '1';
+
+/**
+ * Under e2e the app must be invisible to the human's session from the *first
+ * frame*, not from `whenReady`.
+ *
+ * `showInactive()` and `setActivationPolicy('accessory')` (both below) are
+ * correct and both happen too late: macOS activates a freshly launched GUI
+ * process in the window between exec and app-ready, so a suite that launches
+ * Electron once per spec still steals focus dozens of times. `app.dock.hide()`
+ * is synchronous, legal before ready, and makes the process LSUIElement-like
+ * immediately — which closes that window.
+ */
+if (isE2E && process.platform === 'darwin') {
+  try {
+    app.dock?.hide();
+  } catch {
+    /* headless / non-macOS builds have no dock; nothing to hide */
+  }
+}
+
 /** Directory used instead of the native save dialog when running under e2e. */
 const e2eExportDir = process.env.GETVECT_EXPORT_DIR ?? '';
 
@@ -154,6 +175,13 @@ ipcMain.handle(
 function withExtension(name: string, format: string): string {
   return name.toLowerCase().endsWith(`.${format.toLowerCase()}`) ? name : `${name}.${format}`;
 }
+
+/**
+ * AI Enhance (optional, bring your own key) — the key store and the provider
+ * call, both main-process only. See src/main/aiEnhance.ts for why the renderer
+ * gets booleans and never the key.
+ */
+registerAiEnhanceIpc();
 
 ipcMain.handle('app:info', () => ({
   version: app.getVersion(),
