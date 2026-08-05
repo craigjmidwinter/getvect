@@ -119,6 +119,57 @@
       "note": "BMP ingest path (REFERENCE A1)."
     },
     {
+      "id": "spikes-bands-384",
+      "file": "spikes-bands-384.png",
+      "kind": "clipart",
+      "format": "png",
+      "width": 384,
+      "height": 256,
+      "supported": true,
+      "distinctColors": null,
+      "salientRegions": [
+        {
+          "name": "spikes",
+          "x": 72,
+          "y": 78,
+          "width": 240,
+          "height": 80,
+          "thresholds": {
+            "minFeatureComponentRatio": 0.87,
+            "minSpikeCornerAngle": 60,
+            "maxSliverRatio": 0.0001
+          }
+        },
+        {
+          "name": "band-seam",
+          "x": 96,
+          "y": 168,
+          "width": 192,
+          "height": 88,
+          "thresholds": {
+            "maxSliverRatio": 0.0002,
+            "maxForeignColorRatio": 0.002
+          }
+        }
+      ],
+      "thresholds": {
+        "meanColorError": 8,
+        "ssim": 0.9,
+        "minInkRecall": 0.94,
+        "minFeatureComponentRatio": 0.87,
+        "minSpikeCornerAngle": 60,
+        "maxSliverRatio": 0.00005,
+        "maxPaths": 200,
+        "maxSubPaths": 200,
+        "maxTinySubPathRatio": 0.02,
+        "minCurveCommandRatio": 0.5,
+        "maxNearDuplicateFills": 0,
+        "maxBytes": 102400,
+        "maxMs": 10000
+      },
+      "note": "8 outlined triangles, 64px down to 15px tall, 4px apart, over two abutting flat bands. Antialiased (supersampled 3x and box-averaged), which is the whole point: ink fusion and seam slivers are both made by the ramp."
+    },
+    {
       "id": "sticker-alpha-256",
       "file": "sticker-alpha-256.png",
       "kind": "alpha",

@@ -51,6 +51,7 @@ import { rasterizeExemplarContent, rasterizeSvg } from './lib/render.mjs';
 import {
   alphaMask,
   cropRegion,
+  featureCornerAngles,
   foreignColorRatio,
   inkComponentRatio,
   inkRecall,
@@ -61,7 +62,9 @@ import {
   pixelMismatchRatio,
   psnr,
   rmsColorError,
+  seamSlivers,
   shadingBandQuality,
+  sharpFeatureSurvival,
   ssim,
   strictInkRecall,
   strokeWidthProfile,
@@ -229,6 +232,18 @@ const GATES = [
   // names (metrics.mjs `foreignColorRatio`).
   ['maxRegionForeignColorRatio', 'regionForeignColorRatio', 'max', (v) => `${(v * 100).toFixed(2)}%`],
   ['minRegionSsim', 'regionSsim', 'min', (v) => v.toFixed(4)],
+  // Did the small sharp features survive as separate, still-pointed shapes, and
+  // did a crack open between two layers? (metrics.mjs `sharpFeatureSurvival`,
+  // `featureCornerAngles`, `seamSlivers`.) Every other number in this file
+  // reports health for a picture whose claws have welded into a black chain and
+  // whose outlines carry a white hairline: the ink is all present, the colours
+  // are right, the shape count barely moves.
+  ['minFeatureComponentRatio', 'featureComponentRatio', 'min', (v) => `${v.toFixed(2)}x`],
+  ['minSpikeCornerAngle', 'minCornerAngle', 'min', (v) => `${v.toFixed(0)}°`],
+  ['maxSliverRatio', 'sliverRatio', 'max', (v) => `${(v * 100).toFixed(3)}%`],
+  ['minRegionFeatureComponentRatio', 'regionFeatureComponentRatio', 'min', (v) => `${v.toFixed(2)}x`],
+  ['maxRegionSliverRatio', 'regionSliverRatio', 'max', (v) => `${(v * 100).toFixed(3)}%`],
+  ['minRegionSpikeCornerAngle', 'regionMinCornerAngle', 'min', (v) => `${v.toFixed(0)}°`],
   // Continuity, not just survival. `inkRecall` accepts anything darker than 128,
   // so a contour thinned to a grey smear or broken into dashes still scores ~1;
   // `strictInkRecall` demands the source's ink come back as ink.
@@ -311,6 +326,9 @@ const REGION_GATES = [
   ['maxBandStep', 'bandStep', 'max', (v) => v.toFixed(1)],
   ['maxBandStepExcess', 'bandStepExcess', 'max', (v) => v.toFixed(1)],
   ['maxBandFitRatio', 'bandFitRatio', 'max', (v) => `${v.toFixed(2)}x`],
+  ['minFeatureComponentRatio', 'featureComponentRatio', 'min', (v) => `${v.toFixed(2)}x`],
+  ['minSpikeCornerAngle', 'minCornerAngle', 'min', (v) => `${v.toFixed(0)}°`],
+  ['maxSliverRatio', 'sliverRatio', 'max', (v) => `${(v * 100).toFixed(3)}%`],
 ];
 
 function checkThresholds(m, t, gates = GATES) {
@@ -600,6 +618,13 @@ async function main() {
       // of dashes, which `inkRecall`'s luma-128 "kept" test forgives.
       strictInkRecall: strictInkRecall(reference, traced),
       inkComponentRatio: inkComponentRatio(reference, traced),
+      // Small sharp features, and the cracks between layers. Two defects a
+      // person names on sight and no averaging metric here can see: welding two
+      // outlines 4px apart into one chain, and a white hairline drawn along a
+      // boundary the source draws solid (metrics.mjs `sharpFeatureSurvival`,
+      // `seamSlivers`).
+      ...sharpFeatureSurvival(reference, traced),
+      ...seamSlivers(reference, traced),
       // How much each palette colour's area drifted between source and trace:
       // catches half-pixel erosion of hairlines that MAE/SSIM average away.
       perColorCoverageDelta: Array.isArray(result.palette)
@@ -668,6 +693,13 @@ async function main() {
           // "Is there a colour in here that is not in the picture?" — see the
           // GATES note on maxRegionForeignColorRatio.
           foreignColorRatio: foreignColorRatio(refRegion, outRegion),
+          // "Are the small sharp features still there, still separate, and still
+          // sharp?" and "did a crack open between two layers?". The corner
+          // angles are read off the fitted geometry inside this box, so a crop
+          // is the natural unit for them too.
+          ...sharpFeatureSurvival(refRegion, outRegion),
+          ...seamSlivers(refRegion, outRegion),
+          ...featureCornerAngles(result.svg, region),
           // "Is it still a STROKE?" — see metrics.mjs `strokeWidthProfile`.
           ...(strokeWidthProfile(refRegion, outRegion) ?? {}),
           // "Where did the soft gradient get cut, and is each side the colour of
@@ -711,6 +743,28 @@ async function main() {
       // contrast.
       metrics.regionBandStepExcess = worst('bandStepExcess', 'max');
       metrics.regionStrokeWidthRatio = worst('strokeWidthRatio', 'max');
+      metrics.regionFeatureComponentRatio = worst('featureComponentRatio', 'min');
+      metrics.regionSliverRatio = worst('sliverRatio', 'max');
+      metrics.regionMinCornerAngle = worst('minCornerAngle', 'min');
+    }
+
+    /**
+     * Whole-frame corner sharpness, only for fixtures that ask for it.
+     *
+     * `featureCornerAngles` walks every small contour in the document, which is
+     * cheap on a 384px test pattern and pointless on a photo, so it is computed
+     * where it is gated rather than everywhere.
+     */
+    if (fixture.thresholds?.minSpikeCornerAngle != null) {
+      Object.assign(
+        metrics,
+        featureCornerAngles(result.svg, {
+          x: 0,
+          y: 0,
+          width: source.width,
+          height: source.height,
+        }),
+      );
     }
 
     /**

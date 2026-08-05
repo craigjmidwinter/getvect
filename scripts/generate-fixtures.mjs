@@ -190,6 +190,163 @@ function speckle(src, seed) {
   return c;
 }
 
+/**
+ * Box-downsample a canvas by an integer factor — the only ANTIALIASING in this
+ * file, and it is deliberate.
+ *
+ * Every other fixture here is drawn with hard edges so palette assertions can be
+ * exact. `spikes-and-bands` needs the opposite: the two defects it exists to
+ * measure (ink fusion and invented seams) are both *created* by the
+ * anti-aliasing ramp, so a fixture without a ramp cannot reproduce either. Doing
+ * it as a supersample keeps the determinism — pure integer averaging of pixels
+ * this script drew itself, no library resampler in the loop.
+ */
+function downsample(src, factor) {
+  const w = Math.floor(src.width / factor);
+  const h = Math.floor(src.height / factor);
+  const out = new Canvas(w, h);
+  const n = factor * factor;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (let j = 0; j < factor; j++) {
+        for (let i = 0; i < factor; i++) {
+          const p = ((y * factor + j) * src.width + (x * factor + i)) * 4;
+          r += src.data[p];
+          g += src.data[p + 1];
+          b += src.data[p + 2];
+        }
+      }
+      // Round-half-up on an integer sum: deterministic on every platform.
+      out.set(x, y, {
+        r: Math.floor((r + n / 2) / n),
+        g: Math.floor((g + n / 2) / n),
+        b: Math.floor((b + n / 2) / n),
+      });
+    }
+  }
+  return out;
+}
+
+/** Inset a triangle by `t` pixels on every edge (exact: scale about the incentre). */
+function insetTriangle(a, b, c, t) {
+  const la = Math.hypot(c[0] - b[0], c[1] - b[1]);
+  const lb = Math.hypot(a[0] - c[0], a[1] - c[1]);
+  const lc = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const sum = la + lb + lc;
+  const ix = (la * a[0] + lb * b[0] + lc * c[0]) / sum;
+  const iy = (la * a[1] + lb * b[1] + lc * c[1]) / sum;
+  const area = Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])) / 2;
+  const r = area / (sum / 2);
+  if (r <= t) return null;
+  const k = (r - t) / r;
+  const pull = (p) => [ix + (p[0] - ix) * k, iy + (p[1] - iy) * k];
+  return [pull(a), pull(b), pull(c)];
+}
+
+/**
+ * The `spikes-and-bands` fixture — two visual defects, license-free.
+ *
+ * Everything else in `fixtures/` is flat clipart with hard edges, and neither of
+ * the defects this reproduces can happen there:
+ *
+ *   1. **Small sharp features.** A row of outlined triangles whose sizes fall to
+ *      a ~15px spike with a 2px outline, separated by a 4px light gap. Two
+ *      things have to survive: the *count* (two dark strokes 4px apart must not
+ *      weld into one lumpy chain, which is what the ink-biased ramp snap did to
+ *      a character's claws) and the *shape* (a 142° turn at each apex must still
+ *      be a corner once its arms are only a few pixels long — the corner
+ *      detector measures direction over a fixed vertex window, which is a large
+ *      fraction of a small contour).
+ *   2. **Invented seams.** Two flat colour bands meeting along one slanted edge,
+ *      with the ink outlines above them. Wherever two traced layers abut, a
+ *      sub-pixel crack lets whatever is painted *under* them show through as a
+ *      light sliver the source does not have.
+ *
+ * Antialiased on purpose (see `downsample`): both defects are created by the
+ * ramp, so a hard-edged version of this picture reproduces neither.
+ */
+function drawSpikesAndBands(width, height) {
+  const S = 3;
+  const big = new Canvas(width * S, height * S);
+  const paper = hex('#f6f4ee');
+  const ink = hex('#141414');
+  const core = hex('#fcfbf9');
+  const bandA = hex('#4a8ba6');
+  const bandB = hex('#27677e');
+  big.fill(paper);
+
+  // Two abutting flat bands with one slanted shared boundary, plus the straight
+  // horizontal one where they meet the paper. Three layer adjacencies in total.
+  const bandTop = 168 * S;
+  for (let y = bandTop; y < height * S; y++) {
+    const split = Math.round(150 * S + (y - bandTop) * 1.1);
+    for (let x = 0; x < width * S; x++) big.set(x, y, x < split ? bandA : bandB);
+  }
+  // ...and an ink bar laid across both of them. This is where the seam defect
+  // is worst and where it was reported: a mid-tone fill abutting an outline over
+  // a LIGHT backdrop, so the crack between the two layers shows the paper and
+  // the outline comes back with a white hairline down its side. Two bands
+  // meeting each other leak the same crack, but the two are close enough in
+  // colour that the leak is barely a ridge; against ink it is unmissable.
+  const bar = [
+    [40 * S, 244 * S],
+    [344 * S, 196 * S],
+  ];
+  const half = 5 * S;
+  const bdx = bar[1][0] - bar[0][0];
+  const bdy = bar[1][1] - bar[0][1];
+  const blen = Math.hypot(bdx, bdy);
+  const nx = (-bdy / blen) * half;
+  const ny = (bdx / blen) * half;
+  const q = [
+    [bar[0][0] + nx, bar[0][1] + ny],
+    [bar[1][0] + nx, bar[1][1] + ny],
+    [bar[1][0] - nx, bar[1][1] - ny],
+    [bar[0][0] - nx, bar[0][1] - ny],
+  ];
+  big.triangle(q[0], q[1], q[2], ink);
+  big.triangle(q[0], q[2], q[3], ink);
+
+  // The spike row: outlined triangles, largest to smallest, 4px apart.
+  const heights = [64, 54, 45, 37, 30, 24, 19, 15];
+  const gap = 4;
+  const widthsOf = (h) => 0.68 * h;
+  const total =
+    heights.reduce((sum, h) => sum + widthsOf(h), 0) + gap * (heights.length - 1);
+  let x = (width - total) / 2;
+  const baseline = 150;
+  const spikes = [];
+  for (const h of heights) {
+    const w = widthsOf(h);
+    const apex = [(x + w / 2) * S, (baseline - h) * S];
+    const left = [x * S, baseline * S];
+    const right = [(x + w) * S, baseline * S];
+    const t = Math.min(6, Math.max(2, Math.round(h * 0.1)));
+    big.triangle(apex, left, right, ink);
+    const inner = insetTriangle(apex, left, right, t * S);
+    if (inner) big.triangle(inner[0], inner[1], inner[2], core);
+    spikes.push({ x: Math.round(x), width: Math.round(w), height: h, outline: t });
+    x += w + gap;
+  }
+
+  const canvas = downsample(big, S);
+  canvas.spikes = spikes;
+  // Margin, because `enclosedLightComponents` drops anything touching the crop
+  // border — that rule is what stops the paper counting as a feature, and with a
+  // tight box it silently drops a spike whose base sits on the edge instead.
+  canvas.spikeRow = {
+    x: Math.floor((width - total) / 2) - 8,
+    y: baseline - heights[0] - 8,
+    width: Math.ceil(total) + 16,
+    height: heights[0] + 16,
+  };
+  canvas.bandSeam = { x: 96, y: 168, width: 192, height: height - 168 };
+  return canvas;
+}
+
 /** Photo-ish continuous-tone gradient (deliberately hard for a tracer). */
 function drawGradient(width, height) {
   const c = new Canvas(width, height);
@@ -292,7 +449,9 @@ async function main() {
   const gradient = drawGradient(512, 384);
   const bmpShapes = drawLogo(256);
   const sticker = drawSticker(256);
+  const spikes = drawSpikesAndBands(384, 256);
 
+  await writePng(spikes, join(outDir, 'spikes-bands-384.png'));
   await writePng(sticker, join(outDir, 'sticker-alpha-256.png'));
   await writePng(logo512, join(outDir, 'logo-flat-512.png'));
   await writePng(noisy512, join(outDir, 'logo-noisy-512.png'));
@@ -459,6 +618,95 @@ async function main() {
           maxMs: 10000,
         },
         note: 'BMP ingest path (REFERENCE A1).',
+      },
+      {
+        /**
+         * The two visual defects a flat, hard-edged fixture cannot reproduce.
+         *
+         * Both were reported on real artwork and neither could be measured here:
+         * every other generated fixture is drawn without antialiasing, and both
+         * failures are made BY the antialiasing ramp.
+         *
+         *   - `minFeatureComponentRatio` — the light interior of every spike has
+         *     to come back as its own component. Two outlines 4px apart welding
+         *     into one chain merges two interiors into none, and no other metric
+         *     in this harness moves: the ink is all still there (recall ~1), the
+         *     colours are right, the shape count barely changes.
+         *   - `minSpikeCornerAngle` — and each interior has to keep its point. A
+         *     142° apex whose arms are 8px long is exactly the corner a
+         *     fixed-window corner detector cannot see.
+         *   - `maxSliverRatio` — nowhere in the picture may a pixel come back
+         *     lighter than both of its neighbours when the source has nothing
+         *     that light there. That is the crack between two abutting layers,
+         *     and it is worst against ink, where it reads as a white hairline.
+         *
+         * Measured at DEFAULT_SETTINGS (no `settings` key) on purpose: this is
+         * the configuration a user gets, and it is the one both defects were
+         * reported at.
+         *
+         * TWO of the three bars are ratchets on today's number rather than the
+         * number to aim at, and it is worth saying which and why:
+         *
+         *   - `minFeatureComponentRatio` 0.87 is seven of the eight spikes. The
+         *     eighth is the 15px one, whose interior is ~15px² of light behind a
+         *     2px outline; **1.0 is the number to aim at** and the ink-fusion
+         *     guard (`preprocess.ts INK_GAP_GUARD`) already took this from 0.75.
+         *   - `minSpikeCornerAngle` 60° is what the corners survive as today.
+         *     **112° is the number to aim at, and it is known-reachable**: this
+         *     same engine reaches it on this same crop with `regularizeBoundaries`
+         *     switched off, so the corner rounding is that pass and nothing else.
+         *     The fix is not free — the only lever found that recovers the corners
+         *     (raising its small-shape guard so a 7x7 vote is never cast from
+         *     inside a window that swallows a small shape) also stops the same
+         *     vote thinning the fox's outlines, and takes
+         *     `reference-fox-default`'s `strokeWidthOverExemplar` from 1.25x to
+         *     1.27x against a 1.25 bar. Both are real; neither is worth trading
+         *     blind, and now both are measured.
+         */
+        id: 'spikes-bands-384',
+        file: 'spikes-bands-384.png',
+        kind: 'clipart',
+        format: 'png',
+        width: 384,
+        height: 256,
+        supported: true,
+        distinctColors: null,
+        salientRegions: [
+          {
+            name: 'spikes',
+            ...spikes.spikeRow,
+            thresholds: {
+              minFeatureComponentRatio: 0.87,
+              minSpikeCornerAngle: 60,
+              maxSliverRatio: 0.0001,
+            },
+          },
+          {
+            name: 'band-seam',
+            ...spikes.bandSeam,
+            thresholds: { maxSliverRatio: 0.0002, maxForeignColorRatio: 0.002 },
+          },
+        ],
+        thresholds: {
+          meanColorError: 8,
+          ssim: 0.9,
+          minInkRecall: 0.94,
+          minFeatureComponentRatio: 0.87,
+          minSpikeCornerAngle: 60,
+          maxSliverRatio: 0.00005,
+          maxPaths: 200,
+          maxSubPaths: 200,
+          maxTinySubPathRatio: 0.02,
+          minCurveCommandRatio: 0.5,
+          maxNearDuplicateFills: 0,
+          maxBytes: 100 * 1024,
+          maxMs: 10000,
+        },
+        note:
+          `${spikes.spikes.length} outlined triangles, ${spikes.spikes[0].height}px down to ` +
+          `${spikes.spikes[spikes.spikes.length - 1].height}px tall, 4px apart, over two ` +
+          'abutting flat bands. Antialiased (supersampled 3x and box-averaged), which is ' +
+          'the whole point: ink fusion and seam slivers are both made by the ramp.',
       },
       {
         // The alpha fixture. Every other generated fixture is opaque, which is
