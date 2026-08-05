@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GetVect docs — install, controls, exports, AI Enhance</title>
+<meta name="description" content="How to run GetVect, every control on the panel, what each export format contains, AI Enhance setup, and what to do when macOS eats the Electron binary.">
+<meta name="theme-color" content="#12141a">
+<link rel="icon" href="assets/favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/favicon.png">
+<link rel="stylesheet" href="styles.css">
+<meta property="og:type" content="article">
+<meta property="og:title" content="GetVect docs">
+<meta property="og:description" content="Install, the full control surface, export formats, AI Enhance setup and troubleshooting.">
+<meta property="og:url" content="https://getvect.midwinter.io/docs.html">
+<meta property="og:image" content="https://getvect.midwinter.io/assets/fox-before-after.png">
+<meta name="twitter:card" content="summary_large_image">
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="bar">
+  <div class="wrap bar-in">
+    <a class="bar-mark" href="./" aria-label="GetVect home">
+      <img class="fox" src="assets/fox-mascot.png" alt="" width="24" height="24">
+      <img class="word" src="assets/getvect-wordmark.svg" alt="GetVect" width="70" height="24">
+    </a>
+    <nav aria-label="Primary">
+      <a href="./">Overview</a>
+      <a href="docs.html" aria-current="page">Docs</a>
+      <a href="https://github.com/craigjmidwinter/getvect">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="doc-head">
+    <div class="wrap">
+      <p class="eyebrow">Documentation</p>
+      <h1>Running GetVect</h1>
+      <p class="lede">
+        There is no installer yet — GetVect runs from source, or from an app bundle you package
+        yourself. Everything below is what the app actually does today; the acceptance suite is
+        the source of truth, and where this page and the suite disagree, the suite wins.
+      </p>
+      <ul class="toc">
+        <li><a href="#start">Getting started</a></li>
+        <li><a href="#controls">Control surface</a></li>
+        <li><a href="#exports">Export formats</a></li>
+        <li><a href="#ai-enhance">AI Enhance</a></li>
+        <li><a href="#testing">Testing &amp; instruments</a></li>
+        <li><a href="#trouble">Troubleshooting</a></li>
+        <li><a href="#deeper">Going deeper</a></li>
+      </ul>
+    </div>
+  </section>
+
+  <div class="doc-body">
+
+  <!-- ---- getting started ----------------------------------------------- -->
+  <section id="start">
+    <div class="wrap">
+      <p class="eyebrow">Getting started</p>
+      <h2>Clone, install, start</h2>
+      <p>Requires <strong>Node 20+</strong> and, for now, <strong>macOS</strong>. Linux needs
+        <code>xvfb-run -a</code> for the Electron tests; Windows is untested.</p>
+
+<pre><code>git clone https://github.com/craigjmidwinter/getvect.git
+cd getvect
+npm install     <span class="c"># postinstall de-quarantines + ad-hoc-signs the Electron binary</span>
+npm start       <span class="c"># build + launch</span>
+npm run dist    <span class="c"># package -&gt; release/mac-arm64/GetVect.app (+ dmg, zip)</span></code></pre>
+
+      <p><code>npm start</code> always builds the real bundle and launches it. <code>npm run dev</code>
+        runs the Vite dev server with renderer hot reload — good for iteration, and never what the
+        test suite exercises.</p>
+
+      <p><code>npm run dist</code> builds <strong>unsigned</strong> on purpose: that is right for
+        running your own build and wrong for distribution. The packaging config is
+        <code>electron-builder.yml</code>; the signing and notarization notes are in
+        <a href="https://github.com/craigjmidwinter/getvect/blob/main/PUBLISH-CHECKLIST.md">PUBLISH-CHECKLIST.md</a>.</p>
+
+      <div class="callout">
+        <span class="tag">macOS note — read this before the first launch</span>
+        <p>On recent macOS, Gatekeeper/XProtect deletes the freshly-extracted, unsigned
+          <code>node_modules/electron/dist/Electron.app</code> the first time you exec it. The
+          symptom is <code>spawn .../Electron ENOENT</code> on a file that was there a second ago.
+          The <code>postinstall</code> hook (<code>scripts/verify-electron.mjs</code>) detects
+          this, strips the quarantine attributes and applies an ad-hoc signature. If you ever see
+          that ENOENT, run <code>npm run postinstall</code>.</p>
+      </div>
+
+      <h3>Using it</h3>
+      <ul>
+        <li>Drop a <strong>PNG, JPEG or BMP</strong> onto the window, or use the file picker.
+          Anything else is refused with a message that says why.</li>
+        <li>Tracing starts <strong>automatically on load</strong> with the defaults — Clipart,
+          8 colours, Smart anti-aliasing — and runs off the UI thread with visible progress.</li>
+        <li>Load several images: they stack in the sidebar and selecting one switches the
+          workspace to it. Settings are per image.</li>
+        <li>Change any setting and the trace re-runs. The preview you are looking at is the SVG
+          that will be exported.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ---- controls ------------------------------------------------------- -->
+  <section id="controls">
+    <div class="wrap">
+      <p class="eyebrow">Control surface</p>
+      <h2>Every control on the panel</h2>
+      <p>The settings model is the real product's, captured live rather than guessed: model
+        presets and candidate palettes, not detail/smoothing/despeckle sliders.</p>
+
+      <h3>Model presets</h3>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th scope="col">Preset</th><th scope="col">What it is for</th><th scope="col">Extra control</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Clipart</strong></td>
+              <td>Flat-colour artwork — stickers, decals, logos, t-shirt and tattoo art. The
+                default, and the case the whole engine is tuned for.</td>
+              <td><strong>Detail Level</strong>: maximum, ultra, very-high, high, medium, low,
+                minimum</td>
+            </tr>
+            <tr>
+              <td><strong>Photo</strong></td>
+              <td>Continuous-tone images. Deliberately not the target use case — it works, but the
+                quality bars are looser for a reason.</td>
+              <td>Uses a colour floor of 16, so a lower colour count will not be honoured</td>
+            </tr>
+            <tr>
+              <td><strong>Sketch</strong></td>
+              <td>Grayscale line work.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><strong>Drawing</strong></td>
+              <td>Pure black and white, split on luminance.</td>
+              <td><strong>Threshold</strong> 0–255. Colour controls are disabled here, because the
+                preset cannot use them.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Input palette</h3>
+      <ul>
+        <li><strong>Candidate palettes</strong> are computed from the image and offered at eleven
+          fixed sizes — 1, 2, 3, 4, 5, 6, 8, 12, 15, 16, 18 — as selectable rows, so you pick a
+          palette you can see rather than a number.</li>
+        <li>The <strong>palette editor</strong> can recolour a swatch, merge two swatches, or
+          remove one. Recolouring repaints regions and leaves the geometry byte-identical; an
+          edit is matched against the engine's colour slots, so a merge survives the next
+          setting change.</li>
+        <li><strong>Restore</strong> puts back the computed palette and the candidate size your
+          edit replaced.</li>
+        <li>The colour-count hint says whether a shortfall came from <strong>the image</strong>
+          (it does not contain that many colours) or from <strong>your settings</strong> (a
+          cleanup pass merged some) — it will not blame the picture for the app's own fold.</li>
+      </ul>
+
+      <figure>
+        <img src="assets/screenshot-palette.png"
+             alt="The input palette panel: candidate palette sizes listed as selectable rows of swatches, with the palette editor open below showing individual colours that can be recoloured, merged or removed"
+             width="1000" height="647" loading="lazy">
+        <figcaption>Candidate palettes at eleven fixed sizes, plus the swatch editor.</figcaption>
+      </figure>
+
+      <h3>Output colour groups</h3>
+      <ul>
+        <li><strong>Per-colour toggle</strong> — switch a colour off and it is omitted from the
+          output entirely. Switching off the background colour is how you get a
+          <strong>transparent background</strong>; there is no separate transparency mode.</li>
+        <li><strong>Merge threshold</strong> — percent coverage below which a colour group folds
+          into its neighbour. Set it to 0 to turn the fold off completely (it is your control, and
+          nothing else raises it behind your back).</li>
+        <li><strong>Sort order</strong> — coverage, brightness or hue. This is the order the
+          layers appear in, in the panel and in the exported SVG.</li>
+      </ul>
+
+      <h3>Quality</h3>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th scope="col">Control</th><th scope="col">Values</th><th scope="col">What it does</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Enhance (Beta)</strong></td>
+              <td>off / on</td>
+              <td>A local denoise and colour-simplification bundle inside the engine. Raises the
+                area floors so quantization debris loses its scraps on the picture rather than its
+                seat in the palette. Entirely offline — not to be confused with AI Enhance below.</td>
+            </tr>
+            <tr>
+              <td><strong>Noise Reduction</strong></td>
+              <td>off / low / high</td>
+              <td>Pre-trace smoothing for speckled sources.</td>
+            </tr>
+            <tr>
+              <td><strong>Anti-aliasing</strong></td>
+              <td>off / <strong>smart</strong> / mid</td>
+              <td>Smart is the default, as it is in the real product, and it is the single highest
+                -value setting here: a pre-trace edge cleanup worth 1747 sub-paths → 551 and
+                396 KB → 140 KB on the reference artwork. It is the difference between output that
+                looks traced and output that looks drawn.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Advanced vectorization</h3>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th scope="col">Control</th><th scope="col">Values</th><th scope="col">What it does</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Roundness</strong></td><td>3 levels</td>
+                <td>Curve-fitting aggressiveness — how hard the tracer pushes polylines into cubics.</td></tr>
+            <tr><td><strong>Minimum Area</strong></td><td>0 / 5 / 90 px²</td>
+                <td>Speck removal. Shapes smaller than the threshold are dropped; 0 keeps every speck.</td></tr>
+            <tr><td><strong>Overlap</strong></td><td>full / high</td>
+                <td>Whether lower colour layers are painted under the upper ones or trimmed to
+                    their visible area.</td></tr>
+            <tr><td><strong>Circle Detection</strong></td><td>off / on</td>
+                <td>Recognises near-circular contours and emits them as clean circles.</td></tr>
+            <tr><td><strong>Result style</strong></td><td>filled / stroked</td>
+                <td>Filled colour layers, or stroked outlines of the same geometry.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Preview</h3>
+      <ul>
+        <li>Original/vector <strong>toggle</strong> and <strong>side-by-side</strong> mode.</li>
+        <li>Zoom in, out and fit, plus pan — <strong>synchronised across both panes</strong>, so
+          the crop you are judging is the same crop in both.</li>
+        <li>The vector pane is the exported SVG itself, not a re-render of it. That is enforced by
+          a test that exports through the UI and compares it byte-for-byte with the engine run
+          headlessly on the same file.</li>
+      </ul>
+
+      <figure>
+        <img src="assets/screenshot-zoom-sync.png"
+             alt="Both preview panes zoomed to the same crop: the source raster on the left showing speckle and stair-stepped edges, the traced vector on the right showing clean flat colour and smooth outlines"
+             width="1000" height="647" loading="lazy">
+        <figcaption>Synchronised zoom. The speckle on the left is gone from the trace on the right,
+          and the edges stay crisp at any magnification.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ---- exports -------------------------------------------------------- -->
+  <section id="exports">
+    <div class="wrap">
+      <p class="eyebrow">Export</p>
+      <h2>Five formats, through the native save dialog</h2>
+      <p>Every export goes through the real macOS save dialog with a sensible default filename
+        derived from the image. Nothing is written anywhere else.</p>
+
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th scope="col">Format</th><th scope="col">What you get</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>SVG</strong></td>
+              <td>One <code>&lt;g fill="rgb(r,g,b)"&gt;</code> group per colour, so the file drops
+                into Illustrator or Inkscape as editable colour groups. <code>viewBox="0 0 w h"</code>
+                in source pixels. A disabled background colour simply is not in the file — there is
+                no full-bleed rectangle faking transparency.</td>
+            </tr>
+            <tr>
+              <td><strong>DXF — splines</strong></td>
+              <td>The default. R2000, with every fitted cubic travelling as a degree-3
+                <code>SPLINE</code>, so a CAD or cutter file is a drawing rather than a point
+                cloud.</td>
+            </tr>
+            <tr>
+              <td><strong>DXF — lines</strong></td>
+              <td>The <strong>Splines / Lines</strong> picker beside the DXF button flattens
+                everything to R12 <code>POLYLINE</code>/<code>VERTEX</code> for older CAD and
+                cutter firmware that cannot read a spline at all. Same drawing, same extents,
+                no curves.</td>
+            </tr>
+            <tr>
+              <td><strong>EPS</strong></td>
+              <td>PostScript paths with a correct bounding box; curves survive as curve
+                operators.</td>
+            </tr>
+            <tr>
+              <td><strong>PDF</strong></td>
+              <td>A single page with a MediaBox at the source dimensions.</td>
+            </tr>
+            <tr>
+              <td><strong>PNG</strong></td>
+              <td>A raster re-render of the traced result — useful for a quick check that the
+                cleanup did what you wanted.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p style="margin-top:1.25rem">A DXF that flattens every fitted cubic into vertex runs is
+        roughly 12× the EPS of the same drawing; the spline variant lands at about 2.2×. If your
+        machine can read splines, keep the default.</p>
+    </div>
+  </section>
+
+  <!-- ---- AI enhance ------------------------------------------------------ -->
+  <section id="ai-enhance">
+    <div class="wrap">
+      <p class="eyebrow">AI Enhance</p>
+      <h2>Optional, off by default, bring your own key</h2>
+      <p>AI Enhance is the only thing in GetVect that can touch the network. Everything else runs
+        under a <code>default-src 'self'</code> content security policy with no runtime network
+        calls at all.</p>
+
+      <div class="callout">
+        <span class="tag">The trade, stated plainly</span>
+        <p>With AI Enhance on, <strong>the image you are working on is uploaded to Google</strong>
+          under your own API key and their terms — which is exactly the thing the rest of this app
+          exists to avoid. Nothing else changes: no other image, no other feature, no telemetry,
+          and the switch is off until you turn it on.</p>
+      </div>
+
+      <h3>Setup</h3>
+      <ul>
+        <li>Get a key from <a href="https://aistudio.google.com/apikey">Google AI Studio</a>.</li>
+        <li>Paste it into the <strong>AI Enhance</strong> group in the settings panel and press
+          <strong>Save key</strong>. The status beside it reads "Key saved" — a boolean, never the
+          value.</li>
+        <li>Switch on <strong>Enhance with AI before tracing</strong>. The toggle is inert until a
+          key exists.</li>
+        <li><strong>Clear</strong> deletes the stored key from the machine.</li>
+      </ul>
+
+      <h3>Quality tiers</h3>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th scope="col">Tier</th><th scope="col">Model</th><th scope="col">Trade</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Fast</strong> (default)</td>
+              <td><code>gemini-2.5-flash-image</code></td>
+              <td>About 8 s, cheaper, leaves some soft texture behind.</td>
+            </tr>
+            <tr>
+              <td><strong>Best</strong></td>
+              <td><code>gemini-3-pro-image-preview</code></td>
+              <td>About 20 s, pricier, genuinely flat fills. An A/B on the reference artwork showed
+                the model tier — not the prompt — is what decides flatness.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>How the key is handled</h3>
+      <ul>
+        <li>Encrypted at rest with Electron's <code>safeStorage</code> (Keychain on macOS) inside
+          the app's data directory.</li>
+        <li>It lives only in the main process and is <strong>never returned to the UI</strong>.
+          The interface can save one, clear one, and ask whether one exists — there is no IPC that
+          hands back key material.</li>
+        <li>If the OS has no keystore available, GetVect refuses to store a key rather than
+          writing it in the clear, and says so.</li>
+      </ul>
+
+      <h3>When a run fails</h3>
+      <p>A bad key, no network, or the 60-second timeout each fall back to tracing the
+        <strong>un-enhanced</strong> image, and the app names the reason — an authentication
+        failure, a rate limit, a timeout. There is no state where the app hangs waiting for a
+        model.</p>
+      <p>One thing worth knowing: Gemini returns RGB even when asked for transparency, so an
+        enhanced image can come back flattened. GetVect never fabricates an alpha channel to
+        cover that up.</p>
+
+      <h3>Debugging a bad result</h3>
+      <p>Set <code>GETVECT_AI_DEBUG_DIR</code> before launching and every <em>successful</em>
+        enhance writes its exact input, its output and a small metadata file (provider, model,
+        tier, duration, byte counts) into that directory, so a disappointing result can be
+        inspected after the fact.</p>
+<pre><code>GETVECT_AI_DEBUG_DIR=/tmp/getvect-ai npm start</code></pre>
+      <p>It is off unless the variable is set, because those are your images being written to
+        disk.</p>
+    </div>
+  </section>
+
+  <!-- ---- testing --------------------------------------------------------- -->
+  <section id="testing">
+    <div class="wrap">
+      <p class="eyebrow">Testing &amp; instruments</p>
+      <h2>The three layers that grade this app</h2>
+<pre><code>npm test              <span class="c"># engine contract tests, then the Playwright acceptance suite</span>
+npm run test:engine   <span class="c"># just the engine contracts (pure Node, no Electron)</span>
+npm run instruments   <span class="c"># fidelity metrics -&gt; artifacts/metrics.json</span>
+npm run screenshots   <span class="c"># a labelled contact sheet of the whole flow</span></code></pre>
+      <ul>
+        <li><strong>Acceptance suite</strong> — Playwright driving the packaged Electron app, one
+          spec file per reference checklist section, every test title prefixed with its id
+          (<code>[A1]</code>…<code>[D5]</code>). Selectors are <code>data-testid</code> only.</li>
+        <li><strong>Engine contracts</strong> — <code>node --test</code> over the pure tracing
+          engine: determinism, setting semantics, SVG/EPS/DXF/PDF structure, alpha handling, and
+          rasterized checks that the <em>picture</em> actually changed.</li>
+        <li><strong>Instruments</strong> — the light meter. For every fixture it traces, rasterizes
+          the SVG back to source dimensions and diffs: mean colour error, structural similarity,
+          ink recall, sub-path count, speck ratio, curve ratio, stroke-width evenness, and ratios
+          against the real the reference product output of the same source.</li>
+      </ul>
+      <p>Do not read <code>artifacts/metrics.json</code> whole — the stdout table is the interface,
+        and the file is meant to be queried with <code>jq</code>.</p>
+    </div>
+  </section>
+
+  <!-- ---- troubleshooting ------------------------------------------------- -->
+  <section id="trouble">
+    <div class="wrap">
+      <p class="eyebrow">Troubleshooting</p>
+      <h2>When macOS gets in the way</h2>
+
+      <h3><code>spawn …/Electron ENOENT</code> on a file that was just there</h3>
+      <p>XProtect deleted the unsigned Electron binary out of <code>node_modules</code>. This is
+        the single most common first-run failure. Re-run the repair hook:</p>
+<pre><code>npm run postinstall</code></pre>
+      <p>It re-fetches if needed, strips <code>com.apple.quarantine</code> and applies an ad-hoc
+        signature. An environment fix that lives in one shell session is not a fix, which is why
+        this is a hook rather than a note.</p>
+
+      <h3>"GetVect is damaged and can't be opened"</h3>
+      <p>A packaged build from <code>npm run dist</code> is <strong>unsigned and not notarized</strong>.
+        A downloaded unsigned app is quarantined, and on Apple Silicon Gatekeeper refuses it
+        outright rather than offering the right-click → Open escape hatch. Remove the quarantine
+        attribute yourself:</p>
+<pre><code>xattr -dr com.apple.quarantine /Applications/GetVect.app</code></pre>
+      <p>Only do that for a bundle you built yourself, or one whose provenance you trust.</p>
+
+      <h3>The Photo preset ignores my colour count</h3>
+      <p>It has a colour floor of 16. Ask for 4 and you will get 10–16; the panel will not display
+        a number the engine is not going to use.</p>
+
+      <h3>I asked for 8 colours and got 5</h3>
+      <p>Check the colour-count hint. Either the image genuinely does not contain that many
+        distinct colours, or the merge threshold folded near-duplicates. Drag
+        <strong>Merge threshold</strong> to 0 to turn the fold off — it is the only thing that
+        merges colour groups, and nothing raises it behind your back.</p>
+
+      <h3>Tests fail on Linux</h3>
+      <p>Electron needs a display. Run the suite under <code>xvfb-run -a</code>. Windows is
+        untested.</p>
+    </div>
+  </section>
+
+  <!-- ---- deeper ---------------------------------------------------------- -->
+  <section id="deeper">
+    <div class="wrap">
+      <p class="eyebrow">Going deeper</p>
+      <h2>The documents this page is a summary of</h2>
+      <div class="grid">
+        <article class="card">
+          <span class="tag">Spec</span>
+          <h3><a href="https://github.com/craigjmidwinter/getvect/blob/main/REFERENCE.md">REFERENCE.md</a></h3>
+          <p>The quality bar the whole project is graded against: the acceptance checklist with
+            ids, the gold-standard exemplar and its measured properties, and the numeric quality
+            bar. If you want to know what "done" means here, it is this file.</p>
+        </article>
+        <article class="card">
+          <span class="tag">Harness</span>
+          <h3><a href="https://github.com/craigjmidwinter/getvect/blob/main/docs/HARNESS.md">docs/HARNESS.md</a></h3>
+          <p>Every instrument, what each metric means and why it exists, the fixture manifest
+            schema, the one-decode contract, and the engine interface contract builders have to
+            implement.</p>
+        </article>
+        <article class="card">
+          <span class="tag">Build log</span>
+          <h3><a href="https://github.com/craigjmidwinter/getvect/tree/main/katra/entries">katra/entries/</a></h3>
+          <p>The whole build chronicled as it happened — the loop design, the ground-truth recon
+            against the real product, the laps, and the day AI Enhance turned out to be an
+            illustrator rather than a filter.</p>
+        </article>
+        <article class="card">
+          <span class="tag">Contributing</span>
+          <h3><a href="https://github.com/craigjmidwinter/getvect/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a></h3>
+          <p>Short version: the suite must be green where it was green, the instruments must not
+            regress, and any new UI has to declare its testids in <code>docs/TESTIDS.md</code>.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap foot-in">
+    <img src="assets/fox-mascot.png" alt="" width="30" height="30">
+    <span>MIT · © 2026 Craig Midwinter</span>
+    <span class="foot-links">
+      <a href="./">Overview</a>
+      <a href="https://github.com/craigjmidwinter/getvect">GitHub</a>
+      <a href="https://github.com/craigjmidwinter/getvect/blob/main/LICENSE">License</a>
+    </span>
+  </div>
+</footer>
+
+</body>
+</html>
