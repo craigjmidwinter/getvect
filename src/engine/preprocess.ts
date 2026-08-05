@@ -49,6 +49,19 @@ const MAJORITY_PASSES = 2;
  * document") true now that the un-enhanced pipeline denoises well on its own.
  */
 const MEDIAN_PASSES = 2;
+/**
+ * How far a run of a colour may reach and still count as a NARROW part of its
+ * region (`narrowHere`), in pixels each way from the pixel being judged. See the
+ * note there for why this is 1 and not the vote's own radius.
+ */
+const NARROW_REACH = 1;
+/** The axes a run is measured along: horizontal, vertical, both diagonals. */
+const NARROW_AXES: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [0, 1],
+  [1, 1],
+  [1, -1],
+];
 
 export function medianFilter3(image: RasterImage): RasterImage {
   const { width, height, data } = image;
@@ -323,6 +336,8 @@ export function regularizeBoundaries(
       if (!onBoundary) continue;
       // A whole shape, not a seam (see `minRegionWindows`).
       if (small[p]) continue;
+      // ...and a whole *part* of a shape, by the same argument (`narrowHere`).
+      if (narrowHere(indices, width, height, x, y, self, NARROW_REACH)) continue;
       // A stroke is thin by definition, so the wide vote that straightens a
       // shading boundary reads the middle of a stroke as a minority and eats
       // it — and unlike a seam, where both sides are nearly the right colour,
@@ -361,6 +376,73 @@ export function regularizeBoundaries(
     }
   }
   return out;
+}
+
+/**
+ * Is this pixel inside a part of its region NARROWER than the vote window?
+ *
+ * `minRegionWindows` says a whole shape smaller than the window cannot be judged
+ * by it — every pixel of a 50px² disc is a boundary pixel and a minority in its
+ * own 7×7, so the vote erodes a ring per pass and the disc disappears. The same
+ * is true of a *part* of a bigger shape, and that is the case an area test
+ * cannot see: the mascot's nose is a 1000px² region, well clear of any floor,
+ * whose right nostril is a corridor of pink a few pixels wide between two arms
+ * of the outline. Inside that corridor the window is mostly ink, the vote
+ * carries, the corridor fills in, and the notch the artist drew comes back as a
+ * solid black wedge — which every ink metric in the harness reads as a triumph,
+ * because all of the source's ink is still there and then some.
+ *
+ * A narrow part is one where the run of the pixel's own colour is bounded on
+ * BOTH sides within `reach` along some axis. That is what separates it from the
+ * defect this filter exists to remove: a sawtooth tooth is also a couple of
+ * pixels across, but it is *attached* — walk perpendicular to the seam and one
+ * direction runs on into the region's interior, so it is never bounded both ways
+ * and it still gets tidied. Only a corridor, a lobe or a spike tip is.
+ *
+ * `reach` is ONE, and the number is measured rather than reasoned. The scale
+ * that fails is the vote's own — a feature the 7×7 window swallows is a feature
+ * the window cannot judge — so the reach that matches the argument is the
+ * radius, and it does recover more: at 2 the spikes fixture's bluntest corner
+ * goes 65° -> 112°, which is the parked target exactly, and the mascot's nose
+ * crop spends 1.20x the source's ink instead of 1.29x. It also spares ragged
+ * lobes this filter exists to trim, and the bill lands on the gold standard at
+ * its default settings: `strokeWidthCvRatio` 1.88x -> 2.21x against a 2.20 bar
+ * and `strokeWidthOverExemplar` 1.13x -> 1.25x against a 1.25 bar. A ratchet
+ * loosened to claim a win is not a ratchet, so the reach stays where the two do
+ * not collide and the distance is left on the instruments: the spikes fixture
+ * ASPIRES to 112°, and every variant tried in between (guarding only the ink,
+ * only the non-ink, only the passes after the first, only regions below a
+ * fraction of the canvas, requiring the corridor to be enclosed by one colour or
+ * to run a minimum length) moved the fox and the corner together.
+ */
+function narrowHere(
+  indices: Uint8Array,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  self: number,
+  reach: number,
+): boolean {
+  for (const [dx, dy] of NARROW_AXES) {
+    let bounded = true;
+    for (const sign of [1, -1]) {
+      let k = 1;
+      for (; k <= reach; k++) {
+        const nx = x + dx * k * sign;
+        const ny = y + dy * k * sign;
+        // The edge of the canvas bounds a run as surely as another colour does.
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) break;
+        if (indices[ny * width + nx] !== self) break;
+      }
+      if (k > reach) {
+        bounded = false;
+        break;
+      }
+    }
+    if (bounded) return true;
+  }
+  return false;
 }
 
 /**

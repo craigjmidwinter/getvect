@@ -1202,6 +1202,115 @@ export function remapIndices(indices: Uint8Array, map: ArrayLike<number>): void 
  */
 const FRINGE_TIE_WINDOW = 1.5;
 
+/**
+ * How far OFF the line joining two regions a thin band between them may sit and
+ * still count as their ramp, as a fraction of the distance between them.
+ *
+ * The in-between test above (`da + db <= span * 1.35`) asks whether a band's
+ * colour lies on the SEGMENT between the two colours it separates, which is the
+ * right question for a blend and the wrong one for a *halo*. Real artwork
+ * arrives resampled, and a resampler with any sharpening in it leaves an
+ * overshoot beside every hard edge: the mascot's eye is drawn with a black
+ * outline directly against an olive iris, and the source carries a one-pixel rim
+ * BRIGHTER than the iris along the inside of that outline. That rim is on the
+ * ink→olive ramp and then some — it is the same ramp overshooting past its light
+ * end — so the segment test rejects it as "a genuine third colour", the fringe
+ * collapse leaves it alone, and at eight colours the nearest palette slot to it
+ * is the muzzle CREAM. The trace then threads a cream ribbon between the outline
+ * and the iris: a colour that belongs to neither side of that boundary, which is
+ * exactly what the fringe rule exists to forbid.
+ *
+ * So the test becomes the corridor rather than the segment: perpendicular
+ * distance from the band's colour to the LINE through the two, plus a bound on
+ * how far past the ends it may sit. Measured on the mascot, the eye rim is 11 %
+ * off the line at 28 % past the olive end, while the things that must not be
+ * touched are nowhere near it — a necklace stripe between cream and body orange
+ * is 58 % off their line, the white catchlight between pupil and iris is 52 %
+ * off theirs, and every ink band between two lighter colours is more than 100 %
+ * off. 0.2 and 0.45 sit in that gap with room on both sides.
+ */
+const FRINGE_CORRIDOR = 0.2;
+/** How far past either end of the ramp an overshoot may sit, as a fraction. */
+const FRINGE_OVERSHOOT = 0.45;
+/**
+ * Luma below which one side of the boundary counts as the stroke that made the
+ * halo. The same number `preprocess.ts` calls `RAMP_INK_LUMA`, for the same
+ * reason: it is where a colour stops being a shade of the drawing and starts
+ * being its line art.
+ */
+const FRINGE_INK_LUMA = 60;
+/**
+ * How thick a HALO may be, in pixels — an absolute number, unlike the blend
+ * band's `maxThickness`, which is a fraction of the picture.
+ *
+ * A blend band is as wide as the edge that made it, and a drawn edge scales with
+ * the artwork (the same soft outline is 3 px on a 256px sticker and 12 on a
+ * 1046px illustration), which is why `fringeThickness` is proportional. An
+ * overshoot is not that: it is the ringing of a resampling kernel, and a kernel
+ * is a couple of pixels wide whatever it is resampling. Measured, this is the
+ * line between the two cases — the mascot's eye rim is 1.6 px thick, while the
+ * shaded fixture's muzzle carries legitimate highlight bands 5 to 14 px thick
+ * that are just as collinear with the ink and just as light, and eating those
+ * cost its muzzle 1.9 points of ink recall.
+ */
+const HALO_MAX_THICKNESS = 3;
+
+/**
+ * Is `c` on the ramp between `a` and `b` — including past its ends?
+ *
+ * Distances are Euclidean here rather than L1: this is a projection onto a line
+ * in RGB space, and "how far off the line" only means anything in the metric the
+ * projection is taken in.
+ */
+function onRamp(c: RgbColor, a: RgbColor, b: RgbColor): boolean {
+  /**
+   * A halo is LIGHTER THAN BOTH sides. Anything else is a region.
+   *
+   * This is the same sentence the instrument that catches the defect is written
+   * in (`seamSlivers`: a boundary pixel lighter than both of its neighbours
+   * where the source has nothing that light), and it is what keeps the rule from
+   * reaching past what it was built for. A resampler overshoots on the light
+   * side of an edge and undershoots on the dark side, and on the dark side the
+   * same geometry describes something else entirely: a thin band darker than the
+   * regions either side of it is what an OUTLINE is. Measured on the soft-
+   * outlined shaded fixture at the default settings, dropping this test cost its
+   * muzzle 1.9 points of ink recall (0.997 -> 0.978) and 1.6 of strict recall,
+   * because a soft outline's core sits inside the corridor of the mid-tones
+   * either side of it.
+   */
+  const luma = (x: RgbColor): number => 0.299 * x.r + 0.587 * x.g + 0.114 * x.b;
+  if (luma(c) <= Math.max(luma(a), luma(b))) return false;
+  /**
+   * ...and it has to be beside a STROKE.
+   *
+   * On shaded artwork every colour of a soft ramp is nearly collinear with every
+   * other, so "on the line between its neighbours" is true of a legitimate
+   * shading band as well — measured on the shaded fixture, the corridor test
+   * without this line swallowed 861 pixels of the highlight along its muzzle
+   * (region ink recall 0.997 -> 0.978). What the halo has that a shading band
+   * does not is the hard edge that made it: a resampler only overshoots where
+   * there is something to overshoot from, and the case this rule is for is a
+   * light rim wedged between an outline and the region the outline is drawn on.
+   * So one of the two sides must be ink, and then "lighter than both" and "on
+   * their ramp" describe one thing only.
+   */
+  if (Math.min(luma(a), luma(b)) >= FRINGE_INK_LUMA) return false;
+  const ux = b.r - a.r;
+  const uy = b.g - a.g;
+  const uz = b.b - a.b;
+  const len2 = ux * ux + uy * uy + uz * uz;
+  if (len2 <= 0) return false;
+  const vx = c.r - a.r;
+  const vy = c.g - a.g;
+  const vz = c.b - a.b;
+  const t = (vx * ux + vy * uy + vz * uz) / len2;
+  if (t < -FRINGE_OVERSHOOT || t > 1 + FRINGE_OVERSHOOT) return false;
+  const px = vx - t * ux;
+  const py = vy - t * uy;
+  const pz = vz - t * uz;
+  return px * px + py * py + pz * pz <= len2 * FRINGE_CORRIDOR * FRINGE_CORRIDOR;
+}
+
 export interface DespeckleOptions {
   /** Regions with fewer pixels than this are candidates for removal. */
   minArea: number;
@@ -1452,6 +1561,16 @@ export function despeckleIndices(
      * preprocess.ts), applied to a whole region.
      */
     let fringe = false;
+    /**
+     * ...and the same question asked of the whole ramp rather than of the
+     * segment: a band that OVERSHOOTS one end of it is still that boundary's
+     * artefact and still may not keep a palette slot of its own (see
+     * `FRINGE_CORRIDOR`). Kept separate from `fringe` on purpose — the strict
+     * in-between test is also what buys a band out of the elongation exemption
+     * in the *noise* filters below, and widening that would put line art back in
+     * their reach. Only the `onlyFringe` collapse reads this one.
+     */
+    let rampBand = false;
     if (ownColor && palette && secondColor >= 0) {
       const a = palette[bestColor];
       const b = palette[secondColor];
@@ -1459,7 +1578,14 @@ export function despeckleIndices(
         const span = dist(a.r, a.g, a.b, b);
         const da = dist(ownColor.r, ownColor.g, ownColor.b, a);
         const db = dist(ownColor.r, ownColor.g, ownColor.b, b);
-        fringe = span >= 48 && da > 0 && db > 0 && da + db <= span * 1.35;
+        const real = span >= 48 && da > 0 && db > 0;
+        fringe = real && da + db <= span * 1.35;
+        rampBand =
+          fringe ||
+          (real &&
+            tally[own] === 0 &&
+            areas[label] / maxDims[label] <= HALO_MAX_THICKNESS &&
+            onRamp(ownColor, a, b));
       }
     }
 
@@ -1478,8 +1604,8 @@ export function despeckleIndices(
       continue;
     }
     // Fringe-only mode judges nothing but that: thin was checked when the
-    // candidate list was built, in-between is checked here.
-    if (onlyFringe && !fringe) continue;
+    // candidate list was built, on-the-ramp is checked here.
+    if (onlyFringe && !rampBand) continue;
 
     /**
      * Border length says which region a speck *sits in*; it does not say which
