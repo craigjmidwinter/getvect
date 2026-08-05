@@ -50,6 +50,7 @@ import { canvasIngest, decodeImageFile, flattenOnWhite, transparentRatio } from 
 import { rasterizeExemplarContent, rasterizeSvg } from './lib/render.mjs';
 import {
   alphaMask,
+  boundarySmoothness,
   colorPresenceProfile,
   cropRegion,
   featureCornerAngles,
@@ -332,6 +333,14 @@ const GATES = [
   // much the heading changes per unit travelled.
   ['maxLayerWobble', 'layerWobble', 'max', (v) => v.toFixed(1)],
   ['maxLayerWobbleRatio', 'layerWobbleRatio', 'max', (v) => `${v.toFixed(2)}x`],
+  // The same question asked where the answer is a FACT (metrics.mjs
+  // `boundarySmoothness`): on a fixture whose arcs the generator drew from an
+  // equation, how far does the fitted boundary sit from the circle it is
+  // tracing? Every other geometry bar here compares us with a smoothed copy of
+  // ourselves or with the reference product, and neither knows what the shape
+  // was supposed to be.
+  ['maxArcResidualRms', 'arcResidualRms', 'max', (v) => `${v.toFixed(3)}px`],
+  ['maxArcResidualMax', 'arcResidualMax', 'max', (v) => `${v.toFixed(3)}px`],
   // B3: how many of the colours the user asked for — and the image actually has
   // — our own folds merged away before the palette was returned.
   ['maxPaletteShortfall', 'paletteShortfall', 'max', String],
@@ -673,6 +682,7 @@ async function main() {
     await writeDiff(reference, traced, join(outDirOf(fixture, 'diff'), `${fixture.id}.png`));
 
     const structure = svgStructure(result.svg);
+    const arcSmoothness = boundarySmoothness(result.svg, fixture.arcs);
     const metrics = {
       width: source.width,
       height: source.height,
@@ -716,6 +726,11 @@ async function main() {
       layerCount: structure.layerCount,
       layerCompactness: structure.layerCompactness,
       layerWobble: structure.layerWobble,
+      // Only for a fixture that declares `arcs` — a shape we know the equation
+      // of, so "did the pixel grid survive into the geometry" has an answer.
+      arcResidualRms: arcSmoothness?.rms ?? null,
+      arcResidualMax: arcSmoothness?.max ?? null,
+      arcs: arcSmoothness?.arcs ?? null,
       nearDuplicateFillPairs: structure.nearDuplicateFillPairs,
       paletteSize: Array.isArray(result.palette) ? result.palette.length : null,
       sourceColors: typeof result.sourceColors === 'number' ? result.sourceColors : null,
