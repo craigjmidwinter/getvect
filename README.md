@@ -119,6 +119,7 @@ npm test              # engine contract tests, then the Playwright acceptance su
 npm run test:engine   # just the engine contracts (pure Node, no Electron)
 npm run instruments   # fidelity metrics -> artifacts/metrics.json
 npm run screenshots   # a labelled contact sheet of the whole flow -> artifacts/screenshots/
+npm run docs:screenshots # regenerate the three screenshots this README shows
 ```
 
 Three layers, and they are the project's real documentation:

@@ -468,9 +468,25 @@ code {
      that goes below the fold. */
   height: min(276px, 36vh);
   display: grid;
-  grid-template-columns: minmax(230px, 1.25fr) minmax(170px, 0.9fr) minmax(210px, 1.1fr);
-  gap: 14px;
-  overflow: hidden;
+  /*
+   * Four columns, not three: MODEL | QUALITY | INPUT PALETTE | OUTPUT COLOURS.
+   *
+   * The colour controls used to share one column, and their combined height
+   * (~300px of palette editor plus colour groups) did not fit its ~255px, so
+   * whichever block was second — always OUTPUT COLOURS, which carries B3's
+   * headline "disable the background colour" checkboxes — was clipped at the
+   * bottom of the column. The panel is 1010px wide at the default window size
+   * and was using ~660 of it, so the space to fix that with was sideways, not
+   * downward: splitting the pair costs no preview height and leaves both
+   * blocks shorter than the column they sit in.
+   */
+  grid-template-columns:
+    minmax(215px, 1.15fr) minmax(165px, 0.85fr) minmax(185px, 1fr) minmax(165px, 0.85fr);
+  gap: 12px;
+  overflow-y: hidden;
+  /* A window narrow enough to squeeze the columns scrolls them instead of
+     hiding the last one (the app's minimum is 900px wide). */
+  overflow-x: auto;
 }
 
 .settings-column {
@@ -485,6 +501,50 @@ code {
 .settings-column + .settings-column {
   border-left: 1px solid var(--line);
   padding-left: 12px;
+}
+
+/*
+ * Slim, always-visible scrollbars inside the settings panel.
+ *
+ * macOS hides overlay scrollbars until something is scrolling, so a region
+ * holding more than it can show looks exactly like a region that has been
+ * clipped — and "the panel is cut off at the bottom" is how every reader has
+ * described it. The panel's scroll regions are small and deliberate (a palette
+ * editor, a colour-group list, two strips), so each one says out loud that it
+ * has more to give.
+ */
+.settings-panel::-webkit-scrollbar,
+.settings-column::-webkit-scrollbar,
+.group-list::-webkit-scrollbar,
+.swatches::-webkit-scrollbar,
+.palette-sizes::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.settings-panel::-webkit-scrollbar-thumb,
+.settings-column::-webkit-scrollbar-thumb,
+.group-list::-webkit-scrollbar-thumb,
+.swatches::-webkit-scrollbar-thumb,
+.palette-sizes::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 4px;
+}
+
+.settings-panel::-webkit-scrollbar-thumb:hover,
+.settings-column::-webkit-scrollbar-thumb:hover,
+.group-list::-webkit-scrollbar-thumb:hover,
+.swatches::-webkit-scrollbar-thumb:hover,
+.palette-sizes::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-dim);
+}
+
+.settings-panel::-webkit-scrollbar-track,
+.settings-column::-webkit-scrollbar-track,
+.group-list::-webkit-scrollbar-track,
+.swatches::-webkit-scrollbar-track,
+.palette-sizes::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .settings-grid {
@@ -547,18 +607,18 @@ button.toggle.is-on,
 }
 
 /*
- * One row, scrolled. The eleven candidate sizes wrapped onto two rows at the
- * app's default window size, and those ~24px pushed the OUTPUT COLOURS list —
- * which carries B3's headline control, "disable the background colour to get a
- * transparent background" — off the bottom of the screen. A strip that scrolls
- * sideways costs nothing: the sizes are an ordered scale, so the ones a user
- * looks for first are at the start of it.
+ * All eleven candidate sizes visible, wrapped.
+ *
+ * They were a nowrap strip that scrolled sideways, because the two rows they
+ * wrap onto cost ~24px of a column that also had to hold the output colour
+ * groups. The colour controls now have a column each (see `.settings-panel`),
+ * so that vertical budget exists — and a size the user has to scroll a strip to
+ * find is a palette size that may as well not be offered.
  */
 .palette-sizes {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 4px;
-  overflow-x: auto;
   padding-bottom: 2px;
   flex: none;
 }
@@ -601,13 +661,16 @@ button.toggle.is-on,
   line-height: 1.25;
 }
 
+/*
+ * The result readout wraps rather than truncating. It is four facts about the
+ * document that was just produced (size, colours, layers, milliseconds) and at
+ * a narrow window the ellipsis was eating the last two — a readout nobody can
+ * read is worse than a readout on two lines.
+ */
 .settings-summary {
   color: var(--ink-dim);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .switch {
@@ -705,19 +768,27 @@ button.toggle.is-on,
   display: flex;
   flex-direction: column;
   gap: 6px;
-  border-top: 1px solid var(--line);
-  padding-top: 8px;
-  /* Pinned: the output-colour controls are the ones a user reaches for after
-     looking at the result, so they stay on screen at the default window size
-     and the palette editor above them takes the scrolling instead. */
-  flex: 0 0 auto;
+  /* Its own column (see `.settings-panel`), so it starts at the top of one, the
+     divider is the column rule rather than a border of its own, and it can take
+     the column's full height. */
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/*
+ * The list takes whatever height the column has left, so at the default window
+ * size an 18-colour palette shows ~9 of its rows instead of the 4 a fixed
+ * 66px box allowed. It still scrolls rather than growing the panel.
+ */
+.color-groups .group-list {
+  flex: 1 1 auto;
 }
 
 .group-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 66px;
+  min-height: 44px;
   overflow-y: auto;
 }
 
