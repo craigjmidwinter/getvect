@@ -25,6 +25,7 @@
 import ImageTracer, { type ItPath } from 'imagetracerjs';
 import {
   fitClosedPolygon,
+  polygonArea,
   polygonBounds,
   type Circle,
   type FitOptions,
@@ -151,6 +152,40 @@ export function edgeNodeArray(mask: Uint8Array, width: number, height: number): 
 const pointsOf = (path: ItPath): Pt[] => path.points.map((p) => ({ x: p.x, y: p.y }));
 
 /**
+ * Fraction of a shape's own thickness the fit may deviate by. Below ~0.3 the
+ * curve fitting stops paying for itself (the outline starts tracking pixel
+ * steps again and the file grows); above it, hairlines start dissolving.
+ */
+const THIN_FIT_FRACTION = 0.3;
+
+/**
+ * Fit tolerance, scaled to how thick the shape being fitted actually is.
+ *
+ * A tolerance is a promise about *absolute* error, and the same 1px of licence
+ * means two different things: on a 200px belly it is invisible, on a 2px eyelid
+ * it is the difference between a line and nothing. Curve fitting at the default
+ * detail was quietly costing the gold-standard artwork ~1.5 % of its ink that
+ * way, in exactly the strokes (mouth, eyes, claws) a viewer looks at first.
+ *
+ * `2·area / perimeter` is the mean thickness of a region — `w` for a `w × L`
+ * stroke, `r` for a disc — so allowing a fraction of it keeps the fit
+ * proportional: big shapes still get the full tolerance the Detail slider asked
+ * for, thin ones get a fit that cannot swallow them. */
+function fitOptionsFor(pts: Pt[], options: TraceOptions): TraceOptions {
+  let perimeter = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    perimeter += Math.hypot(b.x - a.x, b.y - a.y);
+  }
+  if (perimeter <= 0) return options;
+  const thickness = (2 * Math.abs(polygonArea(pts))) / perimeter;
+  const limit = Math.max(0.25, thickness * THIN_FIT_FRACTION);
+  if (limit >= options.tolerance) return options;
+  return { ...options, tolerance: limit };
+}
+
+/**
  * Trace one binary mask into fitted, closed subpaths.
  *
  * `mask[p]` is truthy for pixels belonging to the layer. Holes ride with their
@@ -182,7 +217,7 @@ export function traceMask(
       const b = polygonBounds(pts);
       if ((b.x1 - b.x0) * (b.y1 - b.y0) < preFilter) return null;
     }
-    const fitted = fitClosedPolygon(pts, options);
+    const fitted = fitClosedPolygon(pts, fitOptionsFor(pts, options));
     if (!fitted) return null;
     if (minArea > 0) {
       const box = subPathBox(fitted.subpath);

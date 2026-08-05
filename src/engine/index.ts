@@ -22,6 +22,7 @@
  */
 
 import {
+  TRANSPARENT_INDEX,
   computePaletteSync,
   coverageOf,
   despeckleIndices,
@@ -29,7 +30,9 @@ import {
   mergeSimilarColors,
   mergeSmallGroups,
   normalizePalette,
+  opacityMask,
   packRgb,
+  remapIndices,
   sortedOrder,
   toBlackAndWhite,
   toGrayscale,
@@ -37,7 +40,14 @@ import {
 import { resultToDxf, type DxfOptions } from './dxf';
 import { resultToEps } from './eps';
 import { resultToPdf } from './pdf';
-import { cloneRaster, deAntialias, enhanceSync, majorityFilter, reduceNoise } from './preprocess';
+import {
+  bleedTransparent,
+  cloneRaster,
+  deAntialias,
+  enhanceSync,
+  majorityFilter,
+  reduceNoise,
+} from './preprocess';
 import { renderSvg } from './svg';
 import { maskForIndex, traceMask, type TraceOptions, type TracedLayer } from './trace';
 import {
@@ -288,6 +298,19 @@ export function maxContrastFor(despeckle: number): number {
 const round4 = (v: number) => Math.round(v * 10000) / 10000;
 
 /**
+ * How much of the Enhance region floor carries over to the *document* floor.
+ *
+ * The two floors measure different things: the index-image pass counts a
+ * region's pixels, the trace-time pass measures a fitted shape's bounding box,
+ * and a box overstates everything that is not a rectangle (a diagonal sliver's
+ * box can be ten times its area). Half is the setting at which the document
+ * floor removes the same class of shape — the 3-10px lobes a ragged edge sheds,
+ * which are attached to their parent region and so invisible to any despeckle —
+ * without reaching the diagonal strokes that a like-for-like number would eat.
+ */
+const SHAPE_FLOOR_OF_REGION_FLOOR = 0.5;
+
+/**
  * Path-data precision. One decimal is *exact* here, not a compromise: the
  * tracer places every node on a pixel corner or on the midpoint between two of
  * them, so every coordinate it can produce is a multiple of 0.5. A second
@@ -417,7 +440,20 @@ export async function vectorize(
   // preset's colour-space change runs LAST so "Sketch is grayscale" and
   // "Drawing is two-tone" are guaranteed by construction rather than by luck.
   report(onProgress, 'preprocess', 0.02);
-  let source = opts.enhance ? enhanceSync(image) : image;
+  /**
+   * The alpha channel, honoured (REFERENCE's headline use cases — stickers,
+   * decals, t-shirt art — arrive as PNGs with a transparent background).
+   *
+   * `opaque` is null for ordinary artwork, and then every alpha-aware branch
+   * below is a no-op. When it is not null, the see-through pixels are: excluded
+   * from the histogram (so they cannot win a palette slot), marked
+   * `TRANSPARENT_INDEX` in the index image (so they join no layer), and barred
+   * from becoming the backdrop rect — which together are the difference between
+   * exporting a sticker and exporting a black rectangle.
+   */
+  const opaque = opacityMask(image);
+  let source: RasterImage = opaque ? bleedTransparent(image, opaque, 3) : image;
+  source = opts.enhance ? enhanceSync(source) : source;
   source = reduceNoise(source, opts.noiseReduction);
   /**
    * "Enhance image with AI" is a bundle, not a filter (REFERENCE B4, and
@@ -466,8 +502,8 @@ export async function vectorize(
   report(onProgress, 'quantize', 0.15);
   const override = normalizePalette(opts.palette);
   const targetColors = override ? override.length : presetColorCount(opts);
-  const clusters = computePaletteSync(source, Math.max(1, targetColors));
-  let indices = mapToPalette(source, clusters);
+  const clusters = computePaletteSync(source, Math.max(1, targetColors), opaque);
+  let indices = mapToPalette(source, clusters, opaque);
   /**
    * Anti-aliasing, the half that works on regions rather than pixels.
    *
@@ -483,7 +519,7 @@ export async function vectorize(
    */
   const indexPasses = smartAa ? 2 : opts.antiAliasing === 'mid' ? 1 : 0;
   for (let i = 0; i < indexPasses; i++) {
-    indices = majorityFilter(indices, width, height, clusters.length);
+    indices = majorityFilter(indices, width, height, clusters.length, TRANSPARENT_INDEX);
   }
   /**
    * ...and the half a 3×3 window cannot reach.
@@ -507,6 +543,7 @@ export async function vectorize(
       palette: clusters,
       onlyFringe: true,
       maxThickness: smartAa ? 3 : 2,
+      transparentIndex: TRANSPARENT_INDEX,
     });
   }
   report(onProgress, 'quantize', 0.32);
@@ -529,7 +566,11 @@ export async function vectorize(
   const minArea =
     opts.minArea * areaScaleFor(detailFor(opts.detail, opts.detailLevel), opts.despeckle);
   if (minArea > 1) {
-    despeckleIndices(indices, width, height, { minArea, palette: clusters });
+    despeckleIndices(indices, width, height, {
+      minArea,
+      palette: clusters,
+      transparentIndex: TRANSPARENT_INDEX,
+    });
   }
   const enhanceFloor = opts.enhance && opts.despeckle > 0 ? (width * height) / 10000 : 0;
   if (enhanceFloor > 1) {
@@ -537,6 +578,7 @@ export async function vectorize(
       minArea: enhanceFloor,
       palette: clusters,
       keepElongated: true,
+      transparentIndex: TRANSPARENT_INDEX,
     });
   }
   const noiseArea = minAreaFor(opts.despeckle, width, height);
@@ -546,6 +588,7 @@ export async function vectorize(
       palette: clusters,
       maxContrast: maxContrastFor(opts.despeckle),
       keepElongated: true,
+      transparentIndex: TRANSPARENT_INDEX,
     });
   }
   report(onProgress, 'simplify', 0.4);
@@ -576,7 +619,7 @@ export async function vectorize(
     for (let i = override.length; i < slotToEntry.length; i++) {
       slotToEntry[i] = slotToEntry[override.length - 1];
     }
-    for (let p = 0; p < indices.length; p++) indices[p] = slotToEntry[indices[p]];
+    remapIndices(indices, slotToEntry);
   } else {
     // Re-rank by what actually survived quantization + despeckle, and drop
     // entries no pixel ended up using.
@@ -590,7 +633,7 @@ export async function vectorize(
     kept.forEach((e, rank) => {
       indexMap[e.i] = rank;
     });
-    for (let p = 0; p < indices.length; p++) indices[p] = indexMap[indices[p]];
+    remapIndices(indices, indexMap);
   }
   if (palette.length === 0) palette = [{ r: 0, g: 0, b: 0 }];
 
@@ -622,7 +665,21 @@ export async function vectorize(
     smoothPasses: smoothPassesFor(opts.smoothing, tolerance),
     straightTolerance: straightToleranceFor(opts.roundness),
     circleDetection: opts.circleDetection,
-    minArea,
+    /**
+     * Enhance is a simplification bundle, so its canvas-proportional floor has
+     * to reach the *document*, not just the index image.
+     *
+     * The index-image pass above (`enhanceFloor`) can only merge a small region
+     * into a neighbour, and it deliberately spares strokes. What it cannot
+     * touch is the shape a surviving region still traces to: a ragged edge
+     * sheds dozens of 3-10px lobes that are attached to their parent region, so
+     * no despeckle sees them, and every one costs a sub-path. The real
+     * product's 16-colour output for the gold-standard artwork has NO sub-path
+     * with a bounding box under ~200px²; ours had 106 of them. Reusing the same
+     * floor here (a box-area test, so a long hairline with a 2px waist still
+     * clears it) is what closes that gap.
+     */
+    minArea: Math.max(minArea, enhanceFloor * SHAPE_FLOOR_OF_REGION_FLOOR),
   };
 
   const disabled = new Set(opts.disabledColors);
@@ -657,8 +714,15 @@ export async function vectorize(
   // Only the *dominant* colour may become the backdrop. Promoting the runner-up
   // when the dominant one is switched off would hand the user a differently
   // coloured full-bleed rectangle instead of the transparency they asked for.
+  //
+  // And a source with an alpha channel gets no backdrop at all: the layers no
+  // longer partition the canvas (the see-through part belongs to nobody), so a
+  // full-bleed rect is not the free optimisation it is on opaque artwork — it
+  // is an invented background painted over the transparency the file asked for.
   const backgroundIndex =
-    opts.resultStyle === 'filled' && dominant >= 0 && !disabled.has(dominant) ? dominant : -1;
+    opts.resultStyle === 'filled' && !opaque && dominant >= 0 && !disabled.has(dominant)
+      ? dominant
+      : -1;
 
   const layers: TracedLayer[] = [];
   const mask = new Uint8Array(width * height);
@@ -670,7 +734,10 @@ export async function vectorize(
         // neighbouring layers cannot leave a seam between them.
         const above = new Uint8Array(palette.length);
         for (let q = position; q < order.length; q++) above[order[q]] = 1;
-        for (let p = 0; p < mask.length; p++) mask[p] = above[indices[p]];
+        for (let p = 0; p < mask.length; p++) {
+          const v = indices[p];
+          mask[p] = v === TRANSPARENT_INDEX ? 0 : above[v];
+        }
       } else {
         maskForIndex(indices, i, mask);
       }
@@ -715,7 +782,9 @@ function now(): number {
  */
 export async function computePalette(image: RasterImage, colorCount: number): Promise<RgbColor[]> {
   await tick();
-  return computePaletteSync(image, Math.round(clamp(colorCount, 2, 64)));
+  // Same alpha contract as `vectorize`, or the editor would offer the user a
+  // swatch (usually black) that the drawing does not contain.
+  return computePaletteSync(image, Math.round(clamp(colorCount, 2, 64)), opacityMask(image));
 }
 
 /**
