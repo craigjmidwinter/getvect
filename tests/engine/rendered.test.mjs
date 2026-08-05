@@ -20,6 +20,7 @@ import { Resvg } from '@resvg/resvg-js';
 import { canvasIngest, decodeImageFile, flattenOnWhite } from '../../instruments/lib/decode.mjs';
 import { rasterizeExemplarContent } from '../../instruments/lib/render.mjs';
 import {
+  boundarySmoothness,
   countCubics,
   countSubPaths,
   cropRegion,
@@ -661,5 +662,36 @@ test('[quality] the black outline survives a small colour budget', async () => {
   assert.ok(
     darkest < 60,
     `the darkest of 6 palette entries has luma ${darkest.toFixed(0)} — the outline black is gone`,
+  );
+});
+
+test('[quality] a smooth source arc comes back smooth, not as the pixel grid', async () => {
+  /**
+   * The one geometry contract in this file measured against a KNOWN shape.
+   *
+   * Everything else here compares the trace with a smoothed copy of itself or
+   * with the reference product, and neither knows what the boundary was meant
+   * to be: a curve fitter that spends its whole error budget on a long arc
+   * emits a boundary that leaves the arc in the middle of every segment and
+   * rejoins it at the ends, and that scores *better* on turning-per-unit-length
+   * than the truth it is approximating. `fixtures/arcs-560x256.png` is drawn
+   * from the circle equation, so the residual is a fact.
+   *
+   * A trace that reproduced the pixel boundary verbatim scores ~0.37px; the lap
+   * that added this measured 0.42px before and 0.23px after.
+   */
+  const manifest = JSON.parse(readFileSync(fixture('manifest.json'), 'utf8'));
+  const entry = manifest.fixtures.find((f) => f.id === 'arcs-560x256');
+  assert.ok(entry?.arcs?.length, 'the arcs fixture must declare the circles it was drawn from');
+  const image = await loadIngest(entry.file);
+  const r = await engine.vectorize(image, { ...S });
+  const smoothness = boundarySmoothness(r.svg, entry.arcs);
+  assert.equal(smoothness.counted, entry.arcs.length, 'every declared arc must be found');
+  const worst = smoothness.arcs.reduce((a, b) => (a.rms >= b.rms ? a : b));
+  assert.ok(
+    smoothness.rms <= 0.24,
+    `the worst fitted arc (${worst.name}, r=${worst.r}) sits RMS ${smoothness.rms.toFixed(3)}px ` +
+      `from the circle it traces, worst point ${smoothness.max.toFixed(3)}px — the fitter is ` +
+      'handing back the pixel staircase it was given (0.37px is the staircase itself)',
   );
 });
