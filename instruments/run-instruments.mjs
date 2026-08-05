@@ -42,8 +42,8 @@ import { performance } from 'node:perf_hooks';
 import sharp from 'sharp';
 import { canvasIngest, decodeImageFile, flattenOnWhite, transparentRatio } from './lib/decode.mjs';
 // Rasterization lives in lib/render.mjs so `npm run test:engine` measures
-// exemplars exactly the way the instruments do — see the note there about the
-// content box.
+// exemplars exactly the way the instruments do — see the note there about
+// registering an exemplar against the source.
 import { rasterizeExemplarContent, rasterizeSvg } from './lib/render.mjs';
 import {
   alphaMask,
@@ -730,7 +730,7 @@ async function main() {
           `(${fmt(r.metrics.layerCompactnessRatio)}x), ` +
           `boundary wobble ${fmt(r.metrics.layerWobble, 1)} vs ${fmt(e.layerWobble, 1)} ` +
           `(${fmt(r.metrics.layerWobbleRatio)}x) ` +
-          `(exemplar rasterized from its ${e.contentBox?.width}x${e.contentBox?.height} content box)`,
+          `(exemplar rasterized at ${e.contentBox?.width}x${e.contentBox?.height})`,
       );
     }
     for (const region of r.metrics?.regions ?? []) {
