@@ -25,7 +25,7 @@ npm run docs:screenshots # the README's three screenshots -> docs/assets/
 | `npm run build:renderer` | Renderer bundle only. |
 | `npm run typecheck` | Type-checks both projects without emitting. |
 | `npm test` | `scripts/run-tests.mjs`: engine contract tests **then** the Playwright acceptance suite (`pretest` builds first), **both always run**, exit code non-zero if either failed. The engine tests run first because they are the fidelity contracts: if the picture regressed, the UI specs' green is not worth reading. It used to be `node --test … && playwright test`, and that `&&` meant two red engine contracts hid the entire 108-test e2e suite from the documented entry point — the green e2e number was only reachable by bypassing `npm test`. Extra arguments pass through to Playwright: `npm test -- -g "\[B3\]"`. |
-| `npm run test:engine` | Engine contract tests (`node --test`, pure Node). Four files: `engine.test.mjs` (determinism, setting semantics, palette overrides, SVG grouping, EPS/DXF/PDF structure — must stay green), `parity.test.mjs` (the B2-B6 settings, D1 fill notation, D3 DXF colour distinctness and curve survival), `rendered.test.mjs` (rasterizes output: does the *picture* change, is it curve-fitted, is it economical in shapes — at the Enhance-on **and** the default settings — does it hold up against the exemplar, and does the salient region of the gold standard survive the cleanup passes; the gold-standard source is handed to the engine through `canvasIngest()`, the same one-decode contract the instruments use, because fed a white-flattened snorlax the face scores 0.956 and fed the pixels the app produces it scores 0.865), `alpha.test.mjs` (the input alpha channel: a transparent background must not be traced as an opaque one). |
+| `npm run test:engine` | Engine contract tests (`node --test`, pure Node). Four files: `engine.test.mjs` (determinism, setting semantics, palette overrides, SVG grouping, EPS/DXF/PDF structure — must stay green), `parity.test.mjs` (the B2-B6 settings, D1 fill notation, D3 DXF colour distinctness and curve survival, B3's colour-budget contract — `palette.length >= min(colorCount, sourceColors) - 1` at 6/8/12/16 — and B4's "the default pipeline keeps every colour family the image has"), `rendered.test.mjs` (rasterizes output: does the *picture* change, is it curve-fitted, are colour boundaries smooth sweeps rather than sawtooth (`layerCompactness` vs the exemplar), do outlines come back solid (`strictInkRecall` vs the exemplar, in the face and the paw-pad crops), does the default pipeline keep a warm region warm, is it economical in shapes — at the Enhance-on **and** the default settings — does it hold up against the exemplar, and does the salient region of the gold standard survive the cleanup passes; the gold-standard source is handed to the engine through `canvasIngest()`, the same one-decode contract the instruments use, because fed a white-flattened snorlax the face scores 0.956 and fed the pixels the app produces it scores 0.865), `alpha.test.mjs` (the input alpha channel: a transparent background must not be traced as an opaque one). |
 | `npm run test:headed` | Same, with a visible window. |
 | `npm run fixtures` | Regenerates `fixtures/` deterministically. |
 | `npm run instruments` | Measures the app engine on every fixture. |
@@ -68,7 +68,8 @@ title is prefixed with its REFERENCE.md checklist id:
 | `tests/e2e/q-decode-parity.spec.ts` | **quality-bar** a transparent PNG exports without an invented background · the app's exported SVG equals `engine.vectorize()` run headlessly on the same file (byte-identical on the flat fixture, structurally on the gold-standard one) |
 | `tests/e2e/a2-decode-failure.spec.ts` | **A2** a file that decodes to nothing leaves no `image-list-item`, does not poison the workspace, and does not leave a stale `export-size` |
 | `tests/e2e/c2-resize-fit.spec.ts` | **C2** shrinking the window re-fits the preview; a zoom the user chose survives a resize |
-| `tests/e2e/b-controls-affordance.spec.ts` | **B2** Drawing disables the colour controls it cannot use · **B3** `merge-threshold` / `color-sort` / the first `color-group-toggle` are on screen at the default window size, none of the colour controls is clipped by a scrolling ancestor at an 18-colour palette, nothing inside the panel is hidden by unscrollable overflow at the app's 900x640 minimum, colour-count hint is not clipped |
+| `tests/e2e/b-controls-affordance.spec.ts` | **B2** Drawing disables the colour controls it cannot use · **B3** `merge-threshold` / `color-sort` / the first `color-group-toggle` are on screen at the default window size, **every** output colour group is reachable there (not just the first — an 8-group list shipped with its last entry behind a scrollbar), none of the colour controls is clipped by a scrolling ancestor at an 18-colour palette, nothing inside the panel is hidden by unscrollable overflow at the app's 900x640 minimum, colour-count hint is not clipped, `palette-auto-button` carries the same chrome as the panel's other buttons |
+| `tests/e2e/d3-dxf-variants.spec.ts` | **D3** the `dxf-curves` control exists and defaults to `splines` · the `lines` variant flattens to POLYLINE/VERTEX with no SPLINE and describes the same drawing (same extents) |
 | `tests/e2e/b3-palette-state.spec.ts` | **B3** the colour-count hint attributes the shortfall to the image or to the settings (`data-shortfall`), and never blames the image for our own fold · **B3** `palette-auto-button` restores the palette and the candidate size the edit replaced |
 
 Selectors are `data-testid` only. The full DOM contract is
@@ -104,6 +105,13 @@ Pure-Node, no Electron. For each fixture it decodes the source, calls the engine
 `vectorize()`, rasterizes the returned SVG **back to the source dimensions** with resvg,
 and diffs.
 
+Rasterization lives in `instruments/lib/render.mjs` (`rasterizeSvg`,
+`rasterizeExemplarContent`) and the engine tests import the same functions, so a number in
+`artifacts/metrics.json` and a number in a `node --test` failure message describe the same
+picture. They did not always: an engine test that rasterized `reference/snorlax.svg`
+against its declared viewBox was comparing our paw against the exemplar's empty margin and
+passing for it.
+
 ### One decode contract
 
 The engine is handed `canvasIngest(decodeImageFile(file))` — the *same pixels the
@@ -131,7 +139,13 @@ Reported per fixture (`artifacts/metrics.json`):
 | `ssim` | mean windowed structural similarity (8×8 windows, stride 4, luma) | ≥ 0.90 on flat fixtures |
 | `pixelMismatchRatio` | fraction of pixels off by > 12 in any channel | — |
 | `inkRecall` | fraction of the source's *ink* pixels (luma < 60) still darker than 128 in the re-raster — line art is too few pixels for MAE/SSIM to notice when a cleanup pass deletes it | ≥ 0.94 (snorlax) / ≥ 0.97 flat |
-| `regionInkRecall` / `regionMeanColorError` / `regionSsim` | the same three numbers computed **inside the fixture's `salientRegion`** | `minRegionInkRecall` 0.93 on the gold standard |
+| `strictInkRecall` | ink pixels (luma < 60) that come back **still < 60**. `inkRecall`'s "kept" test accepts anything darker than 128, which answers "was this stroke erased" and not "is it still a stroke": on the gold standard's paw it scored us 0.978 against the real product's 1.000 for a contour that was visibly thin and dashed | reported; gated per region (below) |
+| `inkComponentRatio` | 8-connected components of the trace's ink field over the source's (components under 4 px ignored). An outline broken into dashes multiplies its component count while `inkRecall` barely moves | reported |
+| `regions[]` | one entry per `salientRegion` / `salientRegions` box: `inkRecall`, `strictInkRecall`, `inkComponentRatio`, `meanColorError`, `ssim`, plus the exemplar's own values and our ratio to them | see `salientRegions` below |
+| `regionInkRecall` / `regionStrictInkRecall` / `regionMeanColorError` / `regionSsim` | the same numbers **aggregated to the worst region** — min for the "more is better" ones, max for error | `minRegionInkRecall` 0.93 on the gold standard; `minRegionStrictInkRecall` 0.94 at the defaults |
+| `regionStrictInkRecallRatio` | our strict ink recall over the exemplar's, in the region where we are worst relative to it. Absolute strict recall cannot be gated globally — the exemplar itself scores 0.859 there because it drops antialiased skirts — but "the real product's line is more solid than ours" is a fair question anywhere | ≥ 0.98 on the gold standard |
+| `layerCompactness` / `layerCompactnessRatio` | mean `perimeter / (2·√(π·area))` over the `<g fill>` layers covering ≥ 1 % of the drawing (1.0 = a disc), and ours over the exemplar's. The sawtooth-vs-sweep difference between clipart and a posterized photo, which MAE cannot see (both sides of a ragged seam are nearly the right colour), ink recall cannot see (no ink) and sub-path count cannot see (one region either way). Computed from path data, not by rasterizing each layer, so it stays pure and deterministic | ≤ 1.3× the exemplar's on the gold standard (its mean is 2.67) |
+| `sourceColors` / `paletteShortfall` | the palette size **before** our own folds, and `min(requested, sourceColors) − delivered`. Separates "the image ran out" from "our cleanup merged them": 16 requested, 16 found, 8 delivered is a shortfall of 8 and nothing to do with the picture | ≤ 1 on the gold-standard rows |
 | `exemplarRegionInkRecall` / `regionInkRecallRatio` | the exemplar's ink recall in that same region, and ours over it — < 1 means the real product renders the salient region better than we do | reported; the A/B in one number |
 | `pathCount` / `shapeCount` | `<path>` count / all drawable elements | ≤ 200 on flat fixtures |
 | `subPathCount` | `M`/`m` starts across every `d` attribute — the **honest shape count** | ≤ 200 flat / ≤ 1200 noisy |
@@ -188,13 +202,22 @@ A fixture entry may also carry:
   ink recall 0.973. `meanColorErrorAsDeclared` keeps the old number for context, and
   the stdout line names the content box it used. For an exemplar that already fills
   its frame the trim is a no-op.
-- `salientRegion` — `{ x, y, width, height }` in source pixels. Every fidelity number
+- `salientRegion` / `salientRegions` — `{ x, y, width, height }` in source pixels, or a list of
+  `{ name, x, y, width, height }`. Every fidelity number
   is area-weighted, and REFERENCE's blind A/B is decided on the part of the picture a
   person looks at: the gold standard's face is 8 % of the canvas, so losing the mouth,
   both fangs and an eye moved whole-frame ink recall by 0.03 and every gate stayed
-  green. A fixture that declares one gets `regionInkRecall` / `regionMeanColorError` /
-  `regionSsim`, the crop written to `artifacts/region/<id>.png`, and — when it also
-  declares an exemplar — the exemplar's own region score beside it.
+  green. A fixture that declares one gets `regionInkRecall` / `regionStrictInkRecall` /
+  `regionMeanColorError` / `regionSsim` / `inkComponentRatio`, the crop written to
+  `artifacts/region/<id>.png` (further boxes go to `artifacts/region/<id>-<name>.png`), and
+  — when it also declares an exemplar — the exemplar's own region scores beside them.
+
+  **One box was not enough.** On the gold standard the face is where line art is lost and
+  the *paw pad* is where a whole colour family is lost — its source colour is rgb(164,143,125),
+  a warm brown, and at DEFAULT_SETTINGS it comes back rgb(103,150,167), a light teal, at
+  region MAE 33.5. With only the face declared, the instruments reported 9 pass / 0 fail on
+  a build whose default output had a hue-inverted region. Gates read the **worst** region, so
+  adding a box can only tighten a fixture, never loosen it.
 
 ### The D1 viewBox question
 
@@ -257,14 +280,17 @@ whole report burns its context on JSON it did not need.
   jq -r '.results[] | select(.status=="FAIL") | "\(.id): \(.failures|join("; "))"' artifacts/metrics.json
   jq '.results[] | select(.id=="reference-snorlax") | .metrics.exemplarSubPathRatio' artifacts/metrics.json
   jq '.results[] | select(.id=="reference-snorlax") | {regionInkRecall:.metrics.regionInkRecall, vsExemplar:.metrics.regionInkRecallRatio}' artifacts/metrics.json
+  jq -r '.results[] | select(.metrics.regions) | .id as $i | .metrics.regions[] | "\($i)/\(.name): strict \(.strictInkRecall) MAE \(.meanColorError)"' artifacts/metrics.json
+  jq -r '.results[] | select(.metrics.paletteShortfall) | "\(.id): \(.metrics.paletteSize) of \(.settings.colorCount) delivered"' artifacts/metrics.json
   jq -r '.suites[].specs[]? | select(.ok==false) | .title' artifacts/e2e-results.json
   grep -c '"status": "FAIL"' artifacts/metrics.json
   ```
 - **Screenshots are the expensive artifact.** Read one deliberately chosen shot, not the
   sheet. `artifacts/screenshots/manifest.json` names every step, so pick by name first.
 - **Diff images before full renders.** `artifacts/diff/<id>.png` says where a fixture is
-  wrong in one glance; `artifacts/region/<id>.png` is a small crop of exactly the part
-  that decides the gold-standard A/B; `artifacts/raster/<id>.png` is only worth opening
+  wrong in one glance; `artifacts/region/<id>.png` (plus `artifacts/region/<id>-<name>.png` for a
+  fixture's further boxes) is a small crop of exactly the part that decides the
+  gold-standard A/B; `artifacts/raster/<id>.png` is only worth opening
   once one of those has told you which fixture to look at.
 
 ## Fixtures
@@ -283,7 +309,7 @@ exactly six colours and palette assertions can be exact.
 | `sticker-alpha-256.png` | 3 flat colours on a **fully transparent** background | the alpha channel — REFERENCE's sticker/decal use case. Every other generated fixture is opaque, which is how transparent-background tracing stayed broken for a lap |
 | `unsupported-animation.gif` | valid 4×4 GIF89a | rejection (A2) — a real image the app must still refuse |
 | `unsupported-notes.txt` | plain text | rejection (A2) |
-| `reference/snorlax.png` | real 1046×833 artwork (**not** generated) | REFERENCE's gold-standard A/B source; instrumented three times, as `reference-snorlax` (16 colours + Enhance, exemplar `reference/snorlax.svg`, `salientRegion` = the face), `reference-snorlax-noenhance` (16 colours, **Enhance off** — the configuration a user gets by default, which every other exemplar gate skipped; looser ratios, 8× bytes / 12× sub-paths) and `reference-snorlax-6c` (6 colours, exemplar `reference/snorlax-clipart-6colors-min90.svg`) |
+| `reference/snorlax.png` | real 1046×833 artwork (**not** generated) | REFERENCE's gold-standard A/B source; instrumented four times, as `reference-snorlax` (16 colours + Enhance, exemplar `reference/snorlax.svg`, regions = the face **and** the paw pad), `reference-snorlax-noenhance` (16 colours, Enhance off; looser ratios, 8× bytes / 12× sub-paths), `reference-snorlax-6c` (6 colours, exemplar `reference/snorlax-clipart-6colors-min90.svg`, paw-pad region) and `reference-snorlax-default` (**no `settings` key at all** — whatever `DEFAULT_SETTINGS` says today, on real artwork. The other three each pin a configuration, which is how the 8-colour default a user actually gets went unmeasured while its output painted the paw pad the wrong hue) |
 | `manifest.json` | ids, dimensions, per-fixture settings, exemplars, thresholds | consumed by the instruments |
 
 `fixtures/reference/` is checked in, not generated: `npm run fixtures` lists those
@@ -364,6 +390,9 @@ function toDxf(result: VectorizeResult, options?: { curves?: 'splines' | 'lines'
 // 'splines' (default) = R2000 with degree-3 SPLINE entities, curve geometry intact;
 // 'lines' = R12 with everything flattened into POLYLINE vertices. Both variants are
 // downloads the real product offers (fixtures/reference/OBSERVED-UI.md).
+// The renderer MUST expose the choice (`dxf-curves`, docs/TESTIDS.md): an option no
+// control can reach is not a feature the product has. If that is not wanted, delete the
+// parameter, this line, the testid and tests/e2e/d3-dxf-variants.spec.ts together.
 
 // Already implemented, no need to touch:
 const DEFAULT_SETTINGS: VectorizeSettings;   // colorCount 8, detail 60, smoothing 50,

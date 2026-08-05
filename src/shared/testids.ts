@@ -86,6 +86,11 @@ export const TESTIDS = {
   exportSvg: 'export-svg',
   exportEps: 'export-eps',
   exportDxf: 'export-dxf',
+  // REFERENCE E "DXF lines-vs-splines variants". `toDxf(result, { curves })` has
+  // implemented both since lap 3 and the engine contract documents them, but no
+  // control reaches it, so the variant is dead code from the product's point of
+  // view. <select> with values splines|lines, feeding `options.curves`.
+  exportDxfCurves: 'dxf-curves',
   exportPdf: 'export-pdf', // REFERENCE D5
   exportPng: 'export-png', // REFERENCE D5
   exportStatus: 'export-status', // + data-last-export-path (cleared whenever it goes stale)
