@@ -7,17 +7,17 @@
     "minArea": 5
   },
   "sources": {
-    "mascot": "342da396bce950aebd336ce12b436b3f43f1b02e86c95faf66468956ea7948df",
-    "engine": "dd13df6601a24a9f8e45327452797332190d28f28c945dc0f8ba62dbe7feb0ff",
+    "mascot": "78d998d40f6ee9c02d941a84052f0e080f966674a6d7f30fb130a13de6e787c8",
+    "engine": "9190daa10b2c911d5e0ce09e190c467003318fdee3b3106ec274af5244e7d5b1",
     "script": "cbafc7fd22d38a99e99472f1c7babdbaa957c337ca81104b6d5d9dbcfe98b868"
   },
   "measured": {
-    "sourceBytes": 577344,
-    "svgBytes": 50475,
-    "sourceKB": 577,
-    "svgKB": 50,
+    "sourceBytes": 573778,
+    "svgBytes": 31203,
+    "sourceKB": 573,
+    "svgKB": 31,
     "layers": 7,
-    "shapes": 225,
+    "shapes": 158,
     "paths": 7,
     "colorCount": 8,
     "zoomPct": 200,
