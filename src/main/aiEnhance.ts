@@ -34,6 +34,7 @@ import {
   type EnhanceErrorCode,
   type EnhanceKeyResult,
   type EnhanceProviderId,
+  type EnhanceQuality,
   type EnhanceRunRequest,
   type EnhanceRunResult,
 } from '../shared/aiEnhance';
@@ -85,6 +86,8 @@ export interface EnhanceRequest {
   apiKey: string;
   /** Aborted at `ENHANCE_TIMEOUT_MS`. */
   signal: AbortSignal;
+  /** Model tier; providers default to 'fast' when omitted. */
+  quality?: EnhanceQuality;
 }
 
 export interface EnhanceProvider {
@@ -106,11 +109,23 @@ export class EnhanceError extends Error {
 
 // --- gemini ----------------------------------------------------------------
 
-const GEMINI_ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent';
+/**
+ * Model per quality tier. The A/B on the reference artwork was unambiguous:
+ * flash leaves soft texture the tracer then has to band; the pro model returns
+ * genuinely flat single-colour fills with the same prompt. Speed/cost decides,
+ * not capability of the prompt.
+ */
+const GEMINI_MODELS: Record<'fast' | 'best', string> = {
+  fast: 'gemini-2.5-flash-image',
+  best: 'gemini-3-pro-image-preview',
+};
+
+function geminiEndpoint(quality: 'fast' | 'best'): string {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODELS[quality]}:generateContent`;
+}
 
 /**
- * gemini-2.5-flash-image, ~8s on a 1024px source in our own measurements.
+ * ~8s (fast) / ~20s (best) on a 1024px source in our own measurements.
  *
  * The key travels in the `x-goog-api-key` header rather than a `?key=` query
  * parameter so it cannot end up in a redirect, a proxy log or an error string
@@ -118,7 +133,7 @@ const GEMINI_ENDPOINT =
  */
 const gemini: EnhanceProvider = {
   id: 'gemini',
-  async enhance({ image, transparent, apiKey, signal }): Promise<Uint8Array> {
+  async enhance({ image, transparent, apiKey, signal, quality = 'fast' }): Promise<Uint8Array> {
     const body = JSON.stringify({
       contents: [
         {
@@ -133,7 +148,7 @@ const gemini: EnhanceProvider = {
 
     let response: Response;
     try {
-      response = await fetch(GEMINI_ENDPOINT, {
+      response = await fetch(geminiEndpoint(quality), {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
         body,
@@ -465,6 +480,36 @@ async function readKey(id: EnhanceProviderId): Promise<string | null> {
  * that never gets an answer is the one outcome this must not have, which is
  * what `ENHANCE_TIMEOUT_MS` is for.
  */
+/**
+ * Opt-in debugging: when GETVECT_AI_DEBUG_DIR is set, every successful enhance
+ * writes its exact input, output and a small metadata file there so a bad
+ * result can be inspected after the fact. Never on by default — these are the
+ * user's images being written to disk.
+ */
+async function debugDump(
+  provider: EnhanceProviderId,
+  quality: EnhanceQuality,
+  transparent: boolean,
+  durationMs: number,
+  input: Uint8Array,
+  output: Uint8Array,
+): Promise<void> {
+  const dir = process.env.GETVECT_AI_DEBUG_DIR;
+  if (!dir) return;
+  try {
+    await fs.mkdir(dir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    await fs.writeFile(path.join(dir, `${stamp}-input.png`), input);
+    await fs.writeFile(path.join(dir, `${stamp}-output.png`), output);
+    await fs.writeFile(
+      path.join(dir, `${stamp}-meta.json`),
+      JSON.stringify({ provider, model: GEMINI_MODELS[quality], quality, transparent, durationMs, inputBytes: input.length, outputBytes: output.length }, null, 2),
+    );
+  } catch {
+    // Debugging must never break the feature.
+  }
+}
+
 export async function runEnhance(request: EnhanceRunRequest): Promise<EnhanceRunResult> {
   const info = enhanceProvider(request.provider);
   const provider = info ? providerFor(request.provider) : null;
@@ -478,15 +523,20 @@ export async function runEnhance(request: EnhanceRunRequest): Promise<EnhanceRun
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ENHANCE_TIMEOUT_MS);
   try {
+    const input = request.image instanceof Uint8Array ? request.image : new Uint8Array(request.image);
+    const quality: EnhanceQuality = request.quality === 'best' ? 'best' : 'fast';
+    const started = Date.now();
     const image = await provider.enhance({
-      image: request.image instanceof Uint8Array ? request.image : new Uint8Array(request.image),
+      image: input,
       transparent: Boolean(request.transparent),
       apiKey,
       signal: controller.signal,
+      quality,
     });
     if (!looksLikePng(image)) {
       return { ok: false, code: 'bad-response', message: 'the provider did not return a PNG' };
     }
+    await debugDump(request.provider, quality, Boolean(request.transparent), Date.now() - started, input, image);
     return { ok: true, image };
   } catch (error) {
     if (error instanceof EnhanceError) return { ok: false, code: error.code, message: error.message };

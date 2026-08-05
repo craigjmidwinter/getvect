@@ -64,6 +64,14 @@ export interface EnhanceKeyResult {
   error?: string;
 }
 
+/**
+ * `fast` = gemini-2.5-flash-image (~8s, cheaper, leaves some soft texture).
+ * `best` = gemini-3-pro-image-preview (~20s, pricier, genuinely flat fills) —
+ * an A/B on the reference artwork showed the model tier, not the prompt, is
+ * what decides flatness.
+ */
+export type EnhanceQuality = 'fast' | 'best';
+
 export interface EnhanceRunRequest {
   provider: EnhanceProviderId;
   /** PNG bytes of the image to re-illustrate. */
@@ -73,6 +81,8 @@ export interface EnhanceRunRequest {
    * from "plain white background" to "fully transparent background".
    */
   transparent: boolean;
+  /** Model tier; defaults to 'fast' when omitted. */
+  quality?: EnhanceQuality;
 }
 
 /** One minute, then we give up and trace the original (never a hang). */

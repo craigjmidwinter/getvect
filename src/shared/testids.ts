@@ -49,6 +49,7 @@ export const TESTIDS = {
   // reports a boolean, never a value (src/main/aiEnhance.ts).
   aiEnhanceGroup: 'ai-enhance-group', // + data-provider, data-has-key, data-enabled
   aiProviderSelect: 'ai-provider-select', // <select>, values = EnhanceProviderId
+  aiQualitySelect: 'ai-quality-select', // <select>, values = EnhanceQuality (fast|best)
   aiKeyInput: 'ai-key-input', // <input type="password">, never pre-filled
   aiKeySaveButton: 'ai-key-save',
   aiKeyClearButton: 'ai-key-clear',
