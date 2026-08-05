@@ -24,6 +24,7 @@ npm run screenshots   # flow screenshots -> artifacts/screenshots/
 | `npm run build:renderer` | Renderer bundle only. |
 | `npm run typecheck` | Type-checks both projects without emitting. |
 | `npm test` | Playwright acceptance suite (`pretest` builds first). |
+| `npm run test:engine` | Engine contract tests (`node --test`, pure Node). Determinism, setting semantics, palette-override behaviour, EPS/DXF structure. |
 | `npm run test:headed` | Same, with a visible window. |
 | `npm run fixtures` | Regenerates `fixtures/` deterministically. |
 | `npm run instruments` | Measures the app engine on every fixture. |
@@ -206,8 +207,34 @@ Obligations beyond the types:
 6. **Palette overrides drive the palette editor.** Change / merge / remove all reduce to
    "re-vectorize with this explicit `settings.palette`".
 
-Until the functions are implemented they throw `EngineNotImplementedError`, which the
-instruments report as `not-implemented` rather than a crash.
+`EngineNotImplementedError` remains exported for the instruments' `not-implemented`
+status, but nothing throws it any more — every function above is implemented.
+
+### How the implementation is put together
+
+`src/engine/index.ts` is the public surface; the stages behind it live in their own
+modules so each can be read on its own.
+
+| module | responsibility |
+| --- | --- |
+| `preprocess.ts` | "Enhance" — 3×3 median denoise, colour simplification, majority filter. |
+| `color.ts` | Histogram → median cut → Lloyd refinement → index image → despeckle. |
+| `trace.ts` | Contour tracing via imagetracerjs's low-level pipeline; stroke banding and speck reconstruction. |
+| `path.ts` | The geometry model, the compact path-data writer, and the parser the exporters read back. |
+| `svg.ts` | SVG serialization: a backdrop `<rect>` plus one compound path per colour per stroke band. |
+| `eps.ts` / `dxf.ts` | Geometry-level converters. They recover shapes by parsing the result's SVG — which is what keeps preview, SVG, EPS and DXF the same drawing. |
+
+Two notes for anyone tuning it:
+
+- **A palette override is an output colour table, not a set of cluster centres.**
+  Clustering always comes from the image with `k = palette.length`; slot *i* is then
+  painted with `palette[i]`. That is what makes "change this swatch" repaint a region
+  instead of stranding the new colour (see the comment in `vectorize`).
+- **Sub-pixel contours need help.** imagetracerjs puts nodes at midpoints between pixel
+  corners, so a one-pixel region collapses to a zero-area contour that a fill renders as
+  nothing. `trace.ts` rebuilds those from the index image as exact pixel squares, and
+  strokes whatever thin contours remain. Removing that costs ~0.11 SSIM on the noisy
+  fixture.
 
 ## Environment caveats
 

@@ -53,6 +53,18 @@ D. **Export**
    - D3. DXF export: structurally valid (readable entities, correct extents).
    - D4. Exports go through the native save dialog with sensible default filenames.
 
+## Gold-standard exemplar (real the reference product output — use for blind A/B)
+
+`fixtures/reference/snorlax.png` is a raster source (1045×833 artwork, flat-color character
+on a busy background) and `fixtures/reference/snorlax.svg` is **the actual output
+the reference product produced for it** at roughly a 16-color setting. Measured properties of the
+real product's output: 34 paths, 31KB, paths grouped into per-color `<g fill="rgb(...)">`
+layers, smooth curve-fitted outlines (no pixel staircase), rendered at 1152×928 with a 10×
+scaled viewBox. Our engine, run on the same PNG at 16 colors, should be in the same class:
+comparable visual fidelity when both are rasterized, path count within ~3× of the
+exemplar's (not thousands of specks), file size within ~5×, and per-color layer grouping.
+Critics should do a blind A/B: rasterize both SVGs and judge which is closer to the source.
+
 ## Quality bar (measurable — the pit crew turns these into instruments)
 
 - **Fidelity**: rasterizing the exported SVG back to the source dimensions and diffing
