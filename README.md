@@ -262,8 +262,9 @@ Tracing builds on [imagetracerjs](https://github.com/jankovicsandras/imagetracer
 (Unlicense) for boundary extraction; curve fitting, colour handling and every exporter are
 this project's own. The test harness uses [sharp](https://github.com/lovell/sharp) and
 [resvg-js](https://github.com/yisibl/resvg-js). The mascot is **Frankie**, an orange tabby
-— the maintainer's own cat, drawn for this project as original artwork and MIT-licensed
-along with the rest of the repo. The fox he replaced is still in
+— the maintainer's own cat; the artwork was generated with an image model from a photo of
+him and then hand-corrected for coat colour and markings, and it is MIT-licensed along
+with the rest of the repo. The fox he replaced is still in
 [`fixtures/reference/`](fixtures/reference/), still license-clean, and still measured. The
 wordmark is set in [Sedgwick Ave Display](https://fonts.google.com/specimen/Sedgwick+Ave+Display)
 (SIL Open Font License), shipped as converted outlines in `docs/assets/getvect-wordmark.svg`.
