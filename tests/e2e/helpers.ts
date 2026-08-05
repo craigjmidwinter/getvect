@@ -1,6 +1,7 @@
 import { test as base, _electron as electron, expect, type ElectronApplication, type Page } from '@playwright/test';
 import { promises as fs } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { TESTIDS } from '../../src/shared/testids';
@@ -20,6 +21,12 @@ export const FIXTURE = {
    *  source. Slow enough to observe in-flight states, busy enough to exercise
    *  the quality knobs, and transparent enough to catch an invented backdrop. */
   fox: join(FIXTURES, 'reference', 'fox-sticker.png'),
+  /** 384x256, antialiased on purpose: outlined spikes over two flat bands. The
+   *  only fixture whose ink edges carry a real one-pixel ramp, which is what
+   *  makes it the honest subject for the zoom-sharpness measurements (C4). */
+  spikes: join(FIXTURES, 'spikes-bands-384.png'),
+  /** 256x256 with a fully transparent surround — the checkerboard subject (C5). */
+  stickerAlpha: join(FIXTURES, 'sticker-alpha-256.png'),
 } as const;
 
 export { TESTIDS, expect };
@@ -172,6 +179,91 @@ export async function previewViewBox(page: Page): Promise<[number, number]> {
   const match = /viewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)"/.exec(svg);
   if (!match) throw new Error(`no viewBox in the preview SVG: ${svg.slice(0, 120)}`);
   return [Number(match[1]), Number(match[2])];
+}
+
+/**
+ * Zoom to an exact factor (1 = 100%).
+ *
+ * The buttons only move in 1.25 steps from whatever Fit happens to be, so a
+ * spec that wants "exactly 400%" has to go through the wheel. The handler is
+ * `zoom' = zoom * WHEEL_STEP ** -deltaY` with `WHEEL_STEP = 1.0015` (App.tsx),
+ * which inverts to the delta below; sent from the pane centre, the pointer
+ * offset is zero, so the pan does not move and the framing stays deterministic.
+ */
+export async function zoomTo(page: Page, target: number) {
+  const level = page.locator(tid(TESTIDS.zoomLevel));
+  const current = Number(await level.getAttribute('data-zoom'));
+  const box = await page.locator(tid(TESTIDS.previewPane)).boundingBox();
+  if (!box) throw new Error('preview pane has no bounding box');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -Math.log(target / current) / Math.log(1.0015));
+  await expect
+    .poll(async () => Number(await level.getAttribute('data-zoom')), {
+      message: `zoom did not reach ${target}`,
+    })
+    .toBeCloseTo(target, 3);
+}
+
+/**
+ * Wait until the stage has been re-laid-out at the current zoom.
+ *
+ * The layout size (and therefore the rasterization) lags the zoom by up to a
+ * frame on purpose — see `useLayoutZoom` in Preview.tsx. Anything that measures
+ * pixels has to wait for the resting state rather than catch a transient.
+ */
+export async function waitForSettledRender(page: Page) {
+  for (const id of [TESTIDS.previewOriginal, TESTIDS.previewVector]) {
+    await expect
+      .poll(
+        async () =>
+          page
+            .locator(tid(id))
+            .evaluate((el) => el.getAttribute('data-render-zoom') === el.getAttribute('data-zoom')),
+        { message: `${id} never settled: data-render-zoom never reached data-zoom` },
+      )
+      .toBe(true);
+  }
+}
+
+/**
+ * Screenshot one preview view and hand back its pixels.
+ *
+ * `scale` is captured pixels per CSS pixel — 1 on a normal display, 2 on a
+ * Retina one — so a measurement in device pixels can be stated in CSS pixels
+ * and mean the same thing on both.
+ */
+export interface PanePixels {
+  width: number;
+  height: number;
+  scale: number;
+  /** Rec.709 luminance, 0-255. */
+  lum(x: number, y: number): number;
+  /** `"r,g,b"`, for exact-colour comparisons like the checkerboard. */
+  rgb(x: number, y: number): string;
+}
+
+export async function capturePane(page: Page, testid: string): Promise<PanePixels> {
+  const sharp = createRequire(__filename)('sharp');
+  const locator = page.locator(tid(testid));
+  const box = await locator.boundingBox();
+  if (!box) throw new Error(`${testid} has no bounding box`);
+  const { data, info } = await sharp(await locator.screenshot())
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const at = (x: number, y: number) => (y * info.width + x) * info.channels;
+  return {
+    width: info.width,
+    height: info.height,
+    scale: info.width / box.width,
+    lum: (x, y) => {
+      const o = at(x, y);
+      return 0.2126 * data[o] + 0.7152 * data[o + 1] + 0.0722 * data[o + 2];
+    },
+    rgb: (x, y) => {
+      const o = at(x, y);
+      return `${data[o]},${data[o + 1]},${data[o + 2]}`;
+    },
+  };
 }
 
 /** Wait until the workspace reports a finished vectorization (data-status="ready"). */
