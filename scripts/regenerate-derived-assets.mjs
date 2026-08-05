@@ -3,7 +3,7 @@
  * `npm run assets` — regenerate every derived asset from its one source.
  *
  * WHY THIS EXISTS. Half the pictures in this repo are *engine output*: the
- * traced fox on the README, the before/after composite, the landing page's
+ * traced mascot on the README, the before/after composite, the landing page's
  * before/after demo. They were produced once, by hand, and then the engine kept
  * moving. The live demo at getvect.midwinter.io spent a week serving a trace
  * made before the alpha-ingest fix — an invented black backdrop, on a sticker
@@ -50,10 +50,11 @@ import { decodeImageFile, canvasIngest } from '../instruments/lib/decode.mjs';
  *
  * Swapping the mascot is: drop the new artwork in, change these two lines, run
  * `npm run assets`. `SLUG` is the filename stem the outputs are named after
- * (`fox-vector.svg`, `fox-mascot.png`, …), so a rename travels with the swap.
+ * (`<slug>-vector.svg`, `<slug>-mascot.png`, …), so a rename travels with the
+ * swap.
  */
-const MASCOT_SOURCE = 'fixtures/reference/fox-sticker.png';
-const SLUG = 'fox';
+const MASCOT_SOURCE = 'fixtures/reference/frankie-sticker.png';
+const SLUG = 'frankie';
 
 /**
  * THE DEMO TRACE. The settings docs/assets/<slug>-vector.svg is generated at,
@@ -61,9 +62,9 @@ const SLUG = 'fox';
  * colours with Smart anti-aliasing"). If you change these, the copy has to
  * change with them — the drift table this script prints will say so.
  *
- * These are also the settings PUBLISH-CHECKLIST.md records for the fox
- * exemplar A/B, minus Enhance: the demo asset is what the app gives you with
- * the palette set to 8, nothing else touched.
+ * These are also the settings the mascot exemplar A/B is recorded at, minus
+ * Enhance: the demo asset is what the app gives you with the palette set to 8,
+ * nothing else touched.
  */
 const DEMO_SETTINGS = { colorCount: 8, antiAliasing: 'smart', minArea: 5 };
 
@@ -73,8 +74,13 @@ const DEMO_SETTINGS = { colorCount: 8, antiAliasing: 'smart', minArea: 5 };
  * the traced SVG rasterized at the same magnification so its curves are not.
  *
  * `crop` is in source pixels and `zoom` is the magnification, so the panel is
- * exactly `crop * zoom`. Framing is the fox's face — both eyes and the whole
- * muzzle, which is where a tracer's mistakes are legible.
+ * exactly `crop * zoom`. Framing is the mascot's face — both eyes, the nose and
+ * the mouth, which is where a tracer's mistakes are legible.
+ *
+ * `crop.width` is not free: the geometry assertion below requires the two panels
+ * plus the padding and gap to fill `width` exactly, which at zoom 2 pins it to
+ * 315. Re-frame by moving `crop.x` / `crop.y`, and change `crop.width` only
+ * together with `zoom`/`pad`/`gap`.
  */
 const BEFORE_AFTER = {
   width: 1280,
@@ -84,7 +90,7 @@ const BEFORE_AFTER = {
   /** Height of the label band above the panels. */
   header: 44,
   background: '#0e1116',
-  crop: { x: 374, y: 331, width: 315, height: 254 },
+  crop: { x: 210, y: 250, width: 315, height: 254 },
   zoom: 2,
   title: { size: 15, weight: 700, fill: '#ffffff', baseline: 26, tracking: 0.4 },
   subtitle: { size: 11, weight: 400, fill: '#9aa0a6', baseline: 42, tracking: 0 },
@@ -165,7 +171,7 @@ const CLAIMS = [
   ['site/index.html', 'colour layers (readout)', /<span>shapes, (\d+) layers<\/span>/, 'layers'],
   ['site/index.html', 'colours (readout)', /<b>(\d+)<\/b><span>colours, Smart AA/, 'colorCount'],
   ['site/index.html', 'SVG KB (demo alt)', /as a (\d+) KB SVG/, 'svgKB'],
-  ['site/index.html', 'source KB (prose)', /its (\d+) KB raster becomes/, 'sourceKB'],
+  ['site/index.html', 'source KB (prose)', /(?:its|his|her) (\d+) KB raster becomes/, 'sourceKB'],
   ['site/index.html', 'SVG KB (prose)', /becomes a (\d+) KB SVG/, 'svgKB'],
   ['site/index.html', 'colour layers (prose)', /KB SVG in (\d+) colour layers/, 'layers'],
   ['site/index.html', 'shapes (prose)', /colour layers and (\d+) shapes/, 'shapes'],
@@ -176,7 +182,7 @@ const CLAIMS = [
  * output on the same source. They are the comparator the whole project is
  * graded against, and they only change when the real product is re-measured.
  */
-const FOREIGN_CLAIMS = ['35.5 KB', '63 paths'];
+const FOREIGN_CLAIMS = ['21.7 KB', '40 paths'];
 
 const STAMP_PATH = 'scripts/derived-assets.stamp.json';
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
