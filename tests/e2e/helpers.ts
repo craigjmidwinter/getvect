@@ -142,10 +142,16 @@ export async function setSlider(page: Page, id: string, value: number) {
 /** Click an export button and return the path the app wrote. */
 export async function exportAs(
   page: Page,
-  format: 'svg' | 'eps' | 'dxf',
+  format: 'svg' | 'eps' | 'dxf' | 'pdf' | 'png',
   exportDir: string,
 ): Promise<string> {
-  const button = { svg: TESTIDS.exportSvg, eps: TESTIDS.exportEps, dxf: TESTIDS.exportDxf }[format];
+  const button = {
+    svg: TESTIDS.exportSvg,
+    eps: TESTIDS.exportEps,
+    dxf: TESTIDS.exportDxf,
+    pdf: TESTIDS.exportPdf,
+    png: TESTIDS.exportPng,
+  }[format];
   await page.locator(tid(button)).click();
   const status = page.locator(tid(TESTIDS.exportStatus));
   await expect(status).toHaveAttribute('data-last-export-path', /.+/, { timeout: 15_000 });

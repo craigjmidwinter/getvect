@@ -31,6 +31,7 @@ import {
 } from './color';
 import { resultToDxf, type DxfOptions } from './dxf';
 import { resultToEps } from './eps';
+import { resultToPdf } from './pdf';
 import { cloneRaster, enhanceSync } from './preprocess';
 import { renderSvg } from './svg';
 import { paddedIndexArray, traceLayer, type TracedLayer } from './trace';
@@ -56,9 +57,27 @@ export const SUPPORTED_INPUT_MIME_TYPES: readonly string[] = [
   'image/x-ms-bmp',
 ];
 
-/** Export formats (REFERENCE D1-D3). */
-export type ExportFormat = 'svg' | 'eps' | 'dxf';
-export const EXPORT_FORMATS: readonly ExportFormat[] = ['svg', 'eps', 'dxf'];
+/**
+ * Export formats (REFERENCE D1-D3, D5).
+ *
+ * `png` is the odd one out: it is a raster, so the engine cannot produce it —
+ * rasterization needs a renderer (the app uses a canvas; see
+ * src/renderer/lib/raster.ts). `VectorExportFormat` is the subset `serialize()`
+ * can turn into a text document.
+ */
+export type VectorExportFormat = 'svg' | 'eps' | 'dxf' | 'pdf';
+export type ExportFormat = VectorExportFormat | 'png';
+export const VECTOR_EXPORT_FORMATS: readonly VectorExportFormat[] = ['svg', 'eps', 'dxf', 'pdf'];
+export const EXPORT_FORMATS: readonly ExportFormat[] = [...VECTOR_EXPORT_FORMATS, 'png'];
+
+/** MIME type per export format — used for the save dialog and for blobs. */
+export const EXPORT_MIME: Record<ExportFormat, string> = {
+  svg: 'image/svg+xml',
+  eps: 'application/postscript',
+  dxf: 'image/vnd.dxf',
+  pdf: 'application/pdf',
+  png: 'image/png',
+};
 
 /**
  * Defaults used for the automatic vectorization that runs on image load
@@ -411,14 +430,23 @@ export function toDxf(result: VectorizeResult, options?: DxfOptions): string {
   return resultToDxf(result, options);
 }
 
+/**
+ * Convert a vectorization result to PDF (REFERENCE D5).
+ * A one-page vector PDF whose MediaBox is the source pixel size.
+ */
+export function toPdf(result: VectorizeResult): string {
+  assertResult(result, 'toPdf');
+  return resultToPdf(result);
+}
+
 function assertResult(result: VectorizeResult, fn: string): void {
   if (!result || typeof result.svg !== 'string') {
     throw new TypeError(`${fn}(): expected a VectorizeResult with an svg string`);
   }
 }
 
-/** Convenience dispatcher used by the export IPC handler. */
-export function serialize(result: VectorizeResult, format: ExportFormat): string {
+/** Convenience dispatcher used by the export buttons. */
+export function serialize(result: VectorizeResult, format: VectorExportFormat): string {
   switch (format) {
     case 'svg':
       return result.svg;
@@ -426,6 +454,8 @@ export function serialize(result: VectorizeResult, format: ExportFormat): string
       return toEps(result);
     case 'dxf':
       return toDxf(result);
+    case 'pdf':
+      return toPdf(result);
     default: {
       const never: never = format;
       throw new Error(`Unknown export format: ${String(never)}`);

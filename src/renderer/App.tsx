@@ -5,8 +5,7 @@ import {
   hexOf,
   isSupportedInput,
   parseHex,
-  toDxf,
-  toEps,
+  serialize,
   type ExportFormat,
   type RasterImage,
   type RgbColor,
@@ -17,6 +16,7 @@ import {
 import { api } from './api';
 import { basename, decodeBlob, mimeForName, stemOf } from './lib/decode';
 import { vectorizeImage } from './lib/engineClient';
+import { svgToPngBase64 } from './lib/raster';
 import { Preview, fmt, type PreviewMode } from './components/Preview';
 
 /**
@@ -79,6 +79,18 @@ const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi 
 let idCounter = 0;
 const nextImageId = () => `img-${++idCounter}`;
 
+/**
+ * The export bar (REFERENCE D1-D3, D5). Order matches the reference product's
+ * download menu: the vector formats first, the raster escape hatch last.
+ */
+const EXPORT_BUTTONS: ReadonlyArray<{ format: ExportFormat; testid: string; title: string }> = [
+  { format: 'svg', testid: TESTIDS.exportSvg, title: 'Scalable Vector Graphics — the document in the preview' },
+  { format: 'eps', testid: TESTIDS.exportEps, title: 'Encapsulated PostScript — for print workflows' },
+  { format: 'dxf', testid: TESTIDS.exportDxf, title: 'AutoCAD DXF — for CAD, laser and vinyl cutters' },
+  { format: 'pdf', testid: TESTIDS.exportPdf, title: 'Vector PDF — one page at the source pixel size' },
+  { format: 'png', testid: TESTIDS.exportPng, title: 'PNG raster of the vector result' },
+];
+
 export function App() {
   const [images, setImages] = useState<ImageEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -92,6 +104,8 @@ export function App() {
   const [swatchIndex, setSwatchIndex] = useState(0);
   const [mergeTarget, setMergeTarget] = useState(0);
   const [lastExportPath, setLastExportPath] = useState<string | null>(null);
+  /** Format currently in the save dialog, so its button can show it. */
+  const [exporting, setExporting] = useState<ExportFormat | null>(null);
 
   const paneRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -463,25 +477,45 @@ export function App() {
 
   // --- export (REFERENCE D) ------------------------------------------------
 
+  /**
+   * REFERENCE D — every export goes through this one function and out through
+   * `window.getvect.saveExport`, i.e. the native save dialog in the main
+   * process. There is deliberately no second, dialog-free write path
+   * (docs/TESTIDS.md, "Export dialog under test").
+   *
+   * The bytes come from the engine's converters, run over the result that is
+   * *currently in the preview*, so what you see is what you save (C3). The one
+   * exception is PNG, which no pure-geometry engine can produce: it is
+   * rasterized from that same SVG document by the renderer.
+   */
   const doExport = useCallback(
     async (format: ExportFormat) => {
       const bridge = api();
       const image = selected;
       if (!bridge || !image?.result) return;
-      const contents =
-        format === 'svg' ? image.result.svg : format === 'eps' ? toEps(image.result) : toDxf(image.result);
       // Drop the previous path first: `data-last-export-path` must describe the
       // export in hand, never the one before it (docs/TESTIDS.md D).
       setLastExportPath(null);
+      setExporting(format);
       try {
+        const contents =
+          format === 'png'
+            ? await svgToPngBase64(image.result.svg, image.result.width, image.result.height)
+            : serialize(image.result, format);
+        const binary = format === 'png';
         const outcome = await bridge.saveExport({
+          // D4: the source filename with the format's extension, e.g.
+          // `logo-flat-512.png` → `logo-flat-512.svg`.
           defaultName: `${stemOf(image.name)}.${format}`,
           contents,
           format,
+          encoding: binary ? 'base64' : 'utf8',
         });
         if (!outcome.canceled && outcome.filePath) setLastExportPath(outcome.filePath);
       } catch (error) {
         setToast(`Export failed: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        setExporting(null);
       }
     },
     [selected],
@@ -641,16 +675,21 @@ export function App() {
             </span>
           </div>
 
-          <div className="button-group">
-            <button data-testid={TESTIDS.exportSvg} type="button" disabled={!ready} onClick={() => void doExport('svg')}>
-              SVG
-            </button>
-            <button data-testid={TESTIDS.exportEps} type="button" disabled={!ready} onClick={() => void doExport('eps')}>
-              EPS
-            </button>
-            <button data-testid={TESTIDS.exportDxf} type="button" disabled={!ready} onClick={() => void doExport('dxf')}>
-              DXF
-            </button>
+          <div className="button-group export-group">
+            <span className="group-label">Export</span>
+            {EXPORT_BUTTONS.map(({ format, testid, title }) => (
+              <button
+                key={format}
+                data-testid={testid}
+                type="button"
+                className={exporting === format ? 'is-busy' : undefined}
+                disabled={!ready || exporting !== null}
+                title={title}
+                onClick={() => void doExport(format)}
+              >
+                {format.toUpperCase()}
+              </button>
+            ))}
             <span
               data-testid={TESTIDS.exportStatus}
               className="export-status"

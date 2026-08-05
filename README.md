@@ -6,8 +6,8 @@ specified in [REFERENCE.md](./REFERENCE.md).
 **Current state: engine + app shell landed.** `src/engine/` meets the REFERENCE.md quality
 bar on every fixture (`npm run instruments`: 5/5 pass) and the renderer implements the
 whole workflow — ingest, auto-vectorize in a worker, settings, palette editing,
-original/vector/side-by-side preview with synchronised zoom & pan, and SVG/EPS/DXF export
-through the native save dialog. `npm test` is green (40/40).
+original/vector/side-by-side preview with synchronised zoom & pan, and SVG/EPS/DXF/PDF/PNG
+export through the native save dialog. `npm test` is green (44/44).
 
 ```bash
 npm install
