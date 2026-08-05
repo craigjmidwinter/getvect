@@ -140,6 +140,73 @@ const dist = (
   c: { r: number; g: number; b: number },
 ): number => Math.abs(c.r - r) + Math.abs(c.g - g) + Math.abs(c.b - b);
 
+/**
+ * How heavily a *hue* disagreement counts when a pixel is handed to a palette
+ * slot, in units of the L1 RGB distance it is added to.
+ *
+ * This is the fix for the class of defect that puts teal in a cream face. Plain
+ * RGB distance is blind to hue: the warm mid-brown skirt of the gold-standard
+ * artwork's outline, rgb(79,66,58), sits 115 (L1) from the dark TEAL slot
+ * rgb(38,90,108) and 160 from the near-black outline slot rgb(15,15,13), so
+ * nearest-colour matching paints the inside of both fangs with a colour that
+ * belongs to the character's belly on the other side of the picture. Nothing
+ * downstream can undo that honestly — the fringe collapse can only merge a
+ * *thin* band, and those blobs are 24-40px lumps four pixels thick.
+ *
+ * Adding the opponent-chroma difference (red-green and blue-yellow, the two
+ * axes hue lives on) reorders that comparison and the skirt resolves onto the
+ * outline, where a person would put it. Two alternatives were measured and
+ * rejected on the fixtures rather than on taste: the redmean weighting still
+ * prefers the teal, and full CIE Lab ΔE prefers it correctly but wrecks
+ * everything dark (L* is so stretched near black that ink pixels leave the ink
+ * slot — whole-frame ink recall 0.989 -> 0.677 on the gold standard).
+ *
+ * Half a unit is where the leak closes, measured on the gold standard: at 0.25
+ * the muzzle keeps 0.07 % of its area teal and the paw pad 0.47 %, and at 1.0
+ * the extra hue pressure starts splitting the near-neutral creams into ragged
+ * layers (sub-paths 68 -> 127 at 16 colours + Enhance).
+ */
+const CHROMA_WEIGHT = 0.5;
+
+/**
+ * Colour distance for *assignment* decisions: which palette slot a pixel
+ * belongs to.
+ *
+ * Deliberately NOT the same function as `dist`. `dist` answers "how far apart
+ * are these two colours" for contrast thresholds tuned in L1 RGB units (the
+ * despeckle noise filter, the halo fold, the Enhance floor), and moving those
+ * goalposts would silently retune every one of them. This one answers "which of
+ * these colours is the same *thing*", where a hue flip is a wrong answer
+ * however short the RGB vector is.
+ *
+ * Ink is exempt, for the same reason `deAntialias` biases a ramp toward it
+ * (INK_RAMP_BIAS, src/engine/preprocess.ts): the skirt of a drawn stroke
+ * belongs to the stroke. A near-neutral ink slot has no hue for a warm pixel to
+ * flip to, so charging it the chroma term only ever thins line art — measured
+ * on the gold standard, exempting it puts the paw crop's strict ink recall back
+ * to 0.99x of the real product's from 0.97x.
+ */
+const assignDist = (
+  r: number,
+  g: number,
+  b: number,
+  c: { r: number; g: number; b: number },
+): number => {
+  const dr = c.r - r;
+  const dg = c.g - g;
+  const db = c.b - b;
+  const l1 = Math.abs(dr) + Math.abs(dg) + Math.abs(db);
+  if (lumaOf(c) < INK_LUMA) return l1;
+  return l1 + CHROMA_WEIGHT * (Math.abs(dr - dg) + Math.abs(db - dg));
+};
+
+/**
+ * Luma below which a palette entry is the drawing's ink rather than one of its
+ * colours — the same bar `reserveDarkest` spends a slot on and the engine's
+ * cleanup passes protect (src/engine/index.ts).
+ */
+const INK_LUMA = 60;
+
 interface Box {
   lo: number;
   hi: number; // exclusive
@@ -317,7 +384,6 @@ export function computePaletteSync(
  * their centroid. The count is unchanged; only where one slot sits changes.
  */
 function reserveDarkest(hist: Histogram, palette: RgbColor[]): RgbColor[] {
-  const INK_LUMA = 60;
   if (palette.length < 2) return palette;
   if (palette.some((c) => lumaOf(c) < INK_LUMA)) return palette;
 
@@ -646,6 +712,9 @@ export function mapToPalette(
   const { data } = image;
   const cache = new Map<number, number>();
   const k = palette.length;
+  // Judged with `assignDist`, not `dist`: this is the one place a pixel is told
+  // which colour family it belongs to, and a hue flip here is the defect a
+  // person names instantly ("why is there blue in his mouth").
   for (let p = 0, i = 0; p < pixels; p++, i += 4) {
     if (mask && !mask[p]) {
       out[p] = TRANSPARENT_INDEX;
@@ -660,7 +729,7 @@ export function mapToPalette(
       let bestIdx = 0;
       let bestD = Infinity;
       for (let j = 0; j < k; j++) {
-        const d = dist(r, g, b, palette[j]);
+        const d = assignDist(r, g, b, palette[j]);
         if (d < bestD) {
           bestD = d;
           bestIdx = j;
