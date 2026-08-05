@@ -493,7 +493,11 @@ export function App() {
         // whose backing buffer TypeScript will not promise is not shared.
         const buffer = new ArrayBuffer(outcome.image.byteLength);
         new Uint8Array(buffer).set(outcome.image);
-        const blob = new Blob([buffer], { type: 'image/png' });
+        // The provider's own format, sniffed from the bytes in the main process
+        // — not assumed. The two Gemini tiers answer in different types (flash
+        // PNG, pro JPEG), and hard-coding `image/png` here is half of the bug
+        // that made every `best` run fail.
+        const blob = new Blob([buffer], { type: outcome.mimeType });
         const raster = await decodeBlob(blob);
         const url = URL.createObjectURL(blob);
         setImages((prev) =>

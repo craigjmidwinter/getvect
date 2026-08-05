@@ -30,6 +30,8 @@ import {
 
 /** The stub's canned output — see `STUB_WIDTH`/`STUB_HEIGHT` in src/main/aiEnhance.ts. */
 const STUB_SIZE: [number, number] = [256, 160];
+/** The stub's canned *JPEG* output — `STUB_JPEG_WIDTH`/`STUB_JPEG_HEIGHT`. */
+const STUB_JPEG_SIZE: [number, number] = [192, 128];
 
 test('[AI] the toggle is inert until a key is saved, and live once it is', async ({ page }) => {
   await loadViaPicker(page, FIXTURE.flat512);
@@ -192,6 +194,37 @@ test('[AI] a provider failure falls back to the original image and says why', as
     await previewViewBox(page),
     'the fallback did not trace the un-enhanced image',
   ).toEqual([512, 512]);
+});
+
+test('[AI] a provider that answers in JPEG is accepted, not rejected as "not a PNG"', async ({
+  page,
+}) => {
+  /**
+   * The bug this exists to prevent, in full: `runEnhance` checked the returned
+   * bytes against the PNG signature and rejected everything else.
+   * `gemini-2.5-flash-image` (the `fast` tier) answers `image/png` and passed;
+   * `gemini-3-pro-image-preview` (the `best` tier) answers **`image/jpeg`**, so
+   * *every* Best run failed with "the provider did not return a PNG" —
+   * 20 seconds and a paid API call to reach a message about the wrong thing.
+   *
+   * The whole suite stayed green through it because the stub only ever spoke
+   * PNG. `reply-jpeg` is the hook that fixes that: the provider's format is now
+   * sniffed from the bytes and travels with the image, and the traced document
+   * is the JPEG's own size — proof it decoded and became the working bitmap.
+   */
+  await loadViaPicker(page, FIXTURE.flat512);
+  await waitForReady(page);
+
+  await saveAiKey(page, 'reply-jpeg');
+  await page.locator(tid(TESTIDS.aiEnhanceToggle)).click();
+  await waitForReady(page);
+
+  await expect(page.locator(tid(TESTIDS.aiEnhanceStatus))).toHaveAttribute('data-ai-state', 'done');
+  expect(
+    await previewViewBox(page),
+    'a JPEG reply was refused: the un-enhanced image is what got traced',
+  ).toEqual(STUB_JPEG_SIZE);
+  await expect(page.locator(tid(TESTIDS.errorToast))).toHaveCount(0);
 });
 
 test('[AI] a network failure is reported as a network failure', async ({ page }) => {
