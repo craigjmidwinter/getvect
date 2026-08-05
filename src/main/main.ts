@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { registerAiEnhanceIpc } from './aiEnhance';
 
@@ -32,12 +32,73 @@ if (isE2E && process.platform === 'darwin') {
   }
 }
 
+/**
+ * Application identity — everything that makes the running process say
+ * "GetVect" instead of "Electron".
+ *
+ * All of it is skipped under e2e on purpose. `setName()` moves
+ * `app.getPath('userData')`, which is where the AI Enhance key store lives, and
+ * a Dock icon is the opposite of what the suite wants (see the `dock.hide()`
+ * note above). Under test the app keeps its default identity and stays
+ * invisible; identity work must not be observable by the harness.
+ */
+const isPackaged = app.isPackaged;
+
+/**
+ * Absolute path to a brand asset. In development the compiled main process
+ * lives at `dist/main/`, so `build/` is two levels up; in a packaged app the
+ * same files are copied next to the bundle's resources (see the
+ * `extraResources` block in package.json's `build` config).
+ */
+function brandAsset(name: string): string {
+  return isPackaged
+    ? path.join(process.resourcesPath, name)
+    : path.join(__dirname, '..', '..', 'build', name);
+}
+
+/** `build/icon.png` if it is actually there — the repo can be used without it. */
+function appIconPath(): string | undefined {
+  const candidate = brandAsset('icon.png');
+  return existsSync(candidate) ? candidate : undefined;
+}
+
+if (!isE2E) {
+  // Before `whenReady`, so the macOS menu bar is built with the right name:
+  // set it later and the application menu still reads "Electron" in dev.
+  app.setName('GetVect');
+}
+
+/** Dock icon + About panel. Called at ready, never under e2e. */
+function applyAppIdentity(): void {
+  app.setAboutPanelOptions({
+    applicationName: 'GetVect',
+    applicationVersion: app.getVersion(),
+    copyright: '© 2026 Craig Midwinter',
+    website: 'https://github.com/craigjmidwinter/getvect',
+  });
+
+  // A packaged .app already carries its icon in the bundle (CFBundleIconFile ->
+  // icon.icns), which is higher fidelity than a single 512px PNG; only dev runs
+  // need the override, otherwise `npm start` shows the default Electron atom.
+  if (process.platform === 'darwin' && !isPackaged) {
+    const icon = appIconPath();
+    if (icon) {
+      try {
+        app.dock?.setIcon(icon);
+      } catch {
+        /* no dock (headless / non-macOS build): nothing to brand */
+      }
+    }
+  }
+}
+
 /** Directory used instead of the native save dialog when running under e2e. */
 const e2eExportDir = process.env.GETVECT_EXPORT_DIR ?? '';
 
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
+  const icon = appIconPath();
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
@@ -46,6 +107,9 @@ function createWindow(): void {
     show: false,
     backgroundColor: '#12141a',
     title: 'GetVect',
+    // Ignored on macOS (the bundle/Dock owns the icon there); this is what puts
+    // the fox in the window decoration and taskbar on Linux and Windows.
+    ...(icon ? { icon } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -200,11 +264,15 @@ app.on('activate', () => {
 });
 
 void app.whenReady().then(() => {
-  if (isE2E && process.platform === 'darwin') {
-    // Accessory apps get no Dock icon and cannot become the active app, so
-    // test runs stay invisible to the user's session. Must be set before any
-    // window shows.
-    app.setActivationPolicy('accessory');
+  if (isE2E) {
+    if (process.platform === 'darwin') {
+      // Accessory apps get no Dock icon and cannot become the active app, so
+      // test runs stay invisible to the user's session. Must be set before any
+      // window shows.
+      app.setActivationPolicy('accessory');
+    }
+  } else {
+    applyAppIdentity();
   }
   createWindow();
 });
