@@ -1248,7 +1248,7 @@ export function App() {
                 <select
                   data-testid={TESTIDS.settingOverlap}
                   aria-label="Overlap"
-                  value={settings.overlap ?? 'high'}
+                  value={settings.overlap ?? DEFAULT_SETTINGS.overlap}
                   onChange={(event) => setSetting({ overlap: event.target.value as Overlap })}
                 >
                   {OVERLAPS.map(({ value, label }) => (
