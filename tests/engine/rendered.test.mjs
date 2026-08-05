@@ -24,6 +24,7 @@ import {
   countSubPaths,
   cropRegion,
   curveCommandRatio,
+  foreignColorRatio,
   inkRecall,
   layerCompactness,
   meanColorError,
@@ -267,6 +268,15 @@ const SNORLAX_FACE = { x: 300, y: 200, width: 360, height: 200 };
  */
 const SNORLAX_PAW_PAD = { x: 60, y: 670, width: 110, height: 80 };
 
+/**
+ * The mouth and both fangs. Same box `fixtures/manifest.json` gives the
+ * gold-standard rows as their `muzzle` region, and the only crop that can ask
+ * the leak question: the head's own outline is a dark teal, so teal inside the
+ * *face* box is a colour that box legitimately contains, while cropped to the
+ * muzzle the source has no teal at all.
+ */
+const SNORLAX_MUZZLE = { x: 420, y: 290, width: 220, height: 90 };
+
 /** Mean RGB of a region, for asking "did this end up the right hue at all". */
 function meanColor(image) {
   let r = 0;
@@ -399,6 +409,47 @@ test('[B4] the default pipeline does not invert a region\'s hue', async () => {
         `${sourceMean.g.toFixed(0)},${sourceMean.b.toFixed(0)}) — a warm brown rendered a cool ` +
         'teal, i.e. the colour family was deleted before quantization, not approximated',
     );
+  }
+});
+
+test('[quality-bar] the DEFAULT settings paint no colour the crop does not contain', async () => {
+  /**
+   * The configuration a user gets on load, on the crop that decides REFERENCE's
+   * blind A/B. It used to paint 123 teal pixels — 0.50 % of the muzzle — inside
+   * the mouth and both fangs, where the source has none and where both the real
+   * the reference product exemplar and our own 16-colour run score 0.000 %.
+   *
+   * Nothing else could see it: teal specks inside a flat cream region move mean
+   * colour error by hundredths, SSIM by nothing (the local variance term barely
+   * blinks) and ink recall by nothing (teal is not ink). It is a *categorical*
+   * error — nearest-colour matching in plain RGB handed the warm skirt of the
+   * outline to a slot that belongs to the character's belly — so it is asked
+   * categorically: what share of the crop is painted a colour the SOURCE crop
+   * does not contain (`foreignColorRatio`, tolerance 40).
+   *
+   * The exemplar's own score is the bar, and the exemplar scores zero.
+   */
+  const ex = await renderExemplar('reference/snorlax.svg');
+  for (const [label, settings] of [
+    ['defaults', { ...S }],
+    ['16 colours + Enhance', { ...S, colorCount: 16, enhance: true }],
+  ]) {
+    const r = await engine.vectorize(snorlaxIn, settings);
+    const ours = renderResult(r);
+    for (const [name, box] of [
+      ['muzzle', SNORLAX_MUZZLE],
+      ['paw pad', SNORLAX_PAW_PAD],
+    ]) {
+      const src = cropRegion(snorlax, box);
+      const theirs = foreignColorRatio(src, cropRegion(ex, box));
+      const mine = foreignColorRatio(src, cropRegion(ours, box));
+      assert.ok(
+        mine <= Math.max(theirs, 0.0005),
+        `${label}: ${(mine * 100).toFixed(2)} % of the ${name} is painted a colour the source ` +
+          `crop does not contain, against the real product's ${(theirs * 100).toFixed(2)} % — a ` +
+          'hue that is not in the picture is still a hue that is not in the picture',
+      );
+    }
   }
 });
 

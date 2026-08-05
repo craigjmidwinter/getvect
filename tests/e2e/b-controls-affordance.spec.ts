@@ -89,10 +89,20 @@ test('[B2] the Photo preset never shows a colour count it will not use', async (
   for (const want of [4, 8, 12]) {
     await setSlider(page, TESTIDS.settingColorCount, want);
     await waitForReady(page);
-    // A clamped `min` is one of the two acceptable fixes: the control simply
-    // refuses the value, so it never displays one the engine ignores.
+    /**
+     * A clamped `min` is one of the two acceptable fixes: the control refuses
+     * the value outright, so what it displays is never a number the engine
+     * ignores. The assertions below are made against what the control ACTUALLY
+     * shows rather than against `want` — otherwise the clamp would satisfy this
+     * test by skipping it, and a clamp that displayed 16 while the engine
+     * delivered 24 would pass unread.
+     */
     const shown = Number(await slider.inputValue());
-    if (shown !== want) continue;
+    expect(
+      shown,
+      `the COLORS slider took ${shown} under the Photo preset, below the 16 that model floors ` +
+        'the budget at',
+    ).toBeGreaterThanOrEqual(Math.min(want, 16));
 
     const hint = page.locator(tid(TESTIDS.settingColorCountHint));
     const actual = Number(await hint.getAttribute('data-actual'));
