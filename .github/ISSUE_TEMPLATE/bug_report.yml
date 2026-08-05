@@ -1,0 +1,107 @@
+name: Bug report
+description: Something in GetVect misbehaves — a bad trace, a broken export, a crash.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two things make a vectorization bug reproducible: **the input image** and **the
+        exact settings**. Without both, a report is usually not actionable — the same
+        picture at two different palette sizes is two different bugs.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you expected, and what you got instead.
+      placeholder: The transparent background came out as a solid black rectangle in the exported SVG.
+    validations:
+      required: true
+
+  - type: textarea
+    id: input-image
+    attributes:
+      label: Input image
+      description: |
+        **Attach the image file** (drag it into this box). If you can't share the original,
+        attach a smaller image that reproduces the same problem. Please also note its
+        format and dimensions, and whether it has a transparent background.
+      placeholder: |
+        Attached: logo.png — 1024×1024 PNG, transparent background, ~12 flat colours.
+    validations:
+      required: true
+
+  - type: textarea
+    id: settings
+    attributes:
+      label: Settings
+      description: |
+        Every control that was not left at its default. Preset, detail level, colour count,
+        detail / smoothing / despeckle, enhance, noise reduction, anti-aliasing, roundness,
+        minimum area, overlap, circle detection, result style, disabled colours.
+      value: |
+        - Preset:
+        - Detail level:
+        - Colours:
+        - Enhance:
+        - Anti-aliasing:
+        - Minimum area:
+        - Other (anything else non-default):
+    validations:
+      required: true
+
+  - type: dropdown
+    id: format
+    attributes:
+      label: Which output is wrong?
+      multiple: true
+      options:
+        - On-screen preview
+        - SVG
+        - EPS
+        - DXF
+        - PDF
+        - PNG
+        - Not an output problem (crash, UI, ingest)
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Output file or screenshot
+      description: Attach the exported file and/or a screenshot of the preview, if relevant.
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+
+  - type: input
+    id: version
+    attributes:
+      label: GetVect version / commit
+      placeholder: v0.1.0, or the commit SHA you built from
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS and Node version
+      placeholder: macOS 15.5 (Apple silicon), Node 20.14
+    validations:
+      required: true
+
+  - type: textarea
+    id: harness
+    attributes:
+      label: Test output (optional but very helpful)
+      description: |
+        If you can run the harness, paste the relevant lines from `npm run test:engine`
+        or the failing rows from `npm run instruments`.
+      render: shell
