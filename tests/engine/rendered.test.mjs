@@ -26,6 +26,7 @@ import {
   curveCommandRatio,
   foreignColorRatio,
   inkRecall,
+  layerBoundaryWobble,
   layerCompactness,
   meanColorError,
   nearDuplicateFillPairs,
@@ -509,6 +510,35 @@ test('[quality] colour boundaries are smooth sweeps, not sawtooth', async () => 
       `${exemplar.mean.toFixed(2)} over ${exemplar.counted} ` +
       `(${(ours.mean / exemplar.mean).toFixed(2)}x, limit 1.3x) — our colour boundaries carry ` +
       'that much more perimeter for the area they enclose',
+  );
+});
+
+test('[quality] the seam through a shading gradient is one arc, not a mountain range', async () => {
+  /**
+   * The local half of the sawtooth question, and the one a person actually
+   * sees. `layerCompactness` (above) is perimeter over area for a whole layer,
+   * so it cannot separate a shape that is genuinely intricate from a smooth
+   * shape traced onto a noisy per-pixel threshold — and `curveCommandRatio`
+   * reads 0.872 here, because our commands ARE cubics. They are cubics fitted
+   * to a wobble the real product never had: over the paw box the lap-6 critique
+   * measured 43 % more boundary length than the exemplar for the same region,
+   * with the source showing a soft gradient and the exemplar one clean arc.
+   *
+   * `layerBoundaryWobble` walks both boundaries at the same fraction of each
+   * drawing's own diagonal (so the exemplar's 10x viewBox needs no scale
+   * factor) and measures the heading change per unit travelled. Ours 55.4
+   * against the exemplar's 37.2.
+   */
+  const exemplar = layerBoundaryWobble(readFileSync(fixture('reference/snorlax.svg'), 'utf8'));
+  const r = await engine.vectorize(snorlaxIn, { ...S, colorCount: 16, enhance: true });
+  const ours = layerBoundaryWobble(r.svg);
+  assert.ok(
+    ours.mean <= exemplar.mean * 1.15,
+    `boundary wobble ${ours.mean.toFixed(1)} over ${ours.counted} layers vs the exemplar's ` +
+      `${exemplar.mean.toFixed(1)} over ${exemplar.counted} ` +
+      `(${(ours.mean / exemplar.mean).toFixed(2)}x, limit 1.15x) — our colour boundaries change ` +
+      'direction that much more often per unit of boundary walked, which is the belly seam and ' +
+      'the paw pad reading as posterized photo rather than clipart',
   );
 });
 
