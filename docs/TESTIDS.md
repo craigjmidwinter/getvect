@@ -119,6 +119,14 @@ pixels to move. A geometry change no pixel can see does not count.
 Sketch must emit **grayscale only** (every layer colour has `r == g == b`); Drawing
 must emit **at most two** colours, black and white.
 
+**A preset owns its input controls — Photo too.** `presetColorCount()` floors the Photo
+preset at 16, so every `color-count` position from 2 to 16 delivers the same sixteen
+colours while the slider sits there enabled and normally styled reading 8, the hint reads
+"16 colours in the result" and sixteen `palette-swatch`es appear under it. **A live
+`color-count` must never read a number larger than `color-count-hint`'s `data-actual`.**
+Either clamp the slider's `min` to 16 while Photo is selected, or disable it with the same
+dimmed treatment Drawing uses (`tests/e2e/b-controls-affordance.spec.ts` accepts both).
+
 **A preset owns its input controls.** Drawing always produces two colours, so while it
 is selected `color-count` and every `palette-size-option` must be **disabled or absent**
 — leaving a COLORS slider reading 4 next to a two-colour result is the control lying
@@ -174,6 +182,12 @@ the flat fixture's exactly six colours).
 | `merge-threshold` | `<select>` | Percentage thresholds (the real product defaults to 5 %). Read as *coverage*: a colour group covering less than this share of the image is merged into its nearest surviving colour. Raising it must not increase the layer count. |
 | `color-sort` | `<select>` | Layer sort order. Changing it reorders `<g>` layers without changing which colours exist. |
 
+**Every group label has to be readable.** A `color-group-toggle` row says *which* colour
+it operates on, and at the default window size the second grid column's labels render as
+"#1B3A", "#E457:", "#F2C1" — cut off mid-hex — with a horizontal scrollbar under the
+panel. No text inside a group row may overflow its own box (`scrollWidth` ≤ `clientWidth`),
+and `color-groups` must not scroll horizontally at all.
+
 **Controls stay in view; lists may scroll.** At the app's **default** window size
 (1280×860) every output-colour *control* — `merge-threshold` and `color-sort` — must be
 inside the viewport without scrolling, and `color-count-hint` must render its text
@@ -198,6 +212,17 @@ B1: nothing above it moves when a palette gains a swatch or a result lands.
 `palette-editor` also carries `data-palette-size` (entry count) and `data-stale`
 (`"true"` while a re-trace is in flight, so the swatches on screen describe the SVG in the
 preview rather than the one being computed). Neither is required by the suite.
+
+**A palette override repaints; it must not re-segment.** All three editor operations are
+"re-vectorize with this explicit `settings.palette`", so the identity case is the contract
+in one line: hand the engine back the palette it just returned and the document must not
+move. Today it does — on the gold standard at 16 colours + Enhance the base run returns 8
+colours and 71 sub-paths, and feeding that same palette back returns 88 sub-paths, a blue
+wash over the mouth and right eye, and black shoulders, because the engine clusters at
+`override.length` when a palette is set and at `presetColorCount()` otherwise. Every
+recolour, merge and remove a user performs on real artwork therefore re-quantizes the
+image. Gated by `tests/engine/parity.test.mjs` [B3] "a palette fed back unchanged repaints
+nothing" and "recolouring one swatch repaints that slot and leaves the drawing alone".
 
 **Merge vs. remove.** Merging gives the selected slot the *target's* colour: the engine
 keeps `k` unchanged, so the clustering — and therefore every contour — is identical, and
@@ -224,7 +249,7 @@ the path count — denoising should simplify, not complicate.
 | `zoom-in` / `zoom-out` / `zoom-fit` | buttons | Change zoom. `zoom-fit` must be idempotent and return the same value each time. |
 | `zoom-level` | label | **Required:** `data-zoom`, a number where `1` = 100%. |
 | `pan-state` | any element (may be the pane itself) | **Required:** `data-pan-x`, `data-pan-y` in image pixels. Must change when the user drags in `preview-pane` while zoomed in. Renders **no text** while `status-text` is `idle`: a bare "0, 0" in the header of an app with no image loaded is a coordinate for a thing that does not exist. |
-| `preview-view-label` | corner badge inside each view | The ORIGINAL / VECTOR tag, one per view. Must be fully inside its own view's bounding box in every mode — in side-by-side both badges were drawn cut off mid-glyph at the pane edge. Above the image layer (`z-index`), inset from the border. |
+| `preview-view-label` | corner badge inside each view | The ORIGINAL / VECTOR tag, one per view. Must be fully inside its own view's bounding box in every mode — in side-by-side both badges were drawn cut off mid-glyph at the pane edge. Above the image layer (`z-index`), inset from the border. **And readable over any artwork:** the chip is translucent (`rgba(0,0,0,0.35)`), so over a light preview it lands at luma ~155 with ~160-180 text — about 1.1:1, i.e. gone. Composited over white, the badge's own background must give its text **at least 3:1** contrast (`tests/e2e/c-preview-interaction.spec.ts`). |
 | `preview-busy` | busy overlay | Shown while a trace is in flight. Must be **outside** the zoom/pan-transformed stage: its centre stays within 12 px of `preview-pane`'s centre at any zoom. |
 
 ### Viewer behaviour (C1/C2)

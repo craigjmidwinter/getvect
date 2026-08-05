@@ -140,6 +140,94 @@ test('[B3] disabling a colour removes its layer entirely', async () => {
   );
 });
 
+/**
+ * Strip the colour off an SVG, leaving the drawing.
+ *
+ * A palette override is documented (docs/HARNESS.md, and the comment above
+ * `vectorize`'s quantize step) as an *output colour table*: it repaints slots,
+ * it does not re-segment the image. That claim is exactly "the geometry is the
+ * same document with different fills", which is what this makes checkable.
+ */
+const geometryOf = (svg) => svg.replace(/fill="rgb\([^)]*\)"/g, 'fill="X"');
+
+test('[B3] a palette fed back unchanged repaints nothing — it must not re-segment', async () => {
+  /**
+   * The palette editor's change / merge / remove all reduce to "re-vectorize
+   * with this explicit `settings.palette`", so the identity case is the whole
+   * contract in one line: hand the engine back the palette it just computed and
+   * the document must not move.
+   *
+   * It moves. On the gold standard at 16 colours + Enhance the base run returns
+   * an 8-colour palette and a 71-sub-path SVG; feeding that same palette back
+   * returns 88 sub-paths and different geometry — the face gains a blue wash
+   * over the mouth and right eye and the shoulders turn black. Cause:
+   * `src/engine/index.ts` clusters at `override.length` when a palette is set
+   * and at `presetColorCount(opts)` otherwise, so the un-overridden run
+   * clusters at 16 and folds down to 8 while the override run clusters from
+   * scratch at k=8. Slot i is then paired with a cluster from a different
+   * segmentation, and *every* palette-editor operation silently re-quantizes
+   * real artwork.
+   *
+   * Every existing b3-palette spec runs on `logo-flat-512.png`, where requested
+   * 8 folds to 6 and the identity happens to hold — hence the gold standard
+   * here, at both configurations, plus the flat fixture as the regression
+   * anchor.
+   */
+  const cases = [
+    ['logo-flat-512 at the defaults', flat, {}],
+    ['the gold standard at the defaults', snorlaxIn, {}],
+    ['the gold standard at 16 colours + Enhance', snorlaxIn, { colorCount: 16, enhance: true }],
+  ];
+  for (const [label, image, overrides] of cases) {
+    const base = await run(image, overrides);
+    const identity = await run(image, { ...overrides, palette: base.palette });
+    assert.deepEqual(
+      identity.palette.map(engine.hexOf),
+      base.palette.map(engine.hexOf),
+      `${label}: the palette changed when it was fed back unchanged`,
+    );
+    assert.equal(
+      countSubPaths(identity.svg),
+      countSubPaths(base.svg),
+      `${label}: feeding the palette back re-segmented the image ` +
+        `(${countSubPaths(base.svg)} sub-paths -> ${countSubPaths(identity.svg)})`,
+    );
+    assert.equal(
+      geometryOf(identity.svg),
+      geometryOf(base.svg),
+      `${label}: the geometry changed under an identity palette override — a no-op palette ` +
+        'edit repainted the picture',
+    );
+  }
+});
+
+test('[B3] recolouring one swatch repaints that slot and leaves the drawing alone', async () => {
+  /**
+   * The user-visible half of the check above: pick a swatch, change its colour,
+   * and every contour must be where it was. Anything else means the click that
+   * was meant to recolour a region re-traced the artwork.
+   */
+  for (const [label, image, overrides] of [
+    ['logo-flat-512', flat, {}],
+    ['the gold standard', snorlaxIn, { colorCount: 16, enhance: true }],
+  ]) {
+    const base = await run(image, overrides);
+    const target = base.palette.length - 1;
+    const palette = base.palette.map((c, i) => (i === target ? { r: 255, g: 0, b: 255 } : c));
+    const edited = await run(image, { ...overrides, palette });
+    assert.ok(
+      layerFills(edited.svg).map(hexOfLayer).includes('#ff00ff'),
+      `${label}: the colour the user picked never reached the output`,
+    );
+    assert.equal(
+      geometryOf(edited.svg),
+      geometryOf(base.svg),
+      `${label}: recolouring slot ${target} moved the geometry — a palette override is an output ` +
+        'colour table, not a new set of cluster centres',
+    );
+  }
+});
+
 test('[B3] the merge threshold collapses near-identical output colours', async () => {
   const none = await run(noisy, { colorCount: 16, mergeThreshold: 0 });
   const merged = await run(noisy, { colorCount: 16, mergeThreshold: 5 });
