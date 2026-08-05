@@ -56,6 +56,7 @@ import {
   foreignColorRatio,
   parseColor,
   inkComponentRatio,
+  inkCoverageProfile,
   inkRecall,
   layerCompactness,
   maskedMeanColorError,
@@ -283,6 +284,10 @@ const GATES = [
   ['minSpikeCornerAngle', 'minCornerAngle', 'min', (v) => `${v.toFixed(0)}°`],
   ['maxSliverRatio', 'sliverRatio', 'max', (v) => `${(v * 100).toFixed(3)}%`],
   ['minRegionFeatureComponentRatio', 'regionFeatureComponentRatio', 'min', (v) => `${v.toFixed(2)}x`],
+  // Ink SPEND in the worst crop (metrics.mjs `inkCoverageProfile`). Every other
+  // ink number here rewards a stroke that filled in; this is the one that can
+  // see a thin outline with a notch arrive as a solid black wedge.
+  ['maxRegionInkCoverageRatio', 'regionInkCoverageRatio', 'max', (v) => `${v.toFixed(2)}x`],
   ['maxRegionSliverRatio', 'regionSliverRatio', 'max', (v) => `${(v * 100).toFixed(3)}%`],
   ['minRegionSpikeCornerAngle', 'regionMinCornerAngle', 'min', (v) => `${v.toFixed(0)}°`],
   // Continuity, not just survival. `inkRecall` accepts anything darker than 128,
@@ -361,6 +366,11 @@ const REGION_GATES = [
   ['minInkRecall', 'inkRecall', 'min', (v) => v.toFixed(4)],
   ['minStrictInkRecall', 'strictInkRecall', 'min', (v) => v.toFixed(4)],
   ['maxInkComponentRatio', 'inkComponentRatio', 'max', (v) => `${v.toFixed(2)}x`],
+  // "All of the source's ink, and no more" — the second half of that sentence,
+  // which `inkRecall` / `strictInkRecall` / `inkComponentRatio` all read as a
+  // win (metrics.mjs `inkCoverageProfile`).
+  ['maxInkCoverageRatio', 'inkCoverageRatio', 'max', (v) => `${v.toFixed(2)}x`],
+  ['minInkCoverageRatio', 'inkCoverageRatio', 'min', (v) => `${v.toFixed(2)}x`],
   ['maxForeignColorRatio', 'foreignColorRatio', 'max', (v) => `${(v * 100).toFixed(2)}%`],
   // Did the colour this crop is ABOUT survive (metrics.mjs
   // `colorPresenceProfile`)? Against the source's own share of it, and against
@@ -503,6 +513,7 @@ async function main() {
             name: region.name,
             inkRecall: inkRecall(a, b),
             strictInkRecall: strictInkRecall(a, b),
+            ...inkCoverageProfile(a, b),
             meanColorError: meanColorError(a, b),
             foreignColorRatio: foreignColorRatio(a, b),
             // Did the region's named colour survive into the REAL PRODUCT's
@@ -747,6 +758,11 @@ async function main() {
           inkRecall: inkRecall(refRegion, outRegion),
           strictInkRecall: strictInkRecall(refRegion, outRegion),
           inkComponentRatio: inkComponentRatio(refRegion, outRegion),
+          // ...and the question all three of those read backwards: is there
+          // MORE ink here than the source has? A stroke filled in to a blob
+          // scores 1.0 on every recall number in this file (metrics.mjs
+          // `inkCoverageProfile`).
+          ...inkCoverageProfile(refRegion, outRegion),
           meanColorError: meanColorError(refRegion, outRegion),
           ssim: ssim(refRegion, outRegion),
           // "Is there a colour in here that is not in the picture?" — see the
@@ -784,10 +800,25 @@ async function main() {
           .png()
           .toFile(crop);
       }
-      // Gates read the WORST region: a fixture that names two crops is asking
-      // that BOTH survive, so adding one can only ever tighten the fixture.
+      /**
+       * Gates read the WORST region: a fixture that names two crops is asking
+       * that BOTH survive, so adding one can only ever tighten the fixture.
+       *
+       * ...unless the crop declares `aggregate: false`, which means "judge me on
+       * my own thresholds and do not let me redefine the shared ones". That is
+       * not an escape hatch, it is the same argument that gave regions their own
+       * thresholds in the first place: an aggregate is only meaningful across
+       * crops that are asking the same question. The mascot's nose box is 64x38
+       * of almost nothing but outline, so a fifth of it is ink and its mean
+       * colour error is 15 in the REAL PRODUCT's trace; folded into the
+       * whole-face aggregate it would not tighten `maxRegionMeanColorError`, it
+       * would force that bar up from 8 to 18 and quietly loosen the face and the
+       * chest with it. A crop that opts out must carry its own bars — the ones
+       * below are checked against it alone, and nothing goes unmeasured.
+       */
+      const aggregated = metrics.regions.filter((_, i) => regions[i]?.aggregate !== false);
       const worst = (key, dir) => {
-        const vals = metrics.regions.map((r) => r[key]).filter((v) => v != null);
+        const vals = aggregated.map((r) => r[key]).filter((v) => v != null);
         if (!vals.length) return null;
         return dir === 'min' ? Math.min(...vals) : Math.max(...vals);
       };
@@ -810,6 +841,9 @@ async function main() {
       metrics.regionStrokeWidthRatio = worst('strokeWidthRatio', 'max');
       metrics.regionFeatureComponentRatio = worst('featureComponentRatio', 'min');
       metrics.regionSliverRatio = worst('sliverRatio', 'max');
+      // Worst crop's ink SPEND, not its ink recall: the crop that fattened its
+      // outlines the most relative to the source's own ink.
+      metrics.regionInkCoverageRatio = worst('inkCoverageRatio', 'max');
       metrics.regionMinCornerAngle = worst('minCornerAngle', 'min');
     }
 
@@ -880,6 +914,10 @@ async function main() {
             if (!e) continue;
             r.exemplarInkRecall = e.inkRecall;
             r.exemplarStrictInkRecall = e.strictInkRecall;
+            // How much ink the real product spends on the same crop. The bar
+            // for a blob is not "1.0" — its own trace fattens a little too —
+            // so the honest reading of ours is beside its number.
+            r.exemplarInkCoverageRatio = e.inkCoverageRatio;
             r.exemplarMeanColorError = e.meanColorError;
             r.exemplarForeignColorRatio = e.foreignColorRatio;
             // The named colour, A/B'd. The real product keeping a hue we fold
@@ -913,19 +951,24 @@ async function main() {
           // fatter. Both are ratios because the absolute numbers belong to the
           // artwork — a drawn line genuinely varies — while "less even than the
           // real product's trace of the same line" belongs to us.
-          const cvRatios = metrics.regions
+          //
+          // Same aggregation rule as the absolute region gates above: a crop
+          // that declared `aggregate: false` carries its own bars and does not
+          // redefine the shared ones.
+          const inAggregate = metrics.regions.filter((_, i) => regions[i]?.aggregate !== false);
+          const cvRatios = inAggregate
             .filter((r) => r.strokeWidthCvRatio != null)
             .map((r) => r.strokeWidthCvRatio);
           metrics.strokeWidthCvRatio = cvRatios.length ? Math.max(...cvRatios) : null;
-          const fitRatios = metrics.regions
+          const fitRatios = inAggregate
             .filter((r) => r.bandFitRatio != null)
             .map((r) => r.bandFitRatio);
           metrics.shadingBandFitRatio = fitRatios.length ? Math.max(...fitRatios) : null;
-          const stepRatios = metrics.regions
+          const stepRatios = inAggregate
             .filter((r) => r.bandStepRatio != null)
             .map((r) => r.bandStepRatio);
           metrics.shadingBandStepRatio = stepRatios.length ? Math.max(...stepRatios) : null;
-          const fatRatios = metrics.regions
+          const fatRatios = inAggregate
             .filter((r) => r.strokeWidthOverExemplar != null)
             .map((r) => r.strokeWidthOverExemplar);
           metrics.strokeWidthOverExemplar = fatRatios.length ? Math.max(...fatRatios) : null;
@@ -934,9 +977,9 @@ async function main() {
           // worst relative to it.
           metrics.exemplarRegionInkRecall = exemplar.regions[0].inkRecall;
           metrics.regionInkRecallRatio = Math.min(
-            ...metrics.regions.filter((r) => r.inkRecallRatio != null).map((r) => r.inkRecallRatio),
+            ...inAggregate.filter((r) => r.inkRecallRatio != null).map((r) => r.inkRecallRatio),
           );
-          const strict = metrics.regions
+          const strict = inAggregate
             .filter((r) => r.strictInkRecallRatio != null)
             .map((r) => r.strictInkRecallRatio);
           metrics.regionStrictInkRecallRatio = strict.length ? Math.min(...strict) : null;
@@ -1058,6 +1101,10 @@ async function main() {
             ? ` vs ${fmt(region.exemplarMeanColorError)}`
             : '') +
           `, SSIM ${fmt(region.ssim, 4)}, ink components ${fmt(region.inkComponentRatio, 2)}x source` +
+          `, ink spend ${fmt(region.inkCoverageRatio, 2)}x source` +
+          (region.exemplarInkCoverageRatio != null
+            ? ` (real product ${fmt(region.exemplarInkCoverageRatio, 2)}x)`
+            : '') +
           `, foreign colour ${fmt((region.foreignColorRatio ?? 0) * 100, 2)}%` +
           (region.exemplarForeignColorRatio != null
             ? ` vs ${fmt(region.exemplarForeignColorRatio * 100, 2)}%`
