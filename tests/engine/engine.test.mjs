@@ -244,12 +244,51 @@ test('DXF export is a well-formed R12 drawing', async () => {
   assert.ok(Number(extmax[1]) <= 512 && Number(extmax[2]) <= 512);
 });
 
+test('PDF export is a well-formed one-page vector document', async () => {
+  const r = await engine.vectorize(flat, S);
+  const pdf = engine.toPdf(r);
+  assert.match(pdf, /^%PDF-1\.\d/);
+  assert.ok(pdf.includes('/Type /Catalog'));
+  assert.ok(pdf.includes('/MediaBox [0 0 512 512]'));
+  assert.match(pdf, /\bf\*|\bB\*/);
+  assert.ok((pdf.match(/^[-\d.]+ [-\d.]+ m$/gm) ?? []).length > 0);
+  assert.ok(pdf.trimEnd().endsWith('%%EOF'));
+
+  // The xref offset has to be a byte offset into this very file.
+  const startxref = /startxref\s+(\d+)/.exec(pdf);
+  assert.ok(startxref, 'PDF must declare startxref');
+  assert.equal(Buffer.from(pdf, 'utf8').slice(Number(startxref[1]), Number(startxref[1]) + 4).toString(), 'xref');
+  // ...and each object offset must land on that object's header.
+  const offsets = [...pdf.matchAll(/^(\d{10}) 00000 n $/gm)].map((m) => Number(m[1]));
+  assert.equal(offsets.length, 5);
+  offsets.forEach((offset, i) => {
+    assert.match(pdf.slice(offset, offset + 8), new RegExp(`^${i + 1} 0 obj`));
+  });
+
+  // Deterministic: no wall-clock timestamp leaks into the output.
+  assert.equal(pdf, engine.toPdf(await engine.vectorize(flat, S)));
+});
+
 test('serialize dispatches to the right writer', async () => {
   const r = await engine.vectorize(flat, S);
   assert.equal(engine.serialize(r, 'svg'), r.svg);
   assert.equal(engine.serialize(r, 'eps'), engine.toEps(r));
   assert.equal(engine.serialize(r, 'dxf'), engine.toDxf(r));
-  assert.throws(() => engine.serialize(r, 'pdf'), /Unknown export format/);
+  assert.equal(engine.serialize(r, 'pdf'), engine.toPdf(r));
+  // PNG is a raster: the engine has no renderer, so it is not serializable here
+  // (the app rasterizes the SVG instead — src/renderer/lib/raster.ts).
+  assert.throws(() => engine.serialize(r, 'png'), /Unknown export format/);
+  assert.throws(() => engine.serialize(r, 'stl'), /Unknown export format/);
+});
+
+test('the SVG groups paths into one <g fill> layer per colour', async () => {
+  const r = await engine.vectorize(flat, S);
+  const groups = [...r.svg.matchAll(/<g fill="(#[0-9a-f]{6})"/g)].map((m) => m[1]);
+  assert.ok(groups.length > 1, 'expected several colour layers');
+  assert.equal(new Set(groups).size, groups.length, 'each colour gets exactly one group');
+  assert.ok(!/<path[^>]*\bfill="/.test(r.svg), 'paths inherit their fill from the group');
+  // Grouping must not change what the converters see.
+  assert.ok((engine.toEps(r).match(/\bsetrgbcolor\b/g) ?? []).length >= groups.length);
 });
 
 test('input support check accepts the documented formats only', () => {

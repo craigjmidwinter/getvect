@@ -54,6 +54,8 @@ export const TESTIDS = {
   exportSvg: 'export-svg',
   exportEps: 'export-eps',
   exportDxf: 'export-dxf',
+  exportPdf: 'export-pdf', // REFERENCE D5
+  exportPng: 'export-png', // REFERENCE D5
   exportStatus: 'export-status', // + data-last-export-path
 } as const;
 

@@ -74,40 +74,81 @@ ipcMain.handle('file:read', async (_e, filePath: string): Promise<Uint8Array> =>
   return new Uint8Array(buf);
 });
 
+/** Export formats the save handler knows how to label and name (REFERENCE D1-D3, D5). */
+type ExportFormat = 'svg' | 'eps' | 'dxf' | 'pdf' | 'png';
+
+const FORMAT_LABEL: Record<ExportFormat, string> = {
+  svg: 'SVG image',
+  eps: 'Encapsulated PostScript',
+  dxf: 'AutoCAD DXF',
+  pdf: 'PDF document',
+  png: 'PNG image',
+};
+
+/**
+ * Directory of the last successful export, used as the starting point for the
+ * next one. Saving four formats of the same artwork should not mean navigating
+ * back to the same folder four times.
+ */
+let lastExportDir: string | null = null;
+
+interface SaveExportPayload {
+  defaultName: string;
+  contents: string;
+  format: ExportFormat;
+  /** How `contents` is encoded. `base64` is how binary formats (PNG) travel. */
+  encoding?: 'utf8' | 'base64';
+}
+
 /**
  * REFERENCE D4: native save dialog + write.
  *
  * Under `GETVECT_E2E=1` the dialog is bypassed and the file is written to
- * `GETVECT_EXPORT_DIR/<defaultName>`, so export flows are testable headlessly.
- * The returned shape is identical either way.
+ * `GETVECT_EXPORT_DIR/<defaultName>`, so export flows are testable headlessly
+ * (docs/TESTIDS.md, "Export dialog under test"). This is the ONLY place that
+ * knows about tests: the IPC hop, the default filename and the file write are
+ * the same code either way, so the suite exercises the production path.
  */
 ipcMain.handle(
   'export:save',
-  async (
-    _e,
-    payload: { defaultName: string; contents: string; format: 'svg' | 'eps' | 'dxf' },
-  ): Promise<{ canceled: boolean; filePath: string | null }> => {
-    const { defaultName, contents, format } = payload;
+  async (_e, payload: SaveExportPayload): Promise<{ canceled: boolean; filePath: string | null }> => {
+    const { defaultName, contents, format, encoding = 'utf8' } = payload;
+    if (typeof contents !== 'string') throw new TypeError('export:save expects string contents');
 
-    let target: string | null = null;
+    let target: string;
     if (isE2E && e2eExportDir) {
       await fs.mkdir(e2eExportDir, { recursive: true });
-      target = path.join(e2eExportDir, defaultName);
+      target = path.join(e2eExportDir, withExtension(defaultName, format));
     } else {
       const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
+      const suggested = withExtension(defaultName, format);
       const result = await dialog.showSaveDialog(win!, {
         title: `Export ${format.toUpperCase()}`,
-        defaultPath: defaultName,
-        filters: [{ name: format.toUpperCase(), extensions: [format] }],
+        defaultPath: lastExportDir ? path.join(lastExportDir, suggested) : suggested,
+        filters: [
+          { name: `${FORMAT_LABEL[format] ?? format.toUpperCase()} (*.${format})`, extensions: [format] },
+          { name: 'All files', extensions: ['*'] },
+        ],
+        properties: ['createDirectory', 'showOverwriteConfirmation'],
       });
       if (result.canceled || !result.filePath) return { canceled: true, filePath: null };
-      target = result.filePath;
+      // A user who types "logo" in the dialog means "logo.svg"; macOS in
+      // particular does not append the filter's extension for you.
+      target = withExtension(result.filePath, format);
+      lastExportDir = path.dirname(target);
     }
 
-    await fs.writeFile(target, contents, 'utf8');
+    // Binary formats arrive base64-encoded because the IPC payload is a string.
+    const data = encoding === 'base64' ? Buffer.from(contents, 'base64') : Buffer.from(contents, 'utf8');
+    await fs.writeFile(target, data);
     return { canceled: false, filePath: target };
   },
 );
+
+/** Ensure `name` ends in `.<format>`, case-insensitively. */
+function withExtension(name: string, format: string): string {
+  return name.toLowerCase().endsWith(`.${format.toLowerCase()}`) ? name : `${name}.${format}`;
+}
 
 ipcMain.handle('app:info', () => ({
   version: app.getVersion(),
