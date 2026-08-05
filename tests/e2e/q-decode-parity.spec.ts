@@ -37,6 +37,7 @@ import {
 const requireCjs = createRequire(__filename);
 const engine = requireCjs(join(REPO_ROOT, 'dist/engine/index.js'));
 const sharp = requireCjs('sharp');
+const { Resvg } = requireCjs('@resvg/resvg-js');
 
 /** Decode a file the way the renderer's canvas does (see instruments/lib/decode.mjs). */
 async function canvasPixels(file: string) {
@@ -66,25 +67,51 @@ test('[quality-bar] a transparent PNG does not export with an invented backgroun
   page,
   exportDir,
 }) => {
-  const { ratio } = await alphaStats(FIXTURE.snorlax);
-  expect(ratio, 'fixture precondition: the gold-standard source is ~1/3 transparent').toBeGreaterThan(
-    0.2,
-  );
+  const { ratio } = await alphaStats(FIXTURE.fox);
+  expect(
+    ratio,
+    'fixture precondition: the gold-standard source is ~3/4 transparent',
+  ).toBeGreaterThan(0.5);
 
-  await loadViaPicker(page, FIXTURE.snorlax);
+  await loadViaPicker(page, FIXTURE.fox);
   await waitForReady(page);
   const svg = await fs.readFile(await exportAs(page, 'svg', exportDir), 'utf8');
 
   // A full-bleed rect in a colour the artwork does not contain is the signature:
   // the real product's output for this file has a white/transparent background.
-  const backdrop = /<g[^>]*\bfill="([^"]+)"[^>]*>\s*<rect\b[^>]*width="1046"[^>]*height="833"/.exec(
+  const backdrop = /<g[^>]*\bfill="([^"]+)"[^>]*>\s*<rect\b[^>]*width="1024"[^>]*height="1024"/.exec(
     svg,
   );
   expect(
     backdrop?.[1] ?? 'none',
     'the transparent background was traced as an opaque layer',
   ).toMatch(/^(none|rgb\(255, ?255, ?255\)|#ffffff)$/i);
-  expect(layerFills(svg)[0], 'black must not be the dominant colour layer').not.toBe('#000000');
+  // ...and the corners have to come back as paper, not as ink. The first `<g>`
+  // in our output is deliberately the drawn SILHOUETTE painted in the outline
+  // colour (`tests/engine/rendered.test.mjs`, "the linework is one silhouette"),
+  // so "the bottom layer is black" is the design here and not the bug. The bug
+  // is that black covering the CANVAS, which is what this measures: rasterized
+  // over white, a transparent corner is paper and an invented backdrop is not.
+  const raster = new Resvg(svg, {
+    fitTo: { mode: 'width', value: 64 },
+    background: 'white',
+    font: { loadSystemFonts: false },
+  }).render();
+  const px = raster.pixels;
+  const corners = [
+    [1, 1],
+    [62, 1],
+    [1, 62],
+    [62, 62],
+  ].map(([x, y]) => {
+    const i = (y * raster.width + x) * 4;
+    return `rgb(${px[i]},${px[i + 1]},${px[i + 2]})`;
+  });
+  expect(
+    corners.filter((c) => c === 'rgb(255,255,255)').length,
+    `the transparent corners of a ${Math.round(ratio * 100)}%-transparent source came back ` +
+      `${corners.join(' / ')} — an opaque backdrop was invented for them`,
+  ).toBe(4);
 });
 
 test('[quality-bar] the app exports exactly what the engine produces headlessly', async ({
@@ -112,21 +139,22 @@ test('[quality-bar] the gold-standard settings agree between app and instruments
   page,
   exportDir,
 }) => {
-  // REFERENCE lines 73-83 are graded at Clipart / 16 colours / Enhance on. The
+  // REFERENCE lines 73-83 are graded at Clipart / 8 colours / Enhance on — the
+  // settings the checked-in exemplar was captured at (OBSERVED-UI.md). The
   // instruments report this fixture's economy; the app has to be the thing they
   // are reporting on. Structural (not byte) equality: Chromium's PNG decode may
   // round a colour-managed sample differently from sharp's.
-  await loadViaPicker(page, FIXTURE.snorlax);
+  await loadViaPicker(page, FIXTURE.fox);
   await waitForReady(page);
-  await setSlider(page, TESTIDS.settingColorCount, 16);
+  await setSlider(page, TESTIDS.settingColorCount, 8);
   await waitForReady(page);
   await setCheckbox(page, TESTIDS.enhanceToggle, true);
   await waitForReady(page);
 
   const exported = await fs.readFile(await exportAs(page, 'svg', exportDir), 'utf8');
-  const headless = await engine.vectorize(await canvasPixels(FIXTURE.snorlax), {
+  const headless = await engine.vectorize(await canvasPixels(FIXTURE.fox), {
     ...engine.DEFAULT_SETTINGS,
-    colorCount: 16,
+    colorCount: 8,
     enhance: true,
   });
 

@@ -328,9 +328,9 @@ selected** image.
 
 **SVG document structure (D1).** `renderSvg` groups each colour's paths into a single
 `<g fill="rgb(r,g,b)">` layer — the structure *and the notation* the reference product
-emits (`fixtures/reference/snorlax.svg`) — so a path element inherits its fill rather
-than repeating it. Anything parsing our SVG back into geometry must honour that
-inheritance; `parseSvgShapes` (src/engine/path.ts) does, and it is what the EPS/DXF/PDF
+emits (`fixtures/reference/fox-sticker-clipart-8colors-smartAA.svg`) — so a path element
+inherits its fill rather than repeating it. Anything parsing our SVG back into geometry
+must honour that inheritance; `parseSvgShapes` (src/engine/path.ts) does, and it is what the EPS/DXF/PDF
 writers use. The `viewBox` stays at 1× source pixels; see docs/HARNESS.md "The D1
 viewBox question" for why that half of the exemplar is deliberately not reproduced.
 
