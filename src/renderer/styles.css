@@ -556,9 +556,11 @@ code {
 
   .settings-panel {
     grid-template-columns: repeat(2, minmax(215px, 1fr));
-    /* Two rows of columns need roughly twice the height; cap it so the preview
-       still owns most of a 640px-tall window, and scroll the remainder. */
-    height: min(360px, 52vh);
+    /* Two rows of columns need roughly twice the height, but the picture is the
+       product: `[B3] the palette editor never crowds out the artwork` holds the
+       panel under 45 % of the window and the preview over 40 %, so the panel
+       takes what it can and scrolls the rest. */
+    height: min(340px, 40vh);
     overflow-x: hidden;
     overflow-y: auto;
   }
