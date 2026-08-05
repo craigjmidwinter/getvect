@@ -269,6 +269,258 @@ export function foreignColorRatio(reference, traced, { tolerance = 32, bin = 4 }
   return total === 0 ? 0 : foreign / total;
 }
 
+/**
+ * Shading-band quality — where does a soft gradient get cut, and what colour is
+ * each side painted?
+ *
+ * Every other fidelity number in this file is about *edges* — ink recall, stroke
+ * width, component counts, boundary wobble — because the artwork this repo was
+ * built on is flat clipart with a black outline, where the interesting failures
+ * live on the outline. Soft-shaded artwork fails somewhere else entirely: the
+ * outline can be perfect while the character's face, a smooth warm gradient with
+ * no edge in it at all, is quantized into two bands with a hard seam drawn
+ * across the middle of it. MAE cannot see it (both bands are within a few units
+ * of the source almost everywhere), SSIM cannot see it (the bands are flat and
+ * so is the source), `foreignColorRatio` cannot see it (the muddy grey is a
+ * colour the crop legitimately contains), and `layerWobble` sees the seam's
+ * *shape* but nothing about where it was put or what colour it is.
+ *
+ * Both halves of the question, measured inside a crop:
+ *
+ *  1. **`bandFit`** — is each band the colour of what it covers? For every flat
+ *     colour the trace paints in the crop, take the mean SOURCE colour over that
+ *     band's own pixels and measure how far the band's fill sits from it, area-
+ *     weighted across bands, in 0..255 units. A band centred on the mean of what
+ *     it covers scores ~0 however coarse the banding is; a band that is 15 units
+ *     darker and greyer than the region it is painted over scores 15. This is
+ *     the "muddy grey where the source is warm cream" half, and it is a fair
+ *     question to ask of any tracer at any colour budget.
+ *  2. **`bandStep`** — how visible is the worst seam? The largest RGB distance
+ *     between two bands that actually touch inside the crop (4-adjacent over at
+ *     least `minBoundary` pixel pairs, so a stray speck cannot define it). Two
+ *     bands 15 apart across a face read as a band; two bands 4 apart read as a
+ *     gradient.
+ *
+ * INK IS EXCLUDED from both. A drawn outline is *supposed* to be a hard step
+ * against the paper and its antialiased skirt drags any mean it is included in;
+ * counting it would report the outline, every time, on every drawing, and say
+ * nothing about the shading. `bandSpread` — how much source variation each band
+ * swallows — is reported for context: it is a property of the artwork and the
+ * colour budget, not of the tracer, and it is the honest reminder that some
+ * banding is the job.
+ *
+ * Measured the same way on the exemplar, so the number that decides anything is
+ * the ratio (`shadingBandFitRatio`), not the absolute.
+ */
+export function shadingBandQuality(
+  reference,
+  traced,
+  { minShare = 0.02, inkLuma = 60, bandRadius = 12, maxAssign = 24, minBoundary = 12 } = {},
+) {
+  assertSameSize(reference, traced);
+  const { width: w, height: h } = reference;
+  const n = w * h;
+
+  /*
+   * Bands are found as PEAKS, not as exact pixel values.
+   *
+   * The obvious implementation — group by exact RGB, because a vector trace
+   * paints flat fills — is wrong on both sides of the comparison. Our own raster
+   * comes back from resvg antialiased, and an exemplar whose artwork sits inside
+   * a padded viewBox is rendered at 2x, trimmed and resized (see
+   * `rasterizeExemplarContent`), which leaves almost no two pixels exactly
+   * equal. Grouped exactly, the real product's face reported ONE band and a seam
+   * of zero on a picture that visibly has two: the metric would have scored the
+   * thing it exists to measure at zero for the reference and non-zero for us.
+   *
+   * So: take the heaviest colour, claim everything within `bandRadius` of it,
+   * that is a band; repeat. Cheap mean-shift, and it reads a resampled flat fill
+   * and a crisp one the same way.
+   */
+  const hist = new Map();
+  for (let i = 0; i < traced.data.length; i += 4) {
+    const k = (traced.data[i] << 16) | (traced.data[i + 1] << 8) | traced.data[i + 2];
+    hist.set(k, (hist.get(k) ?? 0) + 1);
+  }
+  const entries = [...hist.entries()]
+    .map(([k, count]) => ({ r: (k >> 16) & 255, g: (k >> 8) & 255, b: k & 255, count }))
+    // Ties broken by colour so the band set is independent of Map order.
+    .sort((a, b) => b.count - a.count || a.r - b.r || a.g - b.g || a.b - b.b);
+  const claimed = new Uint8Array(entries.length);
+  const radius2 = bandRadius * bandRadius;
+  const bands = [];
+  for (let i = 0; i < entries.length; i++) {
+    if (claimed[i]) continue;
+    const seed = entries[i];
+    let count = 0;
+    let sr = 0;
+    let sg = 0;
+    let sb = 0;
+    for (let j = i; j < entries.length; j++) {
+      if (claimed[j]) continue;
+      const e = entries[j];
+      if ((e.r - seed.r) ** 2 + (e.g - seed.g) ** 2 + (e.b - seed.b) ** 2 > radius2) continue;
+      claimed[j] = 1;
+      count += e.count;
+      sr += e.r * e.count;
+      sg += e.g * e.count;
+      sb += e.b * e.count;
+    }
+    bands.push({ r: sr / count, g: sg / count, b: sb / count, share: count / n });
+  }
+
+  /*
+   * Ink is excluded, and so are the transition pixels between bands.
+   *
+   * A drawn outline is SUPPOSED to be a hard step against the paper, and its
+   * antialiased skirt drags any mean it lands in. Counting it would report the
+   * outline on every drawing and say nothing about the shading. `maxAssign`
+   * drops the in-between pixels for the same reason: a pixel halfway between two
+   * bands belongs to neither, and charging it to the nearer one measures the
+   * rasterizer.
+   */
+  const kept = bands.filter(
+    (b) => b.share >= minShare && 0.299 * b.r + 0.587 * b.g + 0.114 * b.b >= inkLuma,
+  );
+  if (kept.length === 0) return null;
+  for (const b of kept) {
+    b.count = 0;
+    b.sr = 0;
+    b.sg = 0;
+    b.sb = 0;
+  }
+
+  const owner = new Int32Array(n).fill(-1);
+  const assignLimit = maxAssign * maxAssign;
+  for (let p = 0, i = 0; p < n; p++, i += 4) {
+    const r = traced.data[i];
+    const g = traced.data[i + 1];
+    const b = traced.data[i + 2];
+    if (0.299 * r + 0.587 * g + 0.114 * b < inkLuma) continue;
+    let best = -1;
+    let bestD = assignLimit;
+    for (let k = 0; k < kept.length; k++) {
+      const c = kept[k];
+      const d = (c.r - r) ** 2 + (c.g - g) ** 2 + (c.b - b) ** 2;
+      if (d <= bestD) {
+        bestD = d;
+        best = k;
+      }
+    }
+    if (best < 0) continue;
+    owner[p] = best;
+    const band = kept[best];
+    band.count++;
+    band.sr += reference.data[i];
+    band.sg += reference.data[i + 1];
+    band.sb += reference.data[i + 2];
+  }
+
+  // 1. bandFit — is each band the colour of what it covers?
+  let area = 0;
+  for (const b of kept) {
+    if (b.count === 0) continue;
+    b.meanSource = { r: b.sr / b.count, g: b.sg / b.count, b: b.sb / b.count };
+    b.fit =
+      (Math.abs(b.r - b.meanSource.r) +
+        Math.abs(b.g - b.meanSource.g) +
+        Math.abs(b.b - b.meanSource.b)) /
+      3;
+    area += b.count;
+  }
+  const live = kept.filter((b) => b.count > 0);
+  if (!live.length || area === 0) return null;
+  const fit = live.reduce((s, b) => s + b.fit * b.count, 0) / area;
+
+  // 2. bandSpread — how much source variation each band swallows. A property of
+  //    the artwork and the colour budget, not of the tracer: context, not a bar.
+  let spread = 0;
+  for (let p = 0, i = 0; p < n; p++, i += 4) {
+    const id = owner[p];
+    if (id < 0 || !kept[id].meanSource) continue;
+    const m = kept[id].meanSource;
+    spread +=
+      (Math.abs(reference.data[i] - m.r) +
+        Math.abs(reference.data[i + 1] - m.g) +
+        Math.abs(reference.data[i + 2] - m.b)) /
+      3;
+  }
+  spread /= area;
+
+  // 3. bandStep — the biggest step between two bands that actually touch, over
+  //    at least `minBoundary` adjacent pixel pairs so a speck cannot define it.
+  const touch = new Map();
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const p = y * w + x;
+      const a = owner[p];
+      if (a < 0) continue;
+      for (const q of [x + 1 < w ? p + 1 : -1, y + 1 < h ? p + w : -1]) {
+        if (q < 0) continue;
+        const b = owner[q];
+        if (b < 0 || b === a) continue;
+        const k = a < b ? a * kept.length + b : b * kept.length + a;
+        touch.set(k, (touch.get(k) ?? 0) + 1);
+      }
+    }
+  }
+  let step = 0;
+  let excess = 0;
+  let stepPair = null;
+  let excessPair = null;
+  for (const [k, len] of touch) {
+    if (len < minBoundary) continue;
+    const a = kept[Math.floor(k / kept.length)];
+    const b = kept[k % kept.length];
+    if (!a.meanSource || !b.meanSource) continue;
+    const d = Math.sqrt((a.r - b.r) ** 2 + (a.g - b.g) ** 2 + (a.b - b.b) ** 2);
+    /*
+     * ...and how much of that step the SOURCE does not have.
+     *
+     * A crop big enough to hold a face also holds real colour edges — the ear
+     * behind it, the outline, a blue against a cream — and those steps are
+     * enormous and correct. `bandStep` alone therefore reports the largest
+     * legitimate edge in the crop and never the seam: on the shaded gold
+     * standard's face box the biggest step is 69 units between two blues in the
+     * ear, while the seam this metric exists for sits at 59. Subtracting the
+     * distance between the two bands' own mean source colours leaves what we
+     * INVENTED: the ear's blues are as far apart in the source as we paint them
+     * (excess ~0), while a seam drawn across a soft ramp paints a 59-unit step
+     * where the source has 30 (excess ~29). Zero is what a faithful trace of
+     * flat art scores on every pair.
+     */
+    const sd = Math.sqrt(
+      (a.meanSource.r - b.meanSource.r) ** 2 +
+        (a.meanSource.g - b.meanSource.g) ** 2 +
+        (a.meanSource.b - b.meanSource.b) ** 2,
+    );
+    const pair = [
+      `rgb(${Math.round(a.r)},${Math.round(a.g)},${Math.round(a.b)})`,
+      `rgb(${Math.round(b.r)},${Math.round(b.g)},${Math.round(b.b)})`,
+      len,
+    ];
+    if (d > step) {
+      step = d;
+      stepPair = pair;
+    }
+    if (d - sd > excess) {
+      excess = d - sd;
+      excessPair = pair;
+    }
+  }
+
+  return {
+    bandCount: live.length,
+    bandFit: fit,
+    bandSpread: spread,
+    bandStep: step,
+    bandStepPair: stepPair,
+    bandStepExcess: excess,
+    bandStepExcessPair: excessPair,
+    bandCoverage: area / n,
+  };
+}
+
 /** One byte per pixel, 1 where luma is below `inkLuma` — the ink field. */
 export function inkMask(image, inkLuma = 60) {
   const mask = new Uint8Array(image.width * image.height);
