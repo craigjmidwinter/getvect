@@ -88,6 +88,17 @@ setting value ⇒ different `preview-vector` markup (REFERENCE B2).
 | `palette-merge-target` | `<select>` | Options = the other palette entries; option `value` = target index. |
 | `palette-merge-button` | button | Merges selected swatch into `palette-merge-target`. Palette size drops by one. |
 | `palette-remove-button` | button | Removes the selected swatch. Palette size drops by one and the removed colour must no longer appear in the SVG. |
+| `palette-auto-button` | button | Optional; present only while the palette has been hand-edited. Clears `settings.palette` so the engine recomputes the palette from the image. |
+
+`palette-editor` also carries `data-palette-size` (entry count) and `data-stale`
+(`"true"` while a re-trace is in flight, so the swatches on screen describe the SVG in the
+preview rather than the one being computed). Neither is required by the suite.
+
+**Merge vs. remove.** Merging gives the selected slot the *target's* colour: the engine
+keeps `k` unchanged, so the clustering — and therefore every contour — is identical, and
+the two slots collapse into one layer. Removing drops a slot, so the image is re-quantized
+into `k-1` colours. Both shrink the palette by one; only merge leaves the survivor's
+geometry untouched.
 
 ### Enhance (B4)
 
