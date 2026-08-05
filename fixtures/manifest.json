@@ -188,6 +188,7 @@
         "minInkRecall": 0.94,
         "minRegionStrictInkRecallRatio": 0.98,
         "maxLayerCompactnessRatio": 1.1,
+        "maxLayerWobbleRatio": 1.15,
         "maxPaletteShortfall": 8,
         "minRegionInkRecall": 0.93,
         "maxMeanColorErrorRatio": 1,
@@ -239,6 +240,7 @@
         "ssim": 0.9,
         "minInkRecall": 0.92,
         "minRegionInkRecall": 0.9,
+        "maxPaletteShortfall": 6,
         "maxMeanColorErrorRatio": 1,
         "maxTransparentAreaColorError": 8,
         "maxBytesRatio": 8,
@@ -249,6 +251,43 @@
         "maxMs": 10000
       },
       "note": "REFERENCE economy at the DEFAULT quality settings (Enhance off), which no other exemplar gate covers. Looser ratios than reference-artwork on purpose — the point is that the out-of-the-box configuration is measured at all, not that it matches a run with every cleanup on."
+    },
+    {
+      "id": "reference-artwork-16c-nomerge",
+      "file": "reference/artwork.png",
+      "kind": "clipart",
+      "format": "png",
+      "width": 1046,
+      "height": 833,
+      "supported": true,
+      "distinctColors": null,
+      "settings": {
+        "colorCount": 16,
+        "enhance": true,
+        "mergeThreshold": 0
+      },
+      "exemplar": "reference/artwork.svg",
+      "salientRegions": [
+        {
+          "name": "muzzle",
+          "x": 420,
+          "y": 290,
+          "width": 220,
+          "height": 90
+        }
+      ],
+      "thresholds": {
+        "maxPaletteShortfall": 6,
+        "maxNearDuplicateFills": 0,
+        "meanColorError": 7,
+        "ssim": 0.9,
+        "minInkRecall": 0.94,
+        "maxTransparentAreaColorError": 8,
+        "maxTinySubPathRatio": 0.02,
+        "minCurveCommandRatio": 0.5,
+        "maxMs": 10000
+      },
+      "note": "B3 reversibility: 16 colours + Enhance with the output-groups merge threshold explicitly at 0. The fold that costs eight colours must be reachable by the control the panel already shows (`merge-threshold`), or the shortfall the hint blames on \"the cleanup settings\" is not a setting."
     },
     {
       "id": "reference-artwork-6c",

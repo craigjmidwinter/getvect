@@ -555,6 +555,18 @@ async function main() {
           // set in the wrong place: 1.1 is "the same class of edge", which is
           // what REFERENCE's blind A/B actually asks for.
           maxLayerCompactnessRatio: 1.1,
+          // The same defect, measured locally instead of globally. Compactness
+          // is perimeter over area for a whole layer, so an intricate-but-clean
+          // shape and a smooth-looking shape traced onto a noisy threshold can
+          // score alike; `layerWobble` (metrics.mjs `layerBoundaryWobble`) walks
+          // both boundaries at the same step and measures how much the heading
+          // changes per unit travelled. The lap-6 critique measured this by hand
+          // on the raster — "43 % more perimeter for the same region" over the
+          // paw box — while `curveCommandRatio` read 0.872 and reported health,
+          // because our commands ARE curves: they are fitted to a wobble the
+          // real product never had. Ours 55.4 against the exemplar's 37.2
+          // (1.49x); 1.15 is "the same class of edge".
+          maxLayerWobbleRatio: 1.15,
           // B3: 16 requested, 16 found in the image, 8 delivered.
           //
           // The bar is 8, not 1, because the exemplar settles it: the SVG
@@ -631,6 +643,12 @@ async function main() {
           ssim: 0.9,
           minInkRecall: 0.92,
           minRegionInkRecall: 0.9,
+          // The same 16-colour request delivers 10 here and 8 with Enhance on,
+          // and no UI surface explains the difference. Pinned at what this
+          // configuration reaches today so the two numbers cannot drift further
+          // apart unnoticed while `reference-artwork-16c-nomerge` argues for
+          // closing the gap from the other side.
+          maxPaletteShortfall: 6,
           maxMeanColorErrorRatio: 1,
           maxTransparentAreaColorError: 8,
           maxBytesRatio: 8,
@@ -645,6 +663,66 @@ async function main() {
           'exemplar gate covers. Looser ratios than reference-artwork on purpose — the point ' +
           'is that the out-of-the-box configuration is measured at all, not that it matches a ' +
           'run with every cleanup on.',
+      },
+      {
+        /**
+         * B3: is the colour fold something the user can undo?
+         *
+         * `reference-artwork` asks for 16 colours, the image has 16, and 8 come
+         * back — which the exemplar justifies (its own capture of this artwork
+         * has eight `<g fill>` layers) but the UI does not: the shortfall is
+         * attributed to "the cleanup settings" and no cleanup setting reverses
+         * it. `src/engine/index.ts` computes
+         * `groupThreshold = max(opts.mergeThreshold, opts.enhance ? 1 : 0)`, so
+         * with Enhance on the merge-threshold control cannot go below 1 % and
+         * the sub-1 % fold is unreachable from the panel. The customer who
+         * clicks the 16 radio, then drags MERGE THRESHOLD to 0 to get them
+         * back, gets the same eight colours and no explanation.
+         *
+         * Same source, same 16-colour request, Enhance on — and the fold
+         * explicitly turned off. The bar is not "16 delivered": it is that
+         * turning the control off reaches at least what turning ENHANCE off
+         * already reaches (10 delivered, `reference-artwork-noenhance`, with
+         * `nearDuplicateFillPairs` still 0), which is evidence from this repo's
+         * own runs rather than an invented number. Today it delivers 8, exactly
+         * as if the control were not there.
+         */
+        id: 'reference-artwork-16c-nomerge',
+        file: 'reference/artwork.png',
+        kind: 'clipart',
+        format: 'png',
+        width: 1046,
+        height: 833,
+        supported: true,
+        distinctColors: null,
+        settings: { colorCount: 16, enhance: true, mergeThreshold: 0 },
+        exemplar: 'reference/artwork.svg',
+        salientRegions: [{ name: 'muzzle', x: 420, y: 290, width: 220, height: 90 }],
+        thresholds: {
+          // The point of the row.
+          maxPaletteShortfall: 6,
+          // ...and the guard that stops it being bought with near-identical
+          // creams: extra colours have to be extra COLOURS. Enhance off already
+          // ships 10 of them on this image with zero pairs inside the halo
+          // window, so both halves of this row are jointly reachable.
+          maxNearDuplicateFills: 0,
+          // Undoing a cleanup must not undo the picture: the fidelity and
+          // economy bars are the ones `reference-artwork` holds, minus the
+          // exemplar-relative economy (more colour layers legitimately cost
+          // more sub-paths, and that trade is what the user asked for).
+          meanColorError: 7,
+          ssim: 0.9,
+          minInkRecall: 0.94,
+          maxTransparentAreaColorError: 8,
+          maxTinySubPathRatio: 0.02,
+          minCurveCommandRatio: 0.5,
+          maxMs: 10000,
+        },
+        note:
+          'B3 reversibility: 16 colours + Enhance with the output-groups merge threshold ' +
+          'explicitly at 0. The fold that costs eight colours must be reachable by the control ' +
+          'the panel already shows (`merge-threshold`), or the shortfall the hint blames on ' +
+          '"the cleanup settings" is not a setting.',
       },
       {
         // The DOM-extracted Clipart / 6-colour / Minimum Area 90px² output is
