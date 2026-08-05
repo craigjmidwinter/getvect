@@ -17,6 +17,8 @@
     "fixtures": "node scripts/generate-fixtures.mjs",
     "pretest": "npm run build",
     "test": "playwright test",
+    "pretest:engine": "npm run build:node",
+    "test:engine": "node --test tests/engine/*.test.mjs",
     "test:headed": "playwright test --headed",
     "instruments": "npm run build:node && node instruments/run-instruments.mjs",
     "instruments:selftest": "node instruments/run-instruments.mjs --engine=instruments/reference-engine.mjs --out=artifacts/metrics-selftest.json --tag=selftest",
@@ -34,6 +36,7 @@
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
+    "imagetracerjs": "^1.2.6",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sharp": "^0.33.5"
