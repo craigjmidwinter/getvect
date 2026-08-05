@@ -1,0 +1,7 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Feature request or spec question
+    url: https://github.com/craigjmidwinter/getvect/discussions
+    about: >
+      Behaviour is graded against REFERENCE.md. If you think the spec is wrong or
+      incomplete, start here — it's a conversation before it's an issue.
