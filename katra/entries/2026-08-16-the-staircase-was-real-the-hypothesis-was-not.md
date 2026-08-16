@@ -6,6 +6,11 @@ tags:
     - engine
     - instruments
     - preprocess
+hash: "3213825"
+stat:
+    f: 11
+    a: 642
+    d: 0
 ---
 
 Craig came back to the staircase with a screenshot of our own demo at 4x and an
