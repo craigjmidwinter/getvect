@@ -6,6 +6,11 @@ tags:
     - instruments
     - process
     - engine
+hash: 0365ea2
+stat:
+    f: 8
+    a: 481
+    d: 241
 ---
 
 Craig, on the sliver trim two laps in: *"we need to make sure we aren't just
