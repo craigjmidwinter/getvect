@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root { --bg:#fbfaf8; --ink:#1a1a1a; --mut:#6f6f6a; --rule:#e0dcd4;
+          --syn:#7c8ea3; --house:#c2451e; --third:#2e7d5b; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16181b; --ink:#eceae6; --mut:#98988f; --rule:#31343a;
+            --syn:#8fa4bb; --house:#e8703f; --third:#4bbd8a; }
+  }
+  html,body { margin:0; background:var(--bg); color:var(--ink);
+    font:14px/1.5 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { padding:20px 22px 14px; }
+  h2 { font-size:15px; margin:0 0 3px; letter-spacing:-0.01em; }
+  p.sub { margin:0 0 18px; color:var(--mut); font-size:12.5px; max-width:56em; }
+  .key { display:flex; gap:18px; font-size:11.5px; color:var(--mut); margin:14px 0 0; flex-wrap:wrap; }
+  .sw { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; }
+  table { border-collapse:collapse; margin-top:16px; font-size:12.5px; width:100%; }
+  th,td { text-align:left; padding:5px 10px 5px 0; border-bottom:1px solid var(--rule); }
+  th { color:var(--mut); font-weight:600; font-size:11.5px; }
+  td.miss { color:var(--house); font-weight:600; }
+  td.have { color:var(--third); }
+</style>
+<div class="wrap">
+  <h2>What the corpus is, against what the product traces</h2>
+  <p class="sub">Every fixture that ships in a clone, by who made the picture. Nothing that can
+  decide whether a change helps a user's images.</p>
+
+  <svg viewBox="0 0 620 74" width="100%" role="img" aria-label="Corpus composition by provenance">
+    <rect x="0"   y="8"  width="387" height="30" rx="3" fill="var(--syn)"/>
+    <rect x="391" y="8"  width="232" height="30" rx="3" fill="var(--house)"/>
+    <text x="12"  y="28" font-size="12.5" fill="#fff" font-weight="600">synthetic — 10</text>
+    <text x="403" y="28" font-size="12.5" fill="#fff" font-weight="600">in-house — 6</text>
+    <text x="0"   y="60" font-size="11.5" fill="var(--mut)">third-party (can decide): 0 committed · 3 local, un-redistributable</text>
+  </svg>
+
+  <div class="key">
+    <span><span class="sw" style="background:var(--syn)"></span>we drew it from equations — ground truth, may anchor a bar</span>
+    <span><span class="sw" style="background:var(--house)"></span>we drew the artwork — reported, decides nothing</span>
+    <span><span class="sw" style="background:var(--third)"></span>nobody here drew it — the only category that decides</span>
+  </div>
+
+  <table>
+    <tr><th>What a user drags in</th><th>In the corpus?</th></tr>
+    <tr><td>Flat vector-origin clipart</td><td class="have">yes — almost all of it</td></tr>
+    <tr><td>Phone photo</td><td class="miss">none</td></tr>
+    <tr><td>Screenshot</td><td class="miss">none</td></tr>
+    <tr><td>Scan</td><td class="miss">none</td></tr>
+    <tr><td>Logo with text in it</td><td class="miss">none — no letterforms at all</td></tr>
+    <tr><td>Low-resolution web image</td><td class="miss">none</td></tr>
+    <tr><td>JPEG with real ringing</td><td class="miss">none — the one JPEG is a generated gradient</td></tr>
+  </table>
+</div>

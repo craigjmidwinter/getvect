@@ -668,6 +668,7 @@ async function main() {
     fixtures: [
       {
         id: 'logo-flat-512',
+        provenance: 'synthetic',
         file: 'logo-flat-512.png',
         kind: 'flat',
         format: 'png',
@@ -698,6 +699,7 @@ async function main() {
       },
       {
         id: 'logo-noisy-512',
+        provenance: 'synthetic',
         file: 'logo-noisy-512.png',
         kind: 'noisy',
         format: 'png',
@@ -733,6 +735,7 @@ async function main() {
       },
       {
         id: 'logo-flat-1024',
+        provenance: 'synthetic',
         file: 'logo-flat-1024.png',
         kind: 'flat',
         format: 'png',
@@ -757,6 +760,7 @@ async function main() {
       },
       {
         id: 'photo-gradient',
+        provenance: 'synthetic',
         file: 'photo-gradient-512x384.jpg',
         kind: 'photo',
         format: 'jpeg',
@@ -778,6 +782,7 @@ async function main() {
       },
       {
         id: 'shapes-256-bmp',
+        provenance: 'synthetic',
         file: 'shapes-256.bmp',
         kind: 'flat',
         format: 'bmp',
@@ -845,6 +850,7 @@ async function main() {
          *     blind, and now both are measured.
          */
         id: 'spikes-bands-384',
+        provenance: 'synthetic',
         file: 'spikes-bands-384.png',
         kind: 'clipart',
         format: 'png',
@@ -928,6 +934,7 @@ async function main() {
          * and it sits in `aspirations` so the distance stays on screen.
          */
         id: 'arcs-560x256',
+        provenance: 'synthetic',
         file: 'arcs-560x256.png',
         kind: 'clipart',
         format: 'png',
@@ -952,6 +959,18 @@ async function main() {
            * number we happen to score, it is zero plus room for the flattener.
            */
           maxStaircaseLocal: 0.02,
+          /**
+           * ...and the same anchor for the sustained form.
+           *
+           * This exists so that the staircase family is not gated ONLY on our
+           * own artwork (`tests/engine/provenance.test.mjs`). A ratchet on the
+           * mascot cannot tell "the filter improved the drawing" from "the
+           * filter was tuned on this drawing"; a fixture drawn from an equation
+           * can, because its right answer was fixed before we traced it. Arcs
+           * measure 0.0000 sustained, so this is zero plus room, not a number
+           * we backed into.
+           */
+          maxStaircaseSustained: 0.01,
           maxPaths: 200,
           maxSubPaths: 200,
           maxTinySubPathRatio: 0.02,
@@ -974,6 +993,7 @@ async function main() {
         // the trace paints where the source is see-through — 0 if it leaves it
         // alone (or flattens onto white), ~255 if it paints a black backdrop.
         id: 'sticker-alpha-256',
+        provenance: 'synthetic',
         file: 'sticker-alpha-256.png',
         kind: 'alpha',
         format: 'png',
@@ -1009,6 +1029,7 @@ async function main() {
         // was measured, not a restatement of REFERENCE's 3x/5x headline (which
         // is the product floor, not the bar the engine is held to today).
         id: 'reference-fox',
+        provenance: 'in-house',
         file: 'reference/fox-sticker.png',
         kind: 'clipart',
         format: 'png',
@@ -1163,6 +1184,7 @@ async function main() {
          * `nearDuplicateFillPairs` still 0.
          */
         id: 'reference-fox-16c-nomerge',
+        provenance: 'in-house',
         file: 'reference/fox-sticker.png',
         kind: 'clipart',
         format: 'png',
@@ -1219,6 +1241,7 @@ async function main() {
          * shows it, and a slot goes to the wrong family.
          */
         id: 'reference-fox-white',
+        provenance: 'in-house',
         file: 'reference/fox-sticker-white.png',
         kind: 'clipart',
         format: 'png',
@@ -1285,6 +1308,7 @@ async function main() {
          * catching.
          */
         id: 'reference-fox-default',
+        provenance: 'in-house',
         file: 'reference/fox-sticker.png',
         kind: 'clipart',
         format: 'png',
@@ -1397,6 +1421,7 @@ async function main() {
          * DEFAULT settings keep 99.2 % of the same colour.
          */
         id: 'reference-frankie',
+        provenance: 'in-house',
         file: 'reference/frankie-sticker.png',
         kind: 'clipart',
         format: 'png',
@@ -1563,20 +1588,6 @@ async function main() {
           // that says so.
           maxLayerCompactnessRatio: 1.1,
           maxLayerWobbleRatio: 1.7,
-          /**
-           * The staircase ratchet, on the artwork that motivated the measure.
-           *
-           * `staircaseSustained` is the repeating form — the "climbs in visible
-           * stair-steps" half of the report — and the sliver trim took it from
-           * 0.0239 to 0.0140 here, so the gate sits just above where it landed.
-           * The one-off form (`staircaseLocal`) is deliberately NOT gated on
-           * this fixture: the same change moved it 0.2392 -> 0.1086 here but
-           * 0.3304 -> 0.4919 on the default-settings twin, by concentrating
-           * what had been spread out, and a gate on a number that is still
-           * moving in both directions would be a ratchet on noise. It is an
-           * aspiration below instead, which is what that state is for.
-           */
-          maxStaircaseSustained: 0.016,
           // Stroke geometry against the reference product's, worst crop: our line is
           // 1.20x less even (cv) and 0.96x its width, i.e. not fatter.
           maxStrokeWidthCvRatio: 1.35,
@@ -1592,12 +1603,21 @@ async function main() {
           maxMs: 10000,
         },
         /**
-         * The one-off staircase, left on the instruments rather than gated —
-         * see `maxStaircaseSustained` above for why. 0.05 is roughly "no window
-         * anywhere reverses more than a legitimate tight curl does"; we read
-         * 0.109 here and 0.489 on the default twin.
+         * The staircase, REPORTED and not gated — because this is our own
+         * artwork (`provenance: 'in-house'`, and see
+         * `tests/engine/provenance.test.mjs`).
+         *
+         * It was a ratchet at 0.016 for two laps, set where a filter developed
+         * against this very drawing happened to leave it. That is the shape of
+         * mistake this project keeps making — the fixture and the beneficiary
+         * being the same object — and a number our own mascot alone can move is
+         * not entitled to stop a build. The absolute anchor moved to
+         * `arcs-560x256`, where the right answer comes from the equation the
+         * discs were drawn from rather than from what we scored.
+         *
+         * 0.05 / 0.02 are the marks to beat, and they stay on screen every run.
          */
-        aspirations: { maxStaircaseLocal: 0.05 },
+        aspirations: { maxStaircaseLocal: 0.05, maxStaircaseSustained: 0.02 },
         note:
           'The mascot, and the second gold-standard exemplar. Judged at the settings the ' +
           'captured output was produced at — Clipart / 8 colours / Smart anti-aliasing / Enhance ' +
@@ -1628,6 +1648,7 @@ async function main() {
          * moves and `reference-frankie` does not.
          */
         id: 'reference-frankie-default',
+        provenance: 'in-house',
         file: 'reference/frankie-sticker.png',
         kind: 'clipart',
         format: 'png',
@@ -1747,6 +1768,7 @@ async function main() {
       },
       {
         id: 'unsupported-gif',
+        provenance: 'synthetic',
         file: 'unsupported-animation.gif',
         kind: 'unsupported',
         format: 'gif',
@@ -1755,6 +1777,7 @@ async function main() {
       },
       {
         id: 'unsupported-txt',
+        provenance: 'synthetic',
         file: 'unsupported-notes.txt',
         kind: 'unsupported',
         format: 'text',

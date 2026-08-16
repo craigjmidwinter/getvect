@@ -3,6 +3,7 @@
   "fixtures": [
     {
       "id": "logo-flat-512",
+      "provenance": "synthetic",
       "file": "logo-flat-512.png",
       "kind": "flat",
       "format": "png",
@@ -27,6 +28,7 @@
     },
     {
       "id": "logo-noisy-512",
+      "provenance": "synthetic",
       "file": "logo-noisy-512.png",
       "kind": "noisy",
       "format": "png",
@@ -51,6 +53,7 @@
     },
     {
       "id": "logo-flat-1024",
+      "provenance": "synthetic",
       "file": "logo-flat-1024.png",
       "kind": "flat",
       "format": "png",
@@ -75,6 +78,7 @@
     },
     {
       "id": "photo-gradient",
+      "provenance": "synthetic",
       "file": "photo-gradient-512x384.jpg",
       "kind": "photo",
       "format": "jpeg",
@@ -96,6 +100,7 @@
     },
     {
       "id": "shapes-256-bmp",
+      "provenance": "synthetic",
       "file": "shapes-256.bmp",
       "kind": "flat",
       "format": "bmp",
@@ -120,6 +125,7 @@
     },
     {
       "id": "spikes-bands-384",
+      "provenance": "synthetic",
       "file": "spikes-bands-384.png",
       "kind": "clipart",
       "format": "png",
@@ -176,6 +182,7 @@
     },
     {
       "id": "arcs-560x256",
+      "provenance": "synthetic",
       "file": "arcs-560x256.png",
       "kind": "clipart",
       "format": "png",
@@ -226,6 +233,7 @@
         "ssim": 0.9,
         "maxArcResidualRms": 0.24,
         "maxStaircaseLocal": 0.02,
+        "maxStaircaseSustained": 0.01,
         "maxPaths": 200,
         "maxSubPaths": 200,
         "maxTinySubPathRatio": 0.02,
@@ -241,6 +249,7 @@
     },
     {
       "id": "sticker-alpha-256",
+      "provenance": "synthetic",
       "file": "sticker-alpha-256.png",
       "kind": "alpha",
       "format": "png",
@@ -265,6 +274,7 @@
     },
     {
       "id": "reference-fox",
+      "provenance": "in-house",
       "file": "reference/fox-sticker.png",
       "kind": "clipart",
       "format": "png",
@@ -332,6 +342,7 @@
     },
     {
       "id": "reference-fox-16c-nomerge",
+      "provenance": "in-house",
       "file": "reference/fox-sticker.png",
       "kind": "clipart",
       "format": "png",
@@ -370,6 +381,7 @@
     },
     {
       "id": "reference-fox-white",
+      "provenance": "in-house",
       "file": "reference/fox-sticker-white.png",
       "kind": "clipart",
       "format": "png",
@@ -428,6 +440,7 @@
     },
     {
       "id": "reference-fox-default",
+      "provenance": "in-house",
       "file": "reference/fox-sticker.png",
       "kind": "clipart",
       "format": "png",
@@ -491,6 +504,7 @@
     },
     {
       "id": "reference-frankie",
+      "provenance": "in-house",
       "file": "reference/frankie-sticker.png",
       "kind": "clipart",
       "format": "png",
@@ -602,7 +616,6 @@
         "maxBytesRatio": 0.95,
         "maxLayerCompactnessRatio": 1.1,
         "maxLayerWobbleRatio": 1.7,
-        "maxStaircaseSustained": 0.016,
         "maxStrokeWidthCvRatio": 1.35,
         "maxStrokeWidthOverExemplar": 1.15,
         "maxTinySubPathRatio": 0.02,
@@ -612,12 +625,14 @@
         "maxMs": 10000
       },
       "aspirations": {
-        "maxStaircaseLocal": 0.05
+        "maxStaircaseLocal": 0.05,
+        "maxStaircaseSustained": 0.02
       },
       "note": "The mascot, and the second gold-standard exemplar. Judged at the settings the captured output was produced at — Clipart / 8 colours / Smart anti-aliasing / Enhance on / Minimum Area 5px², recorded live in fixtures/reference/OBSERVED-UI.md. It is the only fixture that can ask whether a small hue-distinct feature kept its palette slot (the eyes box names a colour); today it answers no, and that is an aspiration with an open issue rather than a gate, because the default settings already reach it."
     },
     {
       "id": "reference-frankie-default",
+      "provenance": "in-house",
       "file": "reference/frankie-sticker.png",
       "kind": "clipart",
       "format": "png",
@@ -729,6 +744,7 @@
     },
     {
       "id": "unsupported-gif",
+      "provenance": "synthetic",
       "file": "unsupported-animation.gif",
       "kind": "unsupported",
       "format": "gif",
@@ -737,6 +753,7 @@
     },
     {
       "id": "unsupported-txt",
+      "provenance": "synthetic",
       "file": "unsupported-notes.txt",
       "kind": "unsupported",
       "format": "text",
