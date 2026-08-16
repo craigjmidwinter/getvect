@@ -1766,6 +1766,147 @@ async function main() {
           'and that tick is worth a palette slot: the eyes keep their olive here and lose it ' +
           'there, which is the whole shape of the small-hue-distinct-colour finding.',
       },
+      /**
+       * THIRD-PARTY ARTWORK — the only fixtures entitled to decide that a
+       * change to the engine is an improvement.
+       *
+       * Every other picture in this corpus we drew: eight synthetic ones from
+       * equations, and two mascots. A filter tuned on our own drawings improves
+       * our own drawings whether or not it improves anything else, which is how
+       * a de-staircasing change got two laps into the repo on the strength of
+       * how much it smoothed the mascot (`docs/HARNESS.md`, "Who is allowed to
+       * decide that a change is an improvement").
+       *
+       * Licences, authors and source URLs are in
+       * `fixtures/third-party/LICENSES.md`, written by
+       * `scripts/source-fixture.mjs` from the source's metadata BEFORE each file
+       * was downloaded. All four are public domain and redistributable, so
+       * unlike the local set these ship in a clone and can gate CI.
+       *
+       * Thresholds here are deliberately structural — "did we produce a sane
+       * document in reasonable time" — and not quality ratchets. A ratchet set
+       * on a fixture's first-ever measurement is a bar at wherever we happened
+       * to land, which is the same mistake in a different place; the numbers are
+       * reported every run and can be ratcheted once someone has looked at what
+       * they should be.
+       */
+      {
+        id: 'third-party-poster',
+        provenance: 'third-party',
+        file: 'third-party/poster-letterforms-900.jpg',
+        kind: 'clipart',
+        format: 'jpeg',
+        width: 900,
+        height: 1146,
+        supported: true,
+        distinctColors: null,
+        settings: { colorCount: 8 },
+        thresholds: {
+          meanColorError: 30,
+          ssim: 0.6,
+          maxPaths: 6000,
+          maxSubPaths: 9000,
+          maxBytes: 2 * 1024 * 1024,
+          maxMs: 20000,
+        },
+        note:
+          'WPA travel poster, 1938 (public domain). The corpus had NO letterforms at ' +
+          'all before this, and a wordmark is the case a de-staircasing change endangers ' +
+          'most: three sizes of serif type here, down to a caption a few pixels tall, over ' +
+          'flat poster colour and a real scanned sky gradient.',
+      },
+      {
+        id: 'third-party-photo',
+        provenance: 'third-party',
+        file: 'third-party/photo-highcontrast-800.jpg',
+        kind: 'photo',
+        format: 'jpeg',
+        width: 800,
+        height: 800,
+        supported: true,
+        distinctColors: null,
+        // Traced at the preset the app offers for this kind of picture, which is
+        // what a user dragging in a photograph would pick. At Clipart defaults
+        // it scores SSIM 0.49, and that number is about the preset, not the
+        // engine.
+        settings: { preset: 'photo' },
+        /**
+         * Structural only, and deliberately no SSIM or colour-error bar.
+         *
+         * A real photograph reduced to nine flat colours scores SSIM ~0.50, and
+         * the first threshold I wrote here (0.6) was a guess that the picture
+         * then failed. Inventing a quality bar for a case nobody has looked at
+         * yet, and setting it at whatever this run produced, is the same
+         * mistake this whole area is about — so these numbers are reported
+         * every run and gate nothing until someone decides what good looks like
+         * for a photograph.
+         */
+        thresholds: {
+          maxPaths: 12000,
+          maxSubPaths: 20000,
+          maxTinySubPathRatio: 0.3,
+          maxBytes: 4 * 1024 * 1024,
+          maxMs: 30000,
+        },
+        note:
+          'A real photograph (NASA, public domain), rescaled and re-encoded by the ' +
+          "source's own thumbnailer, so its JPEG ringing is genuine rather than " +
+          'simulated. `photo-gradient` is a gradient we generated; this is what a user ' +
+          'actually drags in.',
+      },
+      {
+        id: 'third-party-lineart',
+        provenance: 'third-party',
+        file: 'third-party/lineart-engraving-447.jpg',
+        kind: 'clipart',
+        format: 'jpeg',
+        width: 447,
+        height: 539,
+        supported: true,
+        distinctColors: null,
+        settings: { preset: 'sketch' },
+        thresholds: {
+          meanColorError: 30,
+          ssim: 0.5,
+          maxPaths: 8000,
+          maxSubPaths: 12000,
+          maxTinySubPathRatio: 0.4,
+          maxBytes: 2 * 1024 * 1024,
+          maxMs: 20000,
+        },
+        note:
+          'A 19th-century engraving (public domain): dense cross-hatching, which is ' +
+          'almost entirely one-pixel runs. Nothing else in the corpus looks remotely ' +
+          'like this, and it is the hardest case for any filter that judges thin runs — ' +
+          'which is exactly why it is here. Traced at the Sketch preset the artwork was ' +
+          'drawn for.',
+      },
+      {
+        id: 'third-party-lowres',
+        provenance: 'third-party',
+        file: 'third-party/lowres-poster-250.jpg',
+        kind: 'clipart',
+        format: 'jpeg',
+        width: 250,
+        height: 343,
+        supported: true,
+        distinctColors: null,
+        settings: { colorCount: 8 },
+        thresholds: {
+          meanColorError: 30,
+          ssim: 0.55,
+          maxPaths: 4000,
+          maxSubPaths: 6000,
+          maxTinySubPathRatio: 0.4,
+          maxBytes: 1024 * 1024,
+          maxMs: 10000,
+        },
+        note:
+          'A 1930s travel poster (public domain) at 250px — a low-resolution, heavily ' +
+          'compressed web image, where the pixel grid IS most of the signal and every ' +
+          'geometry metric behaves differently. Carries small glyphs and a soft gradient ' +
+          'at a size where both are only a few pixels across.',
+      },
       {
         id: 'unsupported-gif',
         provenance: 'synthetic',

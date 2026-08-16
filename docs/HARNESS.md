@@ -445,47 +445,48 @@ can only shrink.
 
 ### What the corpus is, and what the product is
 
-Counted honestly (2026-08-16), the corpus that ships in a clone is:
+Counted honestly, the corpus that ships in a clone:
 
 | | count | what |
 | --- | --- | --- |
 | `synthetic` | 10 | flat logos, a speckled logo, a BMP, a sticker, spikes-and-bands, arcs, a generated gradient, two unsupported files |
 | `in-house` | 6 rows / 2 images | `fox-sticker.png` ("an original generated mascot") and `frankie-sticker.png` (the maintainer's cat) |
-| `third-party` | **0** | — |
+| `third-party` | 4 | `fixtures/third-party/` — public-domain artwork nobody here drew |
 
-The three `local-artwork` rows are the only artwork in this repo nobody here drew, and
-they are un-redistributable, so a fresh clone has **no artwork that can decide a
-mask-stage change at all**.
+That last row was **zero** until 2026-08-16, and that is precisely why a mask-stage change
+nobody could prove either way had to be removed: nothing in the repo was entitled to decide
+it. The three `local-artwork` rows are third-party too, but un-redistributable, so a clone
+never had them and CI never has them.
 
-Worse for the question the product actually faces: GetVect traces what a user drags in.
-Nothing in the corpus is a phone photo, a screenshot, a scan, a logo with text in it, a
-low-resolution web image, or a JPEG with real ringing. `photo-gradient-512x384.jpg` is the
-closest thing to a photograph and it is a *generated* gradient saved as JPEG — its own
-manifest note calls it "not the primary use case". So the corpus is, almost entirely,
-clean vector-origin clipart, which is the easiest input the tracer will ever see and the
-one a user is least likely to bring.
+The four that ship were chosen to be the cases the corpus had none of:
 
-Every number in this file is therefore narrower than it looks. The gates are real and the
-metrics are sound; the *sample* is a handful of drawings, two of which we made to be
-traced well.
+| fixture | the case it brings | why it mattered |
+| --- | --- | --- |
+| `third-party-poster` | **letterforms** — three sizes of serif type over flat poster colour, plus a real scanned sky gradient | the corpus contained no text of any kind, and a wordmark is what a de-staircasing change endangers most |
+| `third-party-photo` | a **real photograph** with genuine JPEG ringing, rescaled by the source's own thumbnailer | `photo-gradient` is a gradient we generated; this is the kind of thing a user actually drags in |
+| `third-party-lineart` | a 19th-century **engraving** — dense cross-hatching, almost entirely one-pixel runs | nothing here resembled line art, and it is the hardest case for any filter that judges thin runs |
+| `third-party-lowres` | a **250px, heavily compressed** poster, where the pixel grid IS most of the signal | every geometry metric behaves differently at this scale, and nothing else here is under 256px |
 
-**What would fix it** — deliberately not "generate more synthetic images", which is the
-same self-reference wearing a lab coat:
+Licences, authors and source URLs are in `fixtures/third-party/LICENSES.md`, written by
+`scripts/source-fixture.mjs` from each source's own metadata **before** the file was
+downloaded. The tool refuses any licence not on its allowlist and has no override flag,
+because the failure it exists to prevent is an asset whose terms nobody can state. All
+four are public domain. They are IMAGES — no traced SVG from any other product is in
+there, and none ever should be.
 
-1. **Permissively-licensed real artwork**, checked in with its licence: CC0/CC-BY clipart,
-   openly-licensed logos and icon sets, public-domain scans. This is the one that unblocks
-   the shipping rule, and it is a sourcing job, not an engineering one.
-2. **Photographs and screenshots**, which the Photo and Sketch presets exist for and which
-   no fixture currently exercises — including one with visible JPEG ringing, because that
-   is what a user's re-saved image looks like.
-3. **Text-bearing artwork.** A logo with a wordmark is the case where every de-staircasing
-   change is most dangerous, and the corpus has no letterforms at all.
-4. **Low-resolution input** (a 200px web image upscaled), where the pixel grid *is* most of
-   the signal and every geometry metric here behaves differently.
+**It immediately changed an answer.** `trimSlivers` had been measured as a win on the
+mascot and on two of three rows of the local drawing. Re-run against these four, it was
+neutral-or-better on exactly one (the photograph) and worse on three — including *doubling*
+`staircaseSustained` on `third-party-lowres` (0.0660 → 0.1322), which is the low-resolution
+case the filter was aimed at, and making it worse on the engraving. At 250px a one-pixel
+sliver is not residue, it is the shape. That is the whole argument for this section,
+demonstrated on the first change it was asked about.
 
-Until at least (1) exists, a change to the mask stage cannot be shown to help anyone's
-images but ours, and the honest response to "is this an improvement?" is "we cannot tell
-from this corpus."
+**Still missing**, and worth sourcing next: a **screenshot** (UI text, hard pixel edges, no
+anti-aliasing), and artwork at the sizes phones produce. `kind: 'photo'` is now represented
+by exactly one picture — one more than before, and still not a sample. Four drawings is a
+corpus in the sense that zero was not; it is not yet evidence about "a user's images" in
+general, and no number in this file should be read as if it were.
 
 ## Fixtures
 

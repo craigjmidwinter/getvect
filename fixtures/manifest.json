@@ -743,6 +743,99 @@
       "note": "DEFAULT_SETTINGS on the mascot — deliberately no `settings` override, so this row moves if the defaults do. It differs from reference-frankie by one tick (Enhance off) and that tick is worth a palette slot: the eyes keep their olive here and lose it there, which is the whole shape of the small-hue-distinct-colour finding."
     },
     {
+      "id": "third-party-poster",
+      "provenance": "third-party",
+      "file": "third-party/poster-letterforms-900.jpg",
+      "kind": "clipart",
+      "format": "jpeg",
+      "width": 900,
+      "height": 1146,
+      "supported": true,
+      "distinctColors": null,
+      "settings": {
+        "colorCount": 8
+      },
+      "thresholds": {
+        "meanColorError": 30,
+        "ssim": 0.6,
+        "maxPaths": 6000,
+        "maxSubPaths": 9000,
+        "maxBytes": 2097152,
+        "maxMs": 20000
+      },
+      "note": "WPA travel poster, 1938 (public domain). The corpus had NO letterforms at all before this, and a wordmark is the case a de-staircasing change endangers most: three sizes of serif type here, down to a caption a few pixels tall, over flat poster colour and a real scanned sky gradient."
+    },
+    {
+      "id": "third-party-photo",
+      "provenance": "third-party",
+      "file": "third-party/photo-highcontrast-800.jpg",
+      "kind": "photo",
+      "format": "jpeg",
+      "width": 800,
+      "height": 800,
+      "supported": true,
+      "distinctColors": null,
+      "settings": {
+        "preset": "photo"
+      },
+      "thresholds": {
+        "maxPaths": 12000,
+        "maxSubPaths": 20000,
+        "maxTinySubPathRatio": 0.3,
+        "maxBytes": 4194304,
+        "maxMs": 30000
+      },
+      "note": "A real photograph (NASA, public domain), rescaled and re-encoded by the source's own thumbnailer, so its JPEG ringing is genuine rather than simulated. `photo-gradient` is a gradient we generated; this is what a user actually drags in."
+    },
+    {
+      "id": "third-party-lineart",
+      "provenance": "third-party",
+      "file": "third-party/lineart-engraving-447.jpg",
+      "kind": "clipart",
+      "format": "jpeg",
+      "width": 447,
+      "height": 539,
+      "supported": true,
+      "distinctColors": null,
+      "settings": {
+        "preset": "sketch"
+      },
+      "thresholds": {
+        "meanColorError": 30,
+        "ssim": 0.5,
+        "maxPaths": 8000,
+        "maxSubPaths": 12000,
+        "maxTinySubPathRatio": 0.4,
+        "maxBytes": 2097152,
+        "maxMs": 20000
+      },
+      "note": "A 19th-century engraving (public domain): dense cross-hatching, which is almost entirely one-pixel runs. Nothing else in the corpus looks remotely like this, and it is the hardest case for any filter that judges thin runs — which is exactly why it is here. Traced at the Sketch preset the artwork was drawn for."
+    },
+    {
+      "id": "third-party-lowres",
+      "provenance": "third-party",
+      "file": "third-party/lowres-poster-250.jpg",
+      "kind": "clipart",
+      "format": "jpeg",
+      "width": 250,
+      "height": 343,
+      "supported": true,
+      "distinctColors": null,
+      "settings": {
+        "colorCount": 8
+      },
+      "thresholds": {
+        "meanColorError": 30,
+        "ssim": 0.55,
+        "maxPaths": 4000,
+        "maxSubPaths": 6000,
+        "maxTinySubPathRatio": 0.4,
+        "maxBytes": 1048576,
+        "maxMs": 10000
+      },
+      "note": "A 1930s travel poster (public domain) at 250px — a low-resolution, heavily compressed web image, where the pixel grid IS most of the signal and every geometry metric behaves differently. Carries small glyphs and a soft gradient at a size where both are only a few pixels across."
+    },
+    {
       "id": "unsupported-gif",
       "provenance": "synthetic",
       "file": "unsupported-animation.gif",
