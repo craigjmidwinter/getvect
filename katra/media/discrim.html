@@ -1,0 +1,67 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root { --bg:#fbfaf8; --ink:#1a1a1a; --mut:#6b6b6b; --good:#2e7d5b; --bad:#c2451e; --rule:#d8d4cd; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16181b; --ink:#eceae6; --mut:#9a9a95; --good:#4bbd8a; --bad:#e8703f; --rule:#33363b; }
+  }
+  html,body { margin:0; background:var(--bg); color:var(--ink);
+    font:14px/1.45 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { padding:18px 20px 10px; }
+  h2 { font-size:15px; margin:0 0 2px; letter-spacing:-0.01em; }
+  p.sub { margin:0 0 16px; color:var(--mut); font-size:12.5px; }
+  .key { display:flex; gap:16px; font-size:11.5px; color:var(--mut); margin-bottom:12px; }
+  .sw { display:inline-block; width:9px; height:9px; border-radius:2px; vertical-align:baseline; margin-right:5px; }
+</style>
+<div class="wrap">
+  <h2>What the measure had to get right</h2>
+  <p class="sub">Cancelling turn per pixel of boundary (log scale). A corner is not a staircase — and reads zero.</p>
+  <div class="key">
+    <span><span class="sw" style="background:var(--good)"></span>must read low — legitimate geometry</span>
+    <span><span class="sw" style="background:var(--bad)"></span>must read high — the defect</span>
+  </div>
+  <svg viewBox="0 0 620 360" width="100%" role="img" aria-label="Bar chart of the staircase measure across validation signals">
+    <!-- log scale: x = 90 + 105*log10(v/0.0005) ; floor drawn as a tick at the axis -->
+    <g font-size="10.5" fill="currentColor" opacity="0.5">
+      <text x="90" y="348">0.0005</text><text x="195" y="348">0.005</text>
+      <text x="300" y="348">0.05</text><text x="405" y="348">0.5</text>
+    </g>
+    <g stroke="var(--rule)" stroke-width="1">
+      <line x1="90" y1="14" x2="90" y2="332"/><line x1="195" y1="14" x2="195" y2="332"/>
+      <line x1="300" y1="14" x2="300" y2="332"/><line x1="405" y1="14" x2="405" y2="332"/>
+    </g>
+    <g id="bars" font-size="11.5"></g>
+  </svg>
+  <script>
+    const data = [
+      ["exact circle",              0,      "good"],
+      ["exact square (4 corners)",  0,      "good"],
+      ["19° spike / ear tip",       0,      "good"],
+      ["one inflection in 200px",   0.0018, "good"],
+      ["cusp: corner + reversal",   0.0031, "good"],
+      ["tight legit S, r=3px",      0.0256, "good"],
+      ["our trace of exact discs",  0.0000, "good"],
+      ["0.4px fitter sag",          0.0060, "bad"],
+      ["rectangular notch, 2px",    0.0523, "bad"],
+      ["local staircase stretch",   0.1704, "bad"],
+      ["Frankie's notch (shipped)", 0.3304, "bad"],
+      ["raw 1px pixel steps",       0.9228, "bad"],
+    ];
+    const X = v => 90 + 105 * (Math.log10(Math.max(v, 5e-4) / 5e-4));
+    const g = document.getElementById("bars");
+    let y = 22;
+    for (const [label, v, kind] of data) {
+      const col = kind === "good" ? "var(--good)" : "var(--bad)";
+      const w = Math.max(v > 0 ? X(v) - 90 : 0, 0);
+      g.insertAdjacentHTML("beforeend",
+        `<text x="84" y="${y + 8}" text-anchor="end" fill="currentColor" opacity="0.85">${label}</text>` +
+        (v > 0
+          ? `<rect x="90" y="${y}" width="${w}" height="11" rx="2" fill="${col}"/>` +
+            `<text x="${90 + w + 6}" y="${y + 9}" fill="currentColor" opacity="0.55" font-size="10">${v.toFixed(4)}</text>`
+          : `<rect x="89" y="${y}" width="2.5" height="11" fill="${col}"/>` +
+            `<text x="97" y="${y + 9}" fill="${col}" font-size="10" font-weight="600">0.00000 — exactly zero</text>`)
+      );
+      y += 26;
+    }
+  </script>
+</div>

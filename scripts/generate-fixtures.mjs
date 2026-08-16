@@ -883,6 +883,18 @@ async function main() {
           minFeatureComponentRatio: 0.87,
           minSpikeCornerAngle: 75,
           maxSliverRatio: 0.0001,
+          /**
+           * The ratchet that proves the measure is not just "sharp = bad".
+           *
+           * This fixture is eight triangles: it is nothing BUT sharp corners,
+           * and its corners contribute exactly nothing to this number — the
+           * whole 0.1609 comes from one hard notch on the inside edge of the
+           * largest triangle's hole, which no gate here could see before and
+           * which the staircase measure ranked first without being told where
+           * to look. So it is a ratchet at where it stands, and the notch is
+           * the next lap's work, not this one's.
+           */
+          maxStaircaseLocal: 0.17,
           maxPaths: 200,
           maxSubPaths: 200,
           maxTinySubPathRatio: 0.02,
@@ -928,6 +940,18 @@ async function main() {
           meanColorError: 8,
           ssim: 0.9,
           maxArcResidualRms: 0.24,
+          /**
+           * The staircase measure's ABSOLUTE anchor.
+           *
+           * `maxArcResidualRms` asks how far the geometry sits from the circle
+           * it was drawn from; this asks the shape-free version of the same
+           * question — is there any turning in this boundary that cancels — and
+           * on a fixture that is nothing but arcs the answer has to be none.
+           * It measures 0.0000 here, exactly, which is what makes the number
+           * readable everywhere else: the gate is not a ratchet round some
+           * number we happen to score, it is zero plus room for the flattener.
+           */
+          maxStaircaseLocal: 0.02,
           maxPaths: 200,
           maxSubPaths: 200,
           maxTinySubPathRatio: 0.02,
@@ -1539,6 +1563,20 @@ async function main() {
           // that says so.
           maxLayerCompactnessRatio: 1.1,
           maxLayerWobbleRatio: 1.7,
+          /**
+           * The staircase ratchet, on the artwork that motivated the measure.
+           *
+           * `staircaseSustained` is the repeating form — the "climbs in visible
+           * stair-steps" half of the report — and the sliver trim took it from
+           * 0.0239 to 0.0140 here, so the gate sits just above where it landed.
+           * The one-off form (`staircaseLocal`) is deliberately NOT gated on
+           * this fixture: the same change moved it 0.2392 -> 0.1091 here but
+           * 0.3304 -> 0.4894 on the default-settings twin, by concentrating
+           * what had been spread out, and a gate on a number that is still
+           * moving in both directions would be a ratchet on noise. It is an
+           * aspiration below instead, which is what that state is for.
+           */
+          maxStaircaseSustained: 0.016,
           // Stroke geometry against the reference product's, worst crop: our line is
           // 1.20x less even (cv) and 0.96x its width, i.e. not fatter.
           maxStrokeWidthCvRatio: 1.35,
@@ -1553,6 +1591,13 @@ async function main() {
           maxTransparentAreaColorError: 8,
           maxMs: 10000,
         },
+        /**
+         * The one-off staircase, left on the instruments rather than gated —
+         * see `maxStaircaseSustained` above for why. 0.05 is roughly "no window
+         * anywhere reverses more than a legitimate tight curl does"; we read
+         * 0.109 here and 0.489 on the default twin.
+         */
+        aspirations: { maxStaircaseLocal: 0.05 },
         note:
           'The mascot, and the second gold-standard exemplar. Judged at the settings the ' +
           'captured output was produced at — Clipart / 8 colours / Smart anti-aliasing / Enhance ' +

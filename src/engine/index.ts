@@ -48,6 +48,7 @@ import {
   majorityFilter,
   reduceNoise,
   regularizeBoundaries,
+  trimSlivers,
 } from './preprocess';
 import { renderSvg } from './svg';
 import { maskForIndex, traceMask, type TraceOptions, type TracedLayer } from './trace';
@@ -775,6 +776,14 @@ export async function vectorize(
       TRANSPARENT_INDEX,
       clusterInk,
     );
+  }
+  /**
+   * ...and the one-pixel slivers both of those are obliged to keep
+   * (`trimSlivers`). Runs with the seam passes, because it is the same job at
+   * the scale below the one a 3×3 vote or a 7×7 window can reach.
+   */
+  if (seamPasses > 0) {
+    indices = trimSlivers(indices, width, height, clusters.length, TRANSPARENT_INDEX, clusterInk);
   }
   /**
    * ...and the half a 3×3 window cannot reach.

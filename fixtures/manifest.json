@@ -163,6 +163,7 @@
         "minFeatureComponentRatio": 0.87,
         "minSpikeCornerAngle": 75,
         "maxSliverRatio": 0.0001,
+        "maxStaircaseLocal": 0.17,
         "maxPaths": 200,
         "maxSubPaths": 200,
         "maxTinySubPathRatio": 0.02,
@@ -224,6 +225,7 @@
         "meanColorError": 8,
         "ssim": 0.9,
         "maxArcResidualRms": 0.24,
+        "maxStaircaseLocal": 0.02,
         "maxPaths": 200,
         "maxSubPaths": 200,
         "maxTinySubPathRatio": 0.02,
@@ -600,6 +602,7 @@
         "maxBytesRatio": 0.95,
         "maxLayerCompactnessRatio": 1.1,
         "maxLayerWobbleRatio": 1.7,
+        "maxStaircaseSustained": 0.016,
         "maxStrokeWidthCvRatio": 1.35,
         "maxStrokeWidthOverExemplar": 1.15,
         "maxTinySubPathRatio": 0.02,
@@ -607,6 +610,9 @@
         "maxNearDuplicateFills": 0,
         "maxTransparentAreaColorError": 8,
         "maxMs": 10000
+      },
+      "aspirations": {
+        "maxStaircaseLocal": 0.05
       },
       "note": "The mascot, and the second gold-standard exemplar. Judged at the settings the captured output was produced at — Clipart / 8 colours / Smart anti-aliasing / Enhance on / Minimum Area 5px², recorded live in fixtures/reference/OBSERVED-UI.md. It is the only fixture that can ask whether a small hue-distinct feature kept its palette slot (the eyes box names a colour); today it answers no, and that is an aspiration with an open issue rather than a gate, because the default settings already reach it."
     },

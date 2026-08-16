@@ -379,6 +379,180 @@ export function regularizeBoundaries(
 }
 
 /**
+ * Longest sliver, in pixels, that is still residue rather than a drawn feature.
+ *
+ * The defect is one pixel THICK, so the length is what separates it from line
+ * art: a stroke the artist drew keeps going. Measured on the mascot, whose
+ * white finger under the chin stroke is 5px and whose shortest genuine 1px
+ * horizontal detail is longer than this; the corpus sweep in the same lap is
+ * what set the ceiling, not the one fixture that motivated it.
+ */
+const SLIVER_MAX_RUN = 8;
+
+/**
+ * Trim the one-pixel slivers that BOTH cleanup passes are obliged to keep.
+ *
+ * The staircase instrument's worst site on the mascot is a hard rectangular
+ * notch where the white bib meets the chin stroke, and walking it back through
+ * the stages put it in the index image before `majorityFilter` ever ran. It is
+ * not a quantizer bug: those source pixels really are (255,252,239) and the
+ * neighbouring ones really are orange. It is a one-pixel-tall finger of the
+ * anti-aliasing residue left where a stroke tip fades out, and the artwork is
+ * full of them.
+ *
+ * What makes it reach the tracer intact is that every guard upstream is right
+ * to protect it and none of them can see what it is:
+ *   - `majorityFilter` exempts it through `continuesRun` — every interior pixel
+ *     of the finger has its own colour to the left and to the right, which is
+ *     the exact signature of a one-pixel stroke, the thing that guard exists
+ *     for.
+ *   - `regularizeBoundaries` exempts it through `narrowHere` — the finger is
+ *     bounded above and below within the reach, which is the exact signature of
+ *     a corridor or a spike tip, the thing THAT guard exists for.
+ * So it survives both, and the fitter reproduces it faithfully, because it is
+ * faithfully there.
+ *
+ * The one thing a sliver is that a stroke, a corridor and a spike tip are not:
+ * SANDWICHED. Its two flanks are different colours from each other — it is a
+ * seam artifact lying between two regions, not a feature with the same thing on
+ * both sides. A spike tip has background above and below; a corridor has the
+ * same ink on both sides; only a residue sliver separates two different
+ * neighbours. That, plus a length ceiling, is the whole test.
+ *
+ * Ink is exempt regardless. Line art is the point of the picture (`RAMP_INK_LUMA`
+ * makes the same argument upstream), and a short dark sliver between two colours
+ * is far more likely to be a drawn detail than residue.
+ */
+export function trimSlivers(
+  indices: Uint8Array,
+  width: number,
+  height: number,
+  paletteSize: number,
+  transparentIndex = -1,
+  protect?: Uint8Array,
+  maxRun = SLIVER_MAX_RUN,
+): Uint8Array {
+  let src = Uint8Array.from(indices);
+  if (width < 3 || height < 3 || paletteSize < 2) return src;
+
+  /**
+   * One orientation. Steps along the run; the flanks are the two pixels
+   * perpendicular to it. Called twice, so a one-pixel-WIDE vertical sliver is
+   * caught by the same argument as a one-pixel-TALL horizontal one — and the
+   * second pass reads the FIRST pass's output, not the original. Running both
+   * against the original let the vertical pass re-decide a pixel the horizontal
+   * pass had already moved, which is how the first cut of this filter *added*
+   * two slivers to the spikes fixture's band seam while removing the notch it
+   * was aimed at.
+   */
+  const sweep = (horizontal: boolean): void => {
+    const out = Uint8Array.from(src);
+    const at = (x: number, y: number): number =>
+      x < 0 || y < 0 || x >= width || y >= height ? -1 : src[y * width + x];
+    const major = horizontal ? width : height;
+    const minor = horizontal ? height : width;
+    const get = (a: number, b: number): number => (horizontal ? at(a, b) : at(b, a));
+    const put = (a: number, b: number, v: number): void => {
+      out[(horizontal ? b * width + a : a * width + b)] = v;
+    };
+    for (let b = 0; b < minor; b++) {
+      let a = 0;
+      while (a < major) {
+        const self = get(a, b);
+        if (self === transparentIndex || self < 0 || self >= paletteSize) {
+          a++;
+          continue;
+        }
+        // A sliver is one pixel thick: both flanks differ from it.
+        const up = get(a, b - 1);
+        const down = get(a, b + 1);
+        if (up === self || down === self || up < 0 || down < 0) {
+          a++;
+          continue;
+        }
+        // Walk the maximal run that stays one pixel thick and one colour.
+        let end = a;
+        while (
+          end + 1 < major &&
+          get(end + 1, b) === self &&
+          get(end + 1, b - 1) !== self &&
+          get(end + 1, b + 1) !== self
+        ) {
+          end++;
+        }
+        const run = end - a + 1;
+        if (run > maxRun || protect?.[self]) {
+          a = end + 1;
+          continue;
+        }
+        /**
+         * A sliver DEAD-ENDS. A shading band that thins to one pixel for a
+         * stretch and then thickens again is the same shape either side of the
+         * thin part, and chopping it into `maxRun` pieces and handing each to a
+         * flank is how the first cut of this filter put the spikes fixture's
+         * band seam over its sliver gate (0.020% -> 0.024%) and the local
+         * artwork's band fit over its own. So at least one end has to run out
+         * of the colour entirely; an isthmus with more of itself at both ends
+         * is a region, not residue.
+         */
+        if (get(a - 1, b) === self && get(end + 1, b) === self) {
+          a = end + 1;
+          continue;
+        }
+        // Sandwiched: one colour above, another below, and not the same one.
+        let above = get(a, b - 1);
+        let below = get(a, b + 1);
+        let sandwiched = above !== below;
+        for (let k = a; k <= end && sandwiched; k++) {
+          if (get(k, b - 1) !== above || get(k, b + 1) !== below) sandwiched = false;
+        }
+        if (!sandwiched || above === transparentIndex || below === transparentIndex) {
+          a = end + 1;
+          continue;
+        }
+        // Hand it to whichever flank has more of the neighbourhood: the sliver
+        // is residue between two regions, so it belongs to the one that is
+        // actually there.
+        let nAbove = 0;
+        let nBelow = 0;
+        for (let k = a - 1; k <= end + 1; k++) {
+          for (let d = -2; d <= 2; d++) {
+            const v = get(k, b + d);
+            if (v === above) nAbove++;
+            else if (v === below) nBelow++;
+          }
+        }
+        /**
+         * ...but never INTO the ink.
+         *
+         * The first cut of this filter handed each sliver to whichever flank
+         * had more of the neighbourhood, and at a sharp corner that flank is
+         * the outline: the local artwork's face lost 23° of its bluntest corner
+         * (97.1° -> 73.7°) and gained ink with it (coverage 1.96x -> 2.00x of
+         * source), which is the exact failure this whole lap is supposed to
+         * avoid. Ink is protected as a sliver's own colour for the same reason
+         * it must be protected as a sliver's destination — growing a stroke is
+         * as much a lie about the drawing as eating one.
+         */
+        let win = nAbove >= nBelow ? above : below;
+        if (protect?.[win]) win = win === above ? below : above;
+        if (protect?.[win]) {
+          a = end + 1;
+          continue;
+        }
+        for (let k = a; k <= end; k++) put(k, b, win);
+        a = end + 1;
+      }
+    }
+    src = out;
+  };
+
+  sweep(true);
+  sweep(false);
+  return src;
+}
+
+/**
  * Is this pixel inside a part of its region NARROWER than the vote window?
  *
  * `minRegionWindows` says a whole shape smaller than the window cannot be judged

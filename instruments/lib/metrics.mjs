@@ -1627,6 +1627,173 @@ export function boundarySmoothness(svg, arcs, { capture = 3.5, step = 0.1, minPo
 }
 
 /**
+ * STAIRCASE — cancelling turn per pixel of boundary, at pixel-scale amplitude.
+ *
+ * The question a user asks at 4x zoom is "why is that edge climbing in steps
+ * instead of curving", and until this metric nothing in the harness could
+ * answer it on ARBITRARY artwork. `arcResidualRms` answers it exactly, but only
+ * where the true shape is known from an equation (`arcs-560x256`), which is one
+ * fixture. `layerWobble` cannot answer it at all and is actively misleading:
+ * it is total absolute turning, so a boundary that leaves its arc and comes
+ * back turns LESS than the truth and scores better for it.
+ *
+ * The fix is to measure exactly the part `layerWobble` throws away. Walk the
+ * boundary at a fixed step; over a window of a few pixels compare the total
+ * absolute turning with the absolute NET turning. The difference is turning
+ * that CANCELS — the boundary went one way and came back:
+ *
+ *     excess = sum|dTheta| - |sum dTheta|
+ *
+ * That single expression is what separates the two things a staircase measure
+ * must never confuse:
+ *   - a CORNER, however sharp, is one large turn among small ones, all of the
+ *     same sign, so nothing cancels and it reads ZERO. Measured: an exact
+ *     square 0.00000, a 19-degree spike 0.00000, and the corner fixture's real
+ *     corners contribute nothing to its score.
+ *   - a STAIRCASE alternates sign at every step, so nearly all of its turning
+ *     cancels. Measured: a rasterized 1px staircase 0.92, our own trace of an
+ *     exact disc 0.00000.
+ *
+ * Two refinements, each of which was forced by a case where the plain form got
+ * it wrong, and both of which are the reason this is trustworthy:
+ *
+ *   `amp` — a window's reversal only counts when the boundary's excursion from
+ *   its own chord stays within about a pixel. Staircasing steps by a pixel
+ *   however long the run is, because the grid is the only length it knows; a
+ *   legitimate tight curl swings by its own radius. Without this a genuine
+ *   3px-radius S-curve scored 0.124, indistinguishable from a real defect; with
+ *   it, 0.026.
+ *
+ *   the AGGREGATOR — reported two ways, because the artifact has two forms and
+ *   one number cannot hold both. `sustained` is the mean over the worst
+ *   `stretch` px run and is the STAIRCASE proper, which repeats; a single
+ *   legitimate inflection is diluted by the 40px it sits in. `local` is the
+ *   worst single window and is the NOTCH, which does not repeat. The first cut
+ *   of this metric reported only the max, and the max could not tell a 0.2px
+ *   sag (0.0105) from one honest inflection (0.0146) — the discriminator is not
+ *   amplitude, it is persistence, and that is what `sustained` measures.
+ *
+ * Units are SOURCE PIXELS, deliberately and unlike `layerWobble`: staircasing
+ * is a property of the pixel grid, so a metric that normalised it away would be
+ * measuring the wrong thing. It therefore only means anything on a document
+ * whose coordinates are source pixels, which ours are.
+ *
+ * Reading the number: 0.000 is a curve with no reversal in it at all;
+ * everything the corpus's legitimate geometry produces is under 0.03; the notch
+ * that started this lap read 0.330 and the raw pixel boundary reads 0.92.
+ */
+export function staircaseIndex(
+  svg,
+  { step = 0.5, window = 8, amp = 1.5, stretch = 40, minLength = 24 } = {},
+) {
+  const sites = [];
+  for (const chunk of fillLayerChunks(svg)) {
+    for (const d of pathDataAttributes(chunk.body)) {
+      for (const poly of subPathPolylines(d, { step: step / 2 })) {
+        let length = 0;
+        for (let i = 1; i < poly.length; i++) {
+          length += Math.hypot(poly[i][0] - poly[i - 1][0], poly[i][1] - poly[i - 1][1]);
+        }
+        if (length < minLength) continue;
+        const walk = resampleClosed(poly, step);
+        const n = walk.length;
+        const m = Math.max(2, Math.round(window / step));
+        if (n < m + 3) continue;
+        const at = (i) => walk[((i % n) + n) % n];
+        const turn = new Float64Array(n);
+        for (let i = 0; i < n; i++) {
+          const a = at(i);
+          const b = at(i + 1);
+          const c = at(i + 2);
+          let delta =
+            Math.atan2(c[1] - b[1], c[0] - b[0]) - Math.atan2(b[1] - a[1], b[0] - a[0]);
+          while (delta > Math.PI) delta -= 2 * Math.PI;
+          while (delta < -Math.PI) delta += 2 * Math.PI;
+          turn[i] = delta;
+        }
+        const local = new Float64Array(n);
+        for (let i = 0; i < n; i++) {
+          let total = 0;
+          let net = 0;
+          for (let k = 0; k < m; k++) {
+            const v = turn[(i + k) % n];
+            total += Math.abs(v);
+            net += v;
+          }
+          let excess = total - Math.abs(net);
+          if (excess > 0) {
+            // ...only if the excursion is pixel-scale (see `amp` above).
+            const p0 = at(i);
+            const p1 = at(i + m);
+            const ex = p1[0] - p0[0];
+            const ey = p1[1] - p0[1];
+            const chord = Math.hypot(ex, ey);
+            let dev = Infinity;
+            if (chord > 1e-9) {
+              dev = 0;
+              for (let k = 1; k < m; k++) {
+                const q = at(i + k);
+                const t = Math.abs((q[0] - p0[0]) * ey - (q[1] - p0[1]) * ex) / chord;
+                if (t > dev) dev = t;
+              }
+            }
+            if (dev > amp) excess = 0;
+          }
+          local[i] = excess / window;
+        }
+        // Worst single window (the notch) and worst sustained run (the stairs).
+        let worst = 0;
+        let worstAt = 0;
+        for (let i = 0; i < n; i++) {
+          if (local[i] > worst) {
+            worst = local[i];
+            worstAt = i;
+          }
+        }
+        const s = Math.max(1, Math.round(stretch / step));
+        let best = 0;
+        let bestAt = 0;
+        if (n >= s) {
+          let run = 0;
+          for (let k = 0; k < s; k++) run += local[k];
+          best = run / s;
+          for (let i = 1; i <= n; i++) {
+            run += local[(i + s - 1) % n] - local[(i - 1) % n];
+            if (run / s > best) {
+              best = run / s;
+              bestAt = i;
+            }
+          }
+        }
+        sites.push({
+          fill: chunk.fill,
+          length,
+          local: worst,
+          localAt: walk[worstAt],
+          sustained: best,
+          sustainedAt: walk[bestAt % n],
+        });
+      }
+    }
+  }
+  if (!sites.length) return { local: null, sustained: null, counted: 0, worstSite: null };
+  const byLocal = sites.reduce((a, b) => (b.local > a.local ? b : a));
+  const bySustained = sites.reduce((a, b) => (b.sustained > a.sustained ? b : a));
+  return {
+    // The WORST sub-path, not the mean: one edge that came back as a staircase
+    // is the defect, and averaging it with forty clean ones hides it — the same
+    // argument `boundarySmoothness` makes about arcs.
+    local: byLocal.local,
+    sustained: bySustained.sustained,
+    counted: sites.length,
+    worstSite: {
+      local: byLocal.localAt?.map((v) => Math.round(v)) ?? null,
+      sustained: bySustained.sustainedAt?.map((v) => Math.round(v)) ?? null,
+    },
+  };
+}
+
+/**
  * Boundary WOBBLE — total absolute turning per unit boundary length, averaged
  * over the colour layers that carry the picture.
  *
@@ -1814,6 +1981,7 @@ export function backdropFill(svg) {
 /** Everything structural we can read straight out of an SVG string. */
 export function svgStructure(svg) {
   const backdrop = backdropFill(svg);
+  const staircase = staircaseIndex(svg);
   return {
     backdropFill: backdrop?.fill ?? null,
     hasFullBleedBackdrop: backdrop !== null,
@@ -1832,6 +2000,11 @@ export function svgStructure(svg) {
     // where compactness (a global perimeter/area ratio) and curveCommandRatio
     // (which only counts command letters) both report health.
     layerWobble: layerBoundaryWobble(svg).mean,
+    // ...and the part `layerWobble` throws away, which is the part that reads as
+    // a staircase: turning that CANCELS. See `staircaseIndex`.
+    staircaseLocal: staircase.local,
+    staircaseSustained: staircase.sustained,
+    staircaseWorstSite: staircase.worstSite,
     nearDuplicateFillPairs: nearDuplicateFillPairs(svg),
     bytes: Buffer.byteLength(svg, 'utf8'),
   };
