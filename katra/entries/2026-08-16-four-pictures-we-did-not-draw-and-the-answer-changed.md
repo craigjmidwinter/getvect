@@ -6,6 +6,11 @@ tags:
     - fixtures
     - process
     - instruments
+hash: "14024e2"
+stat:
+    f: 14
+    a: 599
+    d: 36
 ---
 
 Last lap ended with a rule and no way to apply it. Every fixture now declared who
