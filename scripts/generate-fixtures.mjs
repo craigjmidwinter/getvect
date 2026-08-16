@@ -1570,8 +1570,8 @@ async function main() {
            * stair-steps" half of the report — and the sliver trim took it from
            * 0.0239 to 0.0140 here, so the gate sits just above where it landed.
            * The one-off form (`staircaseLocal`) is deliberately NOT gated on
-           * this fixture: the same change moved it 0.2392 -> 0.1091 here but
-           * 0.3304 -> 0.4894 on the default-settings twin, by concentrating
+           * this fixture: the same change moved it 0.2392 -> 0.1086 here but
+           * 0.3304 -> 0.4919 on the default-settings twin, by concentrating
            * what had been spread out, and a gate on a number that is still
            * moving in both directions would be a ratchet on noise. It is an
            * aspiration below instead, which is what that state is for.

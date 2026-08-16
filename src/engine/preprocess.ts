@@ -388,6 +388,15 @@ export function regularizeBoundaries(
  * what set the ceiling, not the one fixture that motivated it.
  */
 const SLIVER_MAX_RUN = 8;
+/**
+ * Area below which a region is a whole SHAPE rather than something with a
+ * boundary to trim, in pixels.
+ *
+ * The same number `regularizeBoundaries` uses for the same argument: its window
+ * area (7x7) times `minRegionWindows` (4). A region smaller than that cannot be
+ * judged by a filter whose evidence is a neighbourhood that swallows it.
+ */
+const SLIVER_MIN_REGION = 7 * 7 * 4;
 
 /**
  * Trim the one-pixel slivers that BOTH cleanup passes are obliged to keep.
@@ -447,6 +456,8 @@ export function trimSlivers(
    */
   const sweep = (horizontal: boolean): void => {
     const out = Uint8Array.from(src);
+    // Recomputed per sweep: the first sweep changes which regions are small.
+    const small = smallRegionMask(src, width, height, SLIVER_MIN_REGION);
     const at = (x: number, y: number): number =>
       x < 0 || y < 0 || x >= width || y >= height ? -1 : src[y * width + x];
     const major = horizontal ? width : height;
@@ -507,6 +518,31 @@ export function trimSlivers(
           if (get(k, b - 1) !== above || get(k, b + 1) !== below) sandwiched = false;
         }
         if (!sandwiched || above === transparentIndex || below === transparentIndex) {
+          a = end + 1;
+          continue;
+        }
+        /**
+         * ...and only where the sliver is the EDGE of a region, not the whole of
+         * a small one.
+         *
+         * This is the guard the first version was missing, and leaving it out is
+         * what made the filter unsafe. `regularizeBoundaries` already makes this
+         * argument for its own vote — "a whole shape, not a seam" — and it
+         * applies here with more force, because this filter judges runs a single
+         * pixel thick. A ten-pixel feature built out of one- and two-pixel runs
+         * of several colours is a picture in which almost EVERY run is
+         * sandwiched, so the filter stops trimming residue off a boundary and
+         * starts rewriting the feature.
+         *
+         * Measured, on 16-colour artwork with Enhance: five scattered one-pixel
+         * edits inside a 10x10px eye highlight changed which palette slot it
+         * belonged to and cost it its sharp point (97.1 deg -> 73.6 deg), and a
+         * 5x3px grey detail nearby came back as four fragments plus a needle
+         * contour that scored 178 deg. The mascot's white finger, by contrast,
+         * is the edge of a bib thousands of pixels in area — which is exactly the
+         * difference this test reads.
+         */
+        if (small[(horizontal ? b * width + a : a * width + b)]) {
           a = end + 1;
           continue;
         }
