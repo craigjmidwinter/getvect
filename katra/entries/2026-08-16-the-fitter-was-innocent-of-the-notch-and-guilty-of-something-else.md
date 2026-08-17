@@ -6,6 +6,11 @@ tags:
     - engine
     - fitting
     - instruments
+hash: 409f8e7
+stat:
+    f: 2
+    a: 193
+    d: 0
 ---
 
 I sent myself here on a claim that turned out to be wrong, and the lap is worth
