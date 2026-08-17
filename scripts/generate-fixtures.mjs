@@ -1717,6 +1717,47 @@ async function main() {
         supported: true,
         distinctColors: null,
         settings: { colorCount: 8 },
+        /**
+         * Two crops, because the region metrics had nowhere else to live.
+         *
+         * Removing the un-redistributable local artwork took with it the only
+         * non-authored fixture that declared salient regions, which left eight
+         * region gates anchored solely on our own two mascots — the exact thing
+         * `tests/engine/provenance.test.mjs` forbids, and it went red the moment
+         * the local set was gone. These are the re-anchor.
+         *
+         * `wordmark` is the whole point of sourcing this picture: dark serif
+         * type over flat poster colour, which is where ink recall, strict ink
+         * recall, sliver ratio and foreign colour all mean something at once.
+         *
+         * ONE region, not two. A `sky` crop was tried alongside it and removed:
+         * it contains no source ink at all, so its strict ink recall is 0 by
+         * definition, and since the fixture-level region bars aggregate to the
+         * WORST crop it dragged `regionStrictInkRecall` to zero and made the
+         * gate unusable. A region that cannot fail for the right reason cannot
+         * pass for the right reason either.
+         */
+        salientRegions: [
+          {
+            name: 'wordmark',
+            x: 40,
+            y: 1035,
+            width: 880,
+            height: 100,
+            /**
+             * Per-crop bars. `maxMeanColorError` and the ink-coverage pair are
+             * REGION gates — declaring `maxMeanColorError` at fixture level is
+             * accepted by the manifest and matches no metric at all, which the
+             * dead-gate check reports as "no such gate". Measured here: MAE
+             * 10.0, ink spend 1.19x the source's.
+             */
+            thresholds: {
+              maxMeanColorError: 16,
+              maxInkCoverageRatio: 1.5,
+              minInkCoverageRatio: 0.85,
+            },
+          },
+        ],
         thresholds: {
           meanColorError: 30,
           ssim: 0.6,
@@ -1724,6 +1765,22 @@ async function main() {
           maxSubPaths: 9000,
           maxBytes: 2 * 1024 * 1024,
           maxMs: 20000,
+          /**
+           * The region and palette bars, re-anchored here off the mascots.
+           *
+           * Set from this fixture's first measurement and deliberately LOOSE —
+           * they are blow-up guards, not quality ratchets, and nobody has yet
+           * decided what good looks like for letterforms. Measured: region ink
+           * 0.989, strict 0.964, MAE 10.0, foreign colour 0.000 %, slivers
+           * 0.032 %, palette shortfall 0, global strict ink 0.992.
+           */
+          minRegionInkRecall: 0.96,
+          minRegionStrictInkRecall: 0.92,
+          maxRegionMeanColorError: 16,
+          maxRegionForeignColorRatio: 0.004,
+          maxRegionSliverRatio: 0.001,
+          maxPaletteShortfall: 2,
+          minStrictInkRecall: 0.97,
           /**
            * D3 export structure, re-anchored here off the fox.
            *

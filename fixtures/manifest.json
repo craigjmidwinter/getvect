@@ -723,6 +723,20 @@
       "settings": {
         "colorCount": 8
       },
+      "salientRegions": [
+        {
+          "name": "wordmark",
+          "x": 40,
+          "y": 1035,
+          "width": 880,
+          "height": 100,
+          "thresholds": {
+            "maxMeanColorError": 16,
+            "maxInkCoverageRatio": 1.5,
+            "minInkCoverageRatio": 0.85
+          }
+        }
+      ],
       "thresholds": {
         "meanColorError": 30,
         "ssim": 0.6,
@@ -730,6 +744,13 @@
         "maxSubPaths": 9000,
         "maxBytes": 2097152,
         "maxMs": 20000,
+        "minRegionInkRecall": 0.96,
+        "minRegionStrictInkRecall": 0.92,
+        "maxRegionMeanColorError": 16,
+        "maxRegionForeignColorRatio": 0.004,
+        "maxRegionSliverRatio": 0.001,
+        "maxPaletteShortfall": 2,
+        "minStrictInkRecall": 0.97,
         "minDxfSplines": 10,
         "maxDxfEpsBytesRatio": 6
       },

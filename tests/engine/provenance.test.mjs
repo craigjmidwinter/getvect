@@ -87,10 +87,6 @@ function thresholdAnchors(fixtures) {
  * already been moved onto `arcs-560x256`, so it is not in this list.
  */
 const KNOWN_IN_HOUSE_ANCHORS = {
-  minInkCoverageRatio:
-    'Region ink fidelity on the mascot. A synthetic anchor would need artwork ' +
-    'with a soft outline over a light ground, which is exactly the kind of ' +
-    'picture the corpus has none of (see the coverage test below).',
   minColorPresenceRatio: 'Same: needs a small hue-distinct feature in non-ours artwork.',
 };
 
