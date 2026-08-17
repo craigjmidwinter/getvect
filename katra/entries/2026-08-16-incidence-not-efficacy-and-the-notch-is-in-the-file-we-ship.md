@@ -6,6 +6,11 @@ tags:
     - instruments
     - engine
     - process
+hash: "1149939"
+stat:
+    f: 3
+    a: 296
+    d: 0
 ---
 
 Craig: *"i don't understand we can prove that we are substantially worse
