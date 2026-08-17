@@ -6,6 +6,13 @@ tags:
     - engine
     - fitting
     - instruments
+hashes:
+    - 06a13dc
+    - 885c883
+stat:
+    f: 3
+    a: 202
+    d: 25
 ---
 
 Two agents took the same defect from the same base commit, blind to each other.
