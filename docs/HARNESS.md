@@ -414,6 +414,63 @@ whole report burns its context on JSON it did not need.
   gold-standard A/B; `artifacts/raster/<id>.png` is only worth opening
   once one of those has told you which fixture to look at.
 
+## Open defect: the one-pixel blind spot between the two cleanup guards
+
+Recorded here because it is measured, reproducible, and currently **unfixed** — and
+because the first attempt at fixing it was removed and the reason given was wrong.
+
+**What it is.** A one-pixel run, sandwiched between two different colours, that reaches
+the tracer intact because both cleanup passes are obliged to keep it: `majorityFilter`
+exempts it through `continuesRun` (it looks like a thin stroke) and `regularizeBoundaries`
+exempts it through `narrowHere` (it looks like a corridor or a spike tip). Both guards are
+individually correct. The defect lives in the gap between them.
+
+**It is not cosmetic and not confined to one image.** Counting the *cause* — sandwiched
+one-pixel runs both guards protect, per megapixel, on the index image after both passes —
+across the whole corpus at declared settings:
+
+| | blind spots / Mpx |
+| --- | --- |
+| `third-party-photo` / `-lineart` / `-lowres` / `-poster` | 2604 / 992 / 921 / 913 |
+| `local-artwork-default` | 49 |
+| `reference-frankie` (both rows) | 17–18 |
+| `reference-fox` (all rows) | 0–3 |
+| **all 8 synthetic fixtures** | **0** |
+
+It is 50–150× more common on artwork a person made than on our mascot, and **exactly zero
+on every fixture we generated** — including `arcs-560x256` and `spikes-bands-384`, which
+are antialiased, so this is not just "we drew them with hard edges". Real artwork has many
+colours meeting at pixel scale; generated fixtures have three or four meeting cleanly. The
+corpus was structurally incapable of showing this.
+
+**It reaches the shipped document, amplified.** Read straight out of the `d` attribute of
+`site/assets/frankie-vector.svg` — no rasteriser, no flattener — the white layer carries
+`c -2.56 4.81 -19.69 7.58 -9.03 15.97`, a cubic from (484.03, 495.03) to (475.00, 511.00)
+whose second control point is at (464.34, 502.61), 10.7px outside its own endpoint span.
+The curve reaches x = 471.54 and deviates **5.93px from its own chord**. A one-pixel mask
+tongue becomes a six-pixel geometric excursion, which is why something a pixel tall is
+obvious at 4× zoom. This is not a rendering artefact of the demo.
+
+**Why it is still open.** `trimSlivers` (removed; see git history) helped where the defect
+is rare and hurt where it is common — neutral on one of the four highest-incidence images
+and worse on three, doubling `staircaseSustained` on `third-party-lowres`. At 17 per
+megapixel a sandwiched one-pixel run is anomalous, so it is residue; at 900+ it is the
+texture of the drawing.
+
+Separating the two is the open problem, and one attempt is already ruled out: classifying
+residue as a *blend* (its colour lying between its two flanks, the argument
+`regularizeBoundaries` makes about fringes) scores the mascot's own notch as **zero**,
+because there the sliver is paper showing through a faded stroke tip, not an intermediate
+colour. It fails its own known-positive. The evidence that would separate them — was this
+pixel an anti-aliasing ramp between two flats? — exists in the source and is destroyed by
+quantisation before either guard runs, so a fix probably has to live in `deAntialias`,
+while a ramp is still a ramp.
+
+Reproducing the incidence count needs a temporary hook: dump `indices`, `clusters`,
+`clusterInk` and `TRANSPARENT_INDEX` from `vectorize()` immediately after the second
+`regularizeBoundaries` loop, then apply the `continuesRun` / `narrowHere` predicates
+copied verbatim from `preprocess.ts`.
+
 ## Who is allowed to decide that a change is an improvement
 
 Every fixture declares `provenance`, and it decides what the fixture is entitled to do.
