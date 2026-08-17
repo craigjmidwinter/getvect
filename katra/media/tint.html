@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root { --bg:#fbfaf8; --ink:#1a1a1a; --mut:#6f6f6a; --rule:#ded9d1; --paper:#c9a227; --acc:#c2451e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16181b; --ink:#eceae6; --mut:#98988f; --rule:#31343a; --paper:#d9b64a; --acc:#e8703f; }
+  }
+  html,body { margin:0; background:var(--bg); color:var(--ink);
+    font:13.5px/1.55 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { padding:20px 22px 14px; }
+  h2 { font-size:15px; margin:0 0 4px; letter-spacing:-0.01em; }
+  p.sub { margin:0 0 18px; color:var(--mut); font-size:12.5px; max-width:60em; }
+  .note { margin-top:16px; padding:11px 13px; border-left:3px solid var(--acc);
+    background:color-mix(in srgb, var(--acc) 8%, transparent); border-radius:0 5px 5px 0; font-size:12.5px; }
+  code { font:12px ui-monospace,SFMono-Regular,Menlo,monospace; }
+</style>
+<div class="wrap">
+  <h2>How strong is the evidence that a residue pixel is residue?</h2>
+  <p class="sub">The six source pixels of the notch, positioned between the paper they will quantise to
+  and the body orange they arguably belong to. Nearest-colour quantisation assigns on this axis.</p>
+
+  <svg viewBox="0 0 700 250" width="100%" role="img" aria-label="Residue pixels plotted between paper and orange">
+    <line x1="120" y1="30" x2="120" y2="215" stroke="var(--rule)" stroke-width="1.5"/>
+    <line x1="640" y1="30" x2="640" y2="215" stroke="var(--rule)" stroke-width="1.5"/>
+    <text x="120" y="20" font-size="11.5" fill="currentColor" opacity=".65">paper (254,252,251)</text>
+    <text x="640" y="20" font-size="11.5" text-anchor="end" fill="currentColor" opacity=".65">body orange (230,159,83)</text>
+    <line x1="120" y1="232" x2="380" y2="232" stroke="var(--acc)" stroke-width="2"/>
+    <text x="250" y="246" font-size="11" text-anchor="middle" fill="var(--acc)">everything left of the midpoint quantises to PAPER</text>
+    <g id="pts"></g>
+  </svg>
+
+  <div class="note">
+    <strong>4.5 % to 12.3 %.</strong> That is the whole signal. Preserving it through
+    <code>deAntialias</code> — which the thickness fix does correctly — changes nothing, because
+    nearest-colour assignment puts a pixel that is 88 % paper into the paper layer either way. The
+    index image came out byte-identical. Acting on a 5 % tint is not reading evidence, it is
+    overruling it.
+  </div>
+</div>
+<script>
+  const rows = [
+    ["255,252,239", 4.5], ["255,250,240", 4.9], ["255,248,237", 6.6],
+    ["253,247,235", 7.7], ["255,246,233", 8.7], ["253,241,228", 12.3],
+  ];
+  const g = document.getElementById("pts");
+  let y = 46;
+  for (const [rgb, pct] of rows) {
+    const x = 120 + (640 - 120) * (pct / 100);
+    g.insertAdjacentHTML("beforeend",
+      `<circle cx="${x}" cy="${y}" r="5" fill="var(--paper)"/>` +
+      `<text x="${x + 11}" y="${y + 4}" font-size="11.5" fill="currentColor" opacity=".8">${rgb}</text>` +
+      `<text x="${x + 108}" y="${y + 4}" font-size="11" fill="currentColor" opacity=".45">${pct}% toward orange</text>`);
+    y += 28;
+  }
+</script>
