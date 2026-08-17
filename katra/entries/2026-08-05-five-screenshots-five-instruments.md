@@ -7,20 +7,19 @@ tags:
     - instruments
     - preview
 hashes:
-    - 28cfc4e
-    - 686f77e
-    - 4b57b47
-    - d538a56
-    - "0c390ff"
-    - bfe1d88
-    - 1368ba8
-    - b2e5710
-    - 9c6d3b1
-    - 5fa6d1d
+    - 55663c3
+    - e9fc258
+    - 1731d99
+    - 0fa700a
+    - 191ca2c
+    - ec3b7e5
+    - 0ccdd7d
+    - 671791b
+    - 1d8f759
 stat:
-    f: 40
-    a: 1416
-    d: 86
+    f: 36
+    a: 820
+    d: 84
 ---
 
 ![The before: cream ribbons threaded between the eye outline and the iris — a sharpening overshoot the fringe rule classified as a genuine third shade](media/fr-4x-eye.png)

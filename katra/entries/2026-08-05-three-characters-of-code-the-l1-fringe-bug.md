@@ -7,11 +7,11 @@ tags:
     - forensics
     - palette
 hashes:
-    - 0da954d
-    - 128b4cf
-    - 43b6450
-    - efac88d
-    - 0d0f195
+    - af28052
+    - 608cd17
+    - 40f4f00
+    - 81b4d57
+    - eb3ab1c
 stat:
     f: 28
     a: 754

@@ -7,27 +7,24 @@ tags:
     - site
     - quality
 hashes:
-    - 11fc418
-    - f61f312
-    - "b9f901c"
-    - 169de32
-    - c8ec968
-    - fef1b3f
-    - db273a4
-    - "3dc8fad"
-    - 7d4ed46
-    - 7cf8ce5
-    - db7e3c7
-    - "87ab9ed"
-    - ea3f9d9
-    - 6afb58a
-    - cdb9ea1
-    - 533fcb0
-    - 47ae115
+    - 08d50b1
+    - 9ddf441
+    - "7922592"
+    - 1eb9b81
+    - e0b286d
+    - 532be2f
+    - b2fea9a
+    - 9669f9d
+    - 7c24d75
+    - eb1033f
+    - 6910d78
+    - 7e80a6d
+    - 9caa2b4
+    - de67fa6
 stat:
-    f: 58
-    a: 6638
-    d: 431
+    f: 52
+    a: 6538
+    d: 425
 ---
 
 ![The wordmark that ended up on the door: Sedgwick Ave Display outlines in hot pink, no glow — Craig's call, and the right one](media/wordmark-pink-preview.png)
