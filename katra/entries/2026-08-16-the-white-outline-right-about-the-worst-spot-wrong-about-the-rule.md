@@ -6,6 +6,11 @@ tags:
     - instruments
     - engine
     - process
+hash: "9889541"
+stat:
+    f: 2
+    a: 194
+    d: 0
 ---
 
 Craig, having looked at the artwork rather than the numbers: *"the main culprit
