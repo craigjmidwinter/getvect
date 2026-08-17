@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root { --bg:#fbfaf8; --ink:#1a1a1a; --mut:#6f6f6a; --rule:#ded9d1;
+          --ok:#2e7d5b; --bad:#c2451e; --pick:#8a6d3b; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16181b; --ink:#eceae6; --mut:#98988f; --rule:#31343a;
+            --ok:#4bbd8a; --bad:#e8703f; --pick:#d9b64a; }
+  }
+  html,body { margin:0; background:var(--bg); color:var(--ink);
+    font:13.5px/1.55 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { padding:20px 22px 14px; }
+  h2 { font-size:15px; margin:0 0 4px; letter-spacing:-0.01em; }
+  p.sub { margin:0 0 18px; color:var(--mut); font-size:12.5px; max-width:62em; }
+  .note { margin-top:14px; padding:11px 13px; border-left:3px solid var(--pick);
+    background:color-mix(in srgb, var(--pick) 10%, transparent); border-radius:0 5px 5px 0; font-size:12.5px; }
+  code { font:12px ui-monospace,SFMono-Regular,Menlo,monospace; }
+</style>
+<div class="wrap">
+  <h2>Where to put the bound: 488,030 handles, log scale</h2>
+  <p class="sub">Handle length as a multiple of its run's arc length. Legitimate fits and blow-ups are
+  cleanly bimodal, so the constant only has to land in the empty space between them.</p>
+
+  <svg viewBox="0 0 700 200" width="100%" role="img" aria-label="Distribution of handle length over arc length">
+    <!-- log10 scale from 0.1 (x=40) to 100 (x=660): 3 decades over 620px -->
+    <g stroke="var(--rule)" stroke-width="1">
+      <line x1="40" y1="24" x2="40" y2="136"/><line x1="246" y1="24" x2="246" y2="136"/>
+      <line x1="453" y1="24" x2="453" y2="136"/><line x1="660" y1="24" x2="660" y2="136"/>
+    </g>
+    <g font-size="10.5" fill="currentColor" opacity=".5">
+      <text x="40" y="152" text-anchor="middle">0.1</text><text x="246" y="152" text-anchor="middle">1</text>
+      <text x="453" y="152" text-anchor="middle">10</text><text x="660" y="152" text-anchor="middle">100</text>
+      <text x="350" y="172" text-anchor="middle">handle ÷ arc length</text>
+    </g>
+
+    <!-- legitimate band: p50 0.384 .. p99 0.893 -->
+    <rect x="164" y="44" width="72" height="26" rx="3" fill="var(--ok)" opacity=".85"/>
+    <text x="200" y="38" font-size="11" text-anchor="middle" fill="currentColor" opacity=".8">legitimate</text>
+    <text x="200" y="62" font-size="10.5" text-anchor="middle" fill="#fff">p50 .38 → p99 .89</text>
+
+    <!-- blowups: 33.5 .. 58 -->
+    <rect x="561" y="44" width="45" height="26" rx="3" fill="var(--bad)" opacity=".9"/>
+    <text x="583" y="38" font-size="11" text-anchor="middle" fill="currentColor" opacity=".8">blow-ups</text>
+    <text x="583" y="62" font-size="10.5" text-anchor="middle" fill="#fff">33 → 58</text>
+
+    <!-- the gap -->
+    <line x1="240" y1="57" x2="557" y2="57" stroke="currentColor" stroke-dasharray="3 3" opacity=".3"/>
+    <text x="398" y="90" font-size="11" text-anchor="middle" fill="currentColor" opacity=".55">an order of magnitude of nothing</text>
+
+    <!-- the chosen bound at 2.0 -->
+    <line x1="308" y1="28" x2="308" y2="120" stroke="var(--pick)" stroke-width="2.5"/>
+    <text x="308" y="136" font-size="11.5" text-anchor="middle" fill="var(--pick)" font-weight="600">2.0 — the bound</text>
+  </svg>
+
+  <div class="note">
+    Both earlier proposals sat at an edge of that gap rather than in it. <code>1 × arc</code> lands on
+    the legitimate p99 and rejects 900 honest fits; <code>3 × chord</code> is undefined where the chord
+    vanishes — six corpus runs have a chord of exactly 0.0000px against arcs of 166–210px. On this
+    corpus all three produce equivalent output; the difference is which one has an answer for inputs
+    the corpus does not contain.
+  </div>
+</div>
