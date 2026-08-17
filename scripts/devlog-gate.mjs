@@ -191,7 +191,30 @@ async function build() {
   console.log(`\nbuilt → ${join(work, 'site')}  (not deployed)`);
 }
 
+function usage() {
+  console.log(`devlog-gate — decide which katra entries may be published.
+
+  --audit            (default) list what would publish and what is held back, with reasons
+  --build            stage the opted-in entries and run \`katra build\`; does NOT deploy
+  --stage <dir>      copy the opted-in entries + their media into <dir>, verbatim
+  --help             this
+
+An entry publishes only if it opts in with \`publish: true\` in its frontmatter AND
+passes every check: no forbidden name, no missing media, every stamped hash resolves.
+Entries are copied byte-for-byte and verified by digest — never edited to make them
+publishable, because a sanitised copy is a second source of truth.
+
+  npm run devlog:audit
+  npm run devlog:build`);
+}
+
 const arg = process.argv[2];
-if (arg === '--stage') await stage(process.argv[3] ?? join(ROOT, 'artifacts', 'devlog-src'));
+if (arg === '--help' || arg === '-h') usage();
+else if (arg === '--stage') await stage(process.argv[3] ?? join(ROOT, 'artifacts', 'devlog-src'));
 else if (arg === '--build') await build();
-else await audit();
+else if (arg === '--audit' || arg === undefined) await audit();
+else {
+  console.error(`unknown option: ${arg}\n`);
+  usage();
+  process.exit(2);
+}
