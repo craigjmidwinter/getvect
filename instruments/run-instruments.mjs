@@ -345,6 +345,9 @@ const GATES = [
   // `staircaseIndex`): how much of this boundary's turning CANCELS at pixel
   // scale? `Local` is the one-off notch, `Sustained` is the repeating stair.
   // A corner reads zero in both, which is the whole point of the measure.
+  // Needs no judgement: the canvas size is a fact about the input. A fitted
+  // curve outside it is geometry the boundary never had.
+  ['maxCanvasOverflow', 'canvasOverflow', 'max', (v) => `${v.toFixed(2)}px`],
   ['maxStaircaseLocal', 'staircaseLocal', 'max', (v) => v.toFixed(4)],
   ['maxStaircaseSustained', 'staircaseSustained', 'max', (v) => v.toFixed(4)],
   // B3: how many of the colours the user asked for — and the image actually has
@@ -760,6 +763,8 @@ async function main() {
       layerCount: structure.layerCount,
       layerCompactness: structure.layerCompactness,
       layerWobble: structure.layerWobble,
+      // The drawing must stay on its own canvas (metrics.mjs `canvasOverflow`).
+      canvasOverflow: structure.canvasOverflow,
       // ...and the reversal `layerWobble` is blind to by construction, which is
       // the one that reads as a staircase at 4x zoom. Unlike `arcResidualRms`
       // below, this needs no equation and so works on ANY artwork.

@@ -499,7 +499,34 @@ function generateBezier(
 
   const segLength = len(sub(p3, p0));
   const epsilon = 1e-6 * segLength;
-  if (alphaL < epsilon || alphaR < epsilon) {
+  /**
+   * The least-squares solve is bounded BELOW and, until this was measured, not
+   * above.
+   *
+   * `detA / det` is whatever the normal equations say, and when they are
+   * ill-conditioned they say something enormous. That happens exactly where the
+   * chord carries no information: a small closed contour whose two ends nearly
+   * coincide. Measured on real artwork, a cubic with a **0.85px chord** came
+   * back with handles **625px and 547px** long and swung 184px away from the
+   * 18-point contour it was fitting. Three fixtures carried curves 4875px from
+   * their own polyline.
+   *
+   * The scale a handle must respect is the ARC it is approximating, not the
+   * chord — the chord vanishes on a closed loop while the arc does not. A
+   * handle longer than the whole polyline cannot be right, because the curve's
+   * convex hull then reaches further than the boundary ever goes. Beyond that
+   * bound the solve has failed, so it takes the same Wu/Barsky fallback the
+   * degenerate-low case already took, and `fitCubic` splits on the error the way
+   * it would for any other bad fit.
+   *
+   * For reference, a circular arc within this fitter's own `MAX_ARC_TURN` of 75
+   * degrees wants a handle of about 0.37x its chord, so the bound is nowhere
+   * near any legitimate fit.
+   */
+  let arcLength = 0;
+  for (let i = first; i < last; i++) arcLength += len(sub(pts[i + 1], pts[i]));
+  const alphaMax = Math.max(arcLength, segLength);
+  if (alphaL < epsilon || alphaR < epsilon || alphaL > alphaMax || alphaR > alphaMax) {
     // Wu/Barsky fallback: put the handles a third of the chord out.
     alphaL = segLength / 3;
     alphaR = segLength / 3;

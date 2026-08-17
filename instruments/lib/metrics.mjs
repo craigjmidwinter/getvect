@@ -1794,6 +1794,51 @@ export function staircaseIndex(
 }
 
 /**
+ * CANVAS OVERFLOW — how far outside its own viewBox does the drawing reach?
+ *
+ * The answer should be "not at all", and it is one of the very few bars in this
+ * file that needs no judgement: the canvas size is a fact about the input, not a
+ * preference about quality. A trace of a 960x960 photograph has no business
+ * containing a point at x = -4069.
+ *
+ * It exists because that is exactly what was found. The curve-fitter's
+ * least-squares tangent solve was bounded below and not above, so an
+ * ill-conditioned fit — a small closed contour whose endpoints nearly coincide,
+ * where the chord carries no information — returned handles hundreds of pixels
+ * long. The resulting cubics sat up to 4875px from the polyline they were
+ * fitting, and three fixtures' traces spanned nearly ten thousand pixels of a
+ * 960px canvas.
+ *
+ * Nothing else in the harness saw it. Colour error and SSIM are computed on the
+ * rasterized result, where anything off-canvas is simply clipped away;
+ * `layerCompactness` and `layerWobble` were not merely blind to it but actively
+ * corrupted by it, since both normalise by a bounding box the stray geometry had
+ * inflated — which is why they read an implausible 1.13 and 0.0 before the fix
+ * and honest values after.
+ *
+ * Reported in source pixels: the largest distance by which any point on any
+ * flattened path lies outside the viewBox.
+ */
+export function canvasOverflow(svg, { curveSamples = 8 } = {}) {
+  const vb = /viewBox="([^"]+)"/.exec(svg);
+  if (!vb) return null;
+  const [vx, vy, vw, vh] = vb[1].trim().split(/[\s,]+/).map(Number);
+  if (![vx, vy, vw, vh].every(Number.isFinite)) return null;
+  let worst = 0;
+  for (const chunk of fillLayerChunks(svg)) {
+    for (const d of pathDataAttributes(chunk.body)) {
+      for (const poly of subPathPolylines(d, curveSamples)) {
+        for (const [x, y] of poly) {
+          const over = Math.max(vx - x, x - (vx + vw), vy - y, y - (vy + vh), 0);
+          if (over > worst) worst = over;
+        }
+      }
+    }
+  }
+  return worst;
+}
+
+/**
  * Boundary WOBBLE — total absolute turning per unit boundary length, averaged
  * over the colour layers that carry the picture.
  *
@@ -2000,6 +2045,9 @@ export function svgStructure(svg) {
     // where compactness (a global perimeter/area ratio) and curveCommandRatio
     // (which only counts command letters) both report health.
     layerWobble: layerBoundaryWobble(svg).mean,
+    // ...and the one bar that needs no judgement at all: does the drawing stay
+    // on its own canvas? See `canvasOverflow`.
+    canvasOverflow: canvasOverflow(svg),
     // ...and the part `layerWobble` throws away, which is the part that reads as
     // a staircase: turning that CANCELS. See `staircaseIndex`.
     staircaseLocal: staircase.local,

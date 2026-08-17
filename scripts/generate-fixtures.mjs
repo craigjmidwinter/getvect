@@ -970,6 +970,18 @@ async function main() {
            * we backed into.
            */
           maxStaircaseSustained: 0.01,
+          /**
+           * The drawing must stay on its own canvas.
+           *
+           * Not a ratchet and not a taste: the viewBox is a fact about the
+           * input. It measures 0.00px here and its ceiling is one pixel of
+           * flattening slack. Before the curve-fitter's tangent solve was
+           * bounded above, three fixtures traced to geometry 4000px outside a
+           * 960px canvas and nothing in the harness noticed — the raster
+           * metrics clip it away and the layer-shape metrics were corrupted by
+           * it rather than blind to it.
+           */
+          maxCanvasOverflow: 1,
           maxPaths: 200,
           maxSubPaths: 200,
           maxTinySubPathRatio: 0.02,
@@ -1793,6 +1805,9 @@ async function main() {
            */
           minDxfSplines: 10,
           maxDxfEpsBytesRatio: 6,
+          // Same bar as arcs-560x256, on artwork nobody here drew: 0.79px today,
+          // 4034px before the fitter's tangent solve was bounded above.
+          maxCanvasOverflow: 2,
         },
         note:
           'WPA travel poster, 1938 (public domain). The corpus had NO letterforms at ' +

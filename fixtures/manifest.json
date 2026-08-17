@@ -234,6 +234,7 @@
         "maxArcResidualRms": 0.24,
         "maxStaircaseLocal": 0.02,
         "maxStaircaseSustained": 0.01,
+        "maxCanvasOverflow": 1,
         "maxPaths": 200,
         "maxSubPaths": 200,
         "maxTinySubPathRatio": 0.02,
@@ -752,7 +753,8 @@
         "maxPaletteShortfall": 2,
         "minStrictInkRecall": 0.97,
         "minDxfSplines": 10,
-        "maxDxfEpsBytesRatio": 6
+        "maxDxfEpsBytesRatio": 6,
+        "maxCanvasOverflow": 2
       },
       "note": "WPA travel poster, 1938 (public domain). The corpus had NO letterforms at all before this, and a wordmark is the case a de-staircasing change endangers most: three sizes of serif type here, down to a caption a few pixels tall, over flat poster colour and a real scanned sky gradient."
     },
