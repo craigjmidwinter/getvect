@@ -6,6 +6,11 @@ tags:
     - process
     - fixtures
     - release
+hash: af47deb
+stat:
+    f: 2
+    a: 199
+    d: 0
 ---
 
 Craig, twice: *"no lets not mention the competitor and make sure we can distribute
