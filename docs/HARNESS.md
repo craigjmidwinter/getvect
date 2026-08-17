@@ -471,6 +471,38 @@ Reproducing the incidence count needs a temporary hook: dump `indices`, `cluster
 `regularizeBoundaries` loop, then apply the `continuesRun` / `narrowHere` predicates
 copied verbatim from `preprocess.ts`.
 
+## A declared bar that cannot fire is worse than no bar
+
+> **A threshold whose metric is not being produced is a DEAD GATE, and the run fails on
+> it.** Not a warning, not a skip — a failure.
+
+`checkThresholds` skips a metric that came back `null`. That is right for a bar that
+genuinely does not apply to a fixture, and it is exactly wrong for a bar that *used* to
+apply and quietly stopped: the line stays in the manifest, it reads as coverage, and it
+checks nothing. Deleting the vendored exemplars would have turned about twenty-six
+thresholds into that overnight.
+
+The failure mode is silence, which is the shape of every serious mistake this harness has
+made. A gate that was never wired to a render shipped once. A test read its expectation
+from the module it was testing. A de-staircasing filter was judged by how much it improved
+the picture it was tuned on. In each case something looked like a check and was not, and
+nothing said so.
+
+So `npm run instruments` now reports `DEAD GATE: <key> -> <metric> is not measured` and
+fails. It earned this the day it was added, three times: a pre-existing dead gate on
+`reference-frankie-default`'s nose crop, declared and never measured; `maxMeanColorError`
+declared at *fixture* level, where it is a real key that matches no metric at all; and the
+whole set of exemplar-relative bars, enumerated exactly rather than guessed at.
+
+Two consequences worth stating:
+
+- **A key that does not exist is also a dead gate.** `deadGates` reports `(no such gate)`
+  for a threshold name that is in no gate table, so a typo cannot sit in the manifest
+  looking like a promise.
+- **The fix for a dead gate is never to delete the check.** Either re-anchor the metric so
+  it is produced again, or delete the *threshold* and say so — see the provenance rule
+  below for who is allowed to anchor what.
+
 ## Who is allowed to decide that a change is an improvement
 
 Every fixture declares `provenance`, and it decides what the fixture is entitled to do.
