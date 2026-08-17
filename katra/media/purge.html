@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root { --bg:#fbfaf8; --ink:#1a1a1a; --mut:#6f6f6a; --rule:#ded9d1;
+          --ok:#2e7d5b; --bad:#c2451e; --card:#ffffff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16181b; --ink:#eceae6; --mut:#98988f; --rule:#31343a;
+            --ok:#4bbd8a; --bad:#e8703f; --card:#1c1f23; }
+  }
+  html,body { margin:0; background:var(--bg); color:var(--ink);
+    font:13.5px/1.55 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { padding:20px 22px 14px; }
+  h2 { font-size:15px; margin:0 0 4px; letter-spacing:-0.01em; }
+  p.sub { margin:0 0 16px; color:var(--mut); font-size:12.5px; max-width:60em; }
+  .row { display:flex; gap:14px; flex-wrap:wrap; }
+  .card { flex:1 1 260px; background:var(--card); border:1px solid var(--rule);
+    border-radius:7px; padding:13px 15px; }
+  .card h3 { margin:0 0 9px; font-size:12.5px; letter-spacing:.02em;
+    text-transform:uppercase; color:var(--mut); font-weight:600; }
+  .line { display:flex; gap:9px; align-items:baseline; padding:3px 0; font-size:12.5px; }
+  .mark { flex:0 0 auto; font-weight:700; width:1.1em; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); }
+  code { font:12px ui-monospace,SFMono-Regular,Menlo,monospace;
+    background:color-mix(in srgb, var(--ink) 7%, transparent); padding:1px 4px; border-radius:3px; }
+  .note { margin-top:14px; padding:11px 13px; border-left:3px solid var(--bad);
+    background:color-mix(in srgb, var(--bad) 8%, transparent); border-radius:0 5px 5px 0; font-size:12.5px; }
+</style>
+<div class="wrap">
+  <h2>What the rewrite removed, and what it did not</h2>
+  <p class="sub">Measured after the force-push, not assumed. Every line below is a command that was run.</p>
+
+  <div class="row">
+    <div class="card">
+      <h3>Local history — clean</h3>
+      <div class="line"><span class="mark ok">✓</span><span>vendored SVGs in any commit: <strong>0</strong></span></div>
+      <div class="line"><span class="mark ok">✓</span><span>third-party character objects: <strong>0</strong></span></div>
+      <div class="line"><span class="mark ok">✓</span><span>that name in commit messages: <strong>0</strong> (was 39)</span></div>
+      <div class="line"><span class="mark ok">✓</span><span>competitor name in any blob: <strong>0</strong></span></div>
+      <div class="line"><span class="mark ok">✓</span><span>140 commits, 1 branch, 1 tag, nothing unexpected moved</span></div>
+    </div>
+
+    <div class="card">
+      <h3>GitHub, after the push</h3>
+      <div class="line"><span class="mark ok">✓</span><span><code>refs/heads/main</code> and <code>refs/tags/v0.1.0</code> both updated</span></div>
+      <div class="line"><span class="mark ok">✓</span><span>Release v0.1.0 intact — 5 assets, dmg returns <strong>200</strong></span></div>
+      <div class="line"><span class="mark ok">✓</span><span>updater's <code>/releases/latest</code> check still resolves</span></div>
+      <div class="line"><span class="mark ok">✓</span><span>forks: <strong>0</strong> — nothing else holds a copy</span></div>
+      <div class="line"><span class="mark bad">✗</span><span>the removed exemplar blob is <strong>still fetchable by SHA</strong></span></div>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>The claim that would have been false.</strong>
+    <code>gh api .../git/blobs/df110493…</code> still returns <strong>21721 bytes</strong> — the
+    exact vendored SVG, retrievable from the public repo by anyone who knows the hash. A
+    force-push makes objects unreachable, not absent; GitHub garbage-collects on its own
+    schedule. "Purged from every byte of its history" is not yet true, and this repository
+    has made that claim once before.
+  </div>
+</div>
