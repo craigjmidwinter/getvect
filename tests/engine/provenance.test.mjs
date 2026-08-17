@@ -87,19 +87,11 @@ function thresholdAnchors(fixtures) {
  * already been moved onto `arcs-560x256`, so it is not in this list.
  */
 const KNOWN_IN_HOUSE_ANCHORS = {
-  minDxfSplines:
-    'D3 export structure. Belongs on a synthetic shape whose curve count is ' +
-    'predictable rather than on the fox, but moving it changes what the number ' +
-    'means and wants its own lap.',
-  maxDxfEpsBytesRatio: 'Same gate, same lap.',
   minInkCoverageRatio:
     'Region ink fidelity on the mascot. A synthetic anchor would need artwork ' +
     'with a soft outline over a light ground, which is exactly the kind of ' +
     'picture the corpus has none of (see the coverage test below).',
   minColorPresenceRatio: 'Same: needs a small hue-distinct feature in non-ours artwork.',
-  minColorPresenceOverExemplar:
-    'Comparative against the reference product on our own artwork — doubly ' +
-    'unable to decide anything, and pending the vendored-exemplar question.',
 };
 
 test('[provenance] no gate is anchored only on artwork we drew', () => {
@@ -132,6 +124,53 @@ test('[provenance] no gate is anchored only on artwork we drew', () => {
     [],
     `these are listed as known in-house-only anchors but no longer are — delete ` +
       `them from KNOWN_IN_HOUSE_ANCHORS so the list keeps shrinking: ${stale.join(', ')}`,
+  );
+});
+
+/**
+ * Nothing enters `fixtures/` whose licence we cannot state.
+ *
+ * The repository is public, so every tracked fixture is something this project
+ * redistributes under the maintainer's name. Two vendored SVGs and a set of
+ * un-redistributable local rows sat in here for weeks on the strength of nobody
+ * asking, and the answer when someone finally did was to delete them and rewrite
+ * the history that carried them. That is expensive, and it is the reason this is
+ * a test rather than a habit.
+ *
+ * `synthetic` and `in-house` are ours to give away by definition. Everything
+ * else must have an entry in `fixtures/third-party/LICENSES.md` naming it, which
+ * `scripts/source-fixture.mjs` writes from the source's metadata before it
+ * downloads anything.
+ */
+test('[provenance] every third-party asset has a recorded, redistributable licence', () => {
+  const licPath = join(root, 'fixtures', 'third-party', 'LICENSES.md');
+  const licences = existsSync(licPath) ? readFileSync(licPath, 'utf8') : '';
+  const REDISTRIBUTABLE = /public domain|\bCC0\b|\bCC[- ]BY\b/i;
+
+  const offenders = [];
+  for (const f of committed) {
+    if (f.provenance !== 'third-party') continue;
+    const name = String(f.file).split('/').pop();
+    // the file must be named in LICENSES.md...
+    const at = licences.indexOf(`\`${name}\``);
+    if (at < 0) {
+      offenders.push(`${f.id} (${name}) — no entry in fixtures/third-party/LICENSES.md`);
+      continue;
+    }
+    // ...and the licence line under it must be one we may redistribute.
+    const block = licences.slice(at, at + 700);
+    const line = /- \*\*Licence\*\*:\s*(.+)/.exec(block);
+    if (!line || !REDISTRIBUTABLE.test(line[1])) {
+      offenders.push(`${f.id} (${name}) — licence "${line?.[1] ?? 'none stated'}" is not redistributable`);
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `third-party fixtures without a stated redistributable licence:\n  ${offenders.join('\n  ')}\n\n` +
+      `Add them with scripts/source-fixture.mjs, which records the licence before ` +
+      `it downloads the file and refuses anything not on its allowlist. Do not ` +
+      `hand-write the entry: the point is that the terms come from the source.`,
   );
 });
 

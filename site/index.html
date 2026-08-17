@@ -137,12 +137,12 @@
       <p style="margin-top:1.5rem">
         Frankie is both the mascot and the demo fixture. Traced at 8 colours with Smart
         anti-aliasing, his 568 KB raster becomes a 19 KB SVG in 7 colour layers and 59 shapes,
-        with the transparent background preserved. The same source through a leading web
-        vectorizer comes back 21.7 KB in 40 paths — fewer shapes than ours, in more bytes, at
-        settings where their AI step hands their tracer already-flattened art and ours is off. We
-        publish both numbers either way, because it is a
-        <a href="https://github.com/craigjmidwinter/getvect/blob/main/docs/HARNESS.md">checked-in
-        exemplar the test harness measures against on every run</a>, not a claim.
+        with the transparent background preserved. Frankie is our own artwork, so he is shown
+        here and gates nothing — a picture we drew cannot tell an improvement from a change
+        tuned to it. The bars live on
+        <a href="https://github.com/craigjmidwinter/getvect/blob/main/docs/HARNESS.md">public-domain
+        artwork nobody here drew and fixtures generated from equations</a>, measured on every
+        run.
       </p>
 
       <p>
@@ -342,11 +342,10 @@
       </p>
       <p class="lede">
         The biggest correction came from refusing to grade against adjectives. "As good as the
-        web tools" doesn't fail CI — so a shipping web vectorizer got driven live in a browser, its
-        output read at a dozen settings combinations, and those outputs checked in as exemplars
-        with fully-known parameters. That recon rewrote the spec and surfaced the finding the
-        engine now revolves around: <strong>Smart anti-aliasing collapses path count by ~81% at
-        otherwise identical settings</strong> — 354 to 67 on the first subject, 637 to 63 on
+        web tools" doesn't fail CI — so the spec got rebuilt around what the controls actually
+        are, model presets and candidate palettes rather than the sliders we had guessed, and
+        that surfaced the finding the engine now revolves around: <strong>Smart anti-aliasing
+        collapses path count by ~81% at otherwise identical settings</strong> — 637 to 63 on
         the fox, and 758 to 41 on Frankie.
       </p>
 

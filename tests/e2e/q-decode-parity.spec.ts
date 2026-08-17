@@ -140,7 +140,7 @@ test('[quality-bar] the gold-standard settings agree between app and instruments
   exportDir,
 }) => {
   // REFERENCE lines 73-83 are graded at Clipart / 8 colours / Enhance on — the
-  // settings the checked-in exemplar was captured at (OBSERVED-UI.md). The
+  // settings the checked-in exemplar was captured at (ARTWORK.md). The
   // instruments report this fixture's economy; the app has to be the thing they
   // are reporting on. Structural (not byte) equality: Chromium's PNG decode may
   // round a colour-managed sample differently from sharp's.

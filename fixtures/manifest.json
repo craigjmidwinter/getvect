@@ -288,7 +288,6 @@
         "minArea": 5,
         "enhance": true
       },
-      "exemplar": "reference/fox-sticker-clipart-8colors-smartAA.svg",
       "salientRegions": [
         {
           "name": "face",
@@ -320,25 +319,17 @@
         "ssim": 0.95,
         "minInkRecall": 0.95,
         "minRegionInkRecall": 0.88,
-        "minRegionStrictInkRecallRatio": 0.87,
         "maxRegionMeanColorError": 12,
-        "maxLayerCompactnessRatio": 0.8,
-        "maxLayerWobbleRatio": 0.45,
-        "maxStrokeWidthCvRatio": 1.8,
-        "maxStrokeWidthOverExemplar": 1.25,
         "maxPaletteShortfall": 1,
         "minDxfSplines": 10,
         "maxDxfEpsBytesRatio": 3,
         "maxTransparentAreaColorError": 8,
-        "maxPathRatio": 0.3,
-        "maxSubPathRatio": 0.5,
-        "maxBytesRatio": 0.8,
         "maxTinySubPathRatio": 0.02,
         "minCurveCommandRatio": 0.65,
         "maxNearDuplicateFills": 0,
         "maxMs": 10000
       },
-      "note": "Gold-standard exemplar (REFERENCE \"blind A/B\"). Judged at the settings the captured output was actually produced at — Clipart / 8 colours / Smart anti-aliasing / Enhance on / Minimum Area 5px², recorded live in fixtures/reference/OBSERVED-UI.md. It anchors ECONOMY (paths/sub-paths/bytes/curve ratio) and, because the source is 76.5% transparent, it is also the strongest alpha guard in the suite. Fidelity is gated absolutely here and relative to the exemplar in the region ratios."
+      "note": "Gold-standard exemplar (REFERENCE \"blind A/B\"). Judged at the settings the captured output was actually produced at — Clipart / 8 colours / Smart anti-aliasing / Enhance on / Minimum Area 5px², see fixtures/reference/ARTWORK.md. It anchors ECONOMY (paths/sub-paths/bytes/curve ratio) and, because the source is 76.5% transparent, it is also the strongest alpha guard in the suite. Fidelity is gated absolutely here and relative to the exemplar in the region ratios."
     },
     {
       "id": "reference-fox-16c-nomerge",
@@ -355,7 +346,6 @@
         "enhance": true,
         "mergeThreshold": 0
       },
-      "exemplar": "reference/fox-sticker-clipart-8colors-smartAA.svg",
       "salientRegions": [
         {
           "name": "muzzle",
@@ -448,7 +438,6 @@
       "height": 1024,
       "supported": true,
       "distinctColors": null,
-      "exemplar": "reference/fox-sticker-clipart-8colors-smartAA.svg",
       "salientRegions": [
         {
           "name": "face",
@@ -484,16 +473,10 @@
       "thresholds": {
         "maxRegionMeanColorError": 12,
         "minRegionStrictInkRecall": 0.82,
-        "minRegionStrictInkRecallRatio": 0.86,
         "maxPaletteShortfall": 1,
         "meanColorError": 3,
         "ssim": 0.95,
         "minInkRecall": 0.95,
-        "maxStrokeWidthCvRatio": 2.2,
-        "maxStrokeWidthOverExemplar": 1.25,
-        "maxBytesRatio": 0.9,
-        "maxSubPathRatio": 0.7,
-        "maxPathRatio": 0.3,
         "maxTransparentAreaColorError": 8,
         "maxTinySubPathRatio": 0.02,
         "minCurveCommandRatio": 0.65,
@@ -518,7 +501,6 @@
         "minArea": 5,
         "enhance": true
       },
-      "exemplar": "reference/frankie-clipart-8colors-smartAA.svg",
       "salientRegions": [
         {
           "name": "face",
@@ -549,7 +531,6 @@
             "maxMeanColorError": 21,
             "minInkRecall": 0.93,
             "minStrictInkRecall": 0.89,
-            "maxStrokeWidthCvRatio": 2,
             "maxInkCoverageRatio": 1.2
           }
         },
@@ -561,8 +542,7 @@
           "height": 100,
           "color": "rgb(209,95,21)",
           "thresholds": {
-            "minColorPresenceRatio": 0.97,
-            "minColorPresenceOverExemplar": 0.98
+            "minColorPresenceRatio": 0.97
           },
           "aspirations": {}
         },
@@ -581,9 +561,7 @@
             "minStrictInkRecall": 0.94,
             "minColorPresenceRatio": 0.94
           },
-          "aspirations": {
-            "minColorPresenceOverExemplar": 1
-          }
+          "aspirations": {}
         },
         {
           "name": "eyes",
@@ -595,8 +573,7 @@
           "exemplarColor": "rgb(121,176,89)",
           "thresholds": {
             "maxSliverRatio": 0.0002,
-            "minColorPresenceRatio": 0.9,
-            "minColorPresenceOverExemplar": 0.9
+            "minColorPresenceRatio": 0.9
           }
         }
       ],
@@ -606,18 +583,10 @@
         "minInkRecall": 0.95,
         "minRegionInkRecall": 0.95,
         "minRegionStrictInkRecall": 0.9,
-        "minRegionStrictInkRecallRatio": 0.9,
         "maxRegionMeanColorError": 14,
         "maxRegionForeignColorRatio": 0.001,
         "maxRegionSliverRatio": 0.0002,
         "maxPaletteShortfall": 2,
-        "maxPathRatio": 0.3,
-        "maxSubPathRatio": 1.35,
-        "maxBytesRatio": 0.95,
-        "maxLayerCompactnessRatio": 1.1,
-        "maxLayerWobbleRatio": 1.7,
-        "maxStrokeWidthCvRatio": 1.35,
-        "maxStrokeWidthOverExemplar": 1.15,
         "maxTinySubPathRatio": 0.02,
         "minCurveCommandRatio": 0.65,
         "maxNearDuplicateFills": 0,
@@ -628,7 +597,7 @@
         "maxStaircaseLocal": 0.05,
         "maxStaircaseSustained": 0.02
       },
-      "note": "The mascot, and the second gold-standard exemplar. Judged at the settings the captured output was produced at — Clipart / 8 colours / Smart anti-aliasing / Enhance on / Minimum Area 5px², recorded live in fixtures/reference/OBSERVED-UI.md. It is the only fixture that can ask whether a small hue-distinct feature kept its palette slot (the eyes box names a colour); today it answers no, and that is an aspiration with an open issue rather than a gate, because the default settings already reach it."
+      "note": "The mascot, and the second gold-standard exemplar. Judged at the settings the captured output was produced at — Clipart / 8 colours / Smart anti-aliasing / Enhance on / Minimum Area 5px², see fixtures/reference/ARTWORK.md. It is the only fixture that can ask whether a small hue-distinct feature kept its palette slot (the eyes box names a colour); today it answers no, and that is an aspiration with an open issue rather than a gate, because the default settings already reach it."
     },
     {
       "id": "reference-frankie-default",
@@ -670,7 +639,6 @@
             "maxMeanColorError": 21,
             "minInkRecall": 0.93,
             "minStrictInkRecall": 0.89,
-            "maxStrokeWidthCvRatio": 2,
             "maxInkCoverageRatio": 1.35
           }
         },
@@ -748,8 +716,8 @@
       "file": "third-party/poster-letterforms-900.jpg",
       "kind": "clipart",
       "format": "jpeg",
-      "width": 900,
-      "height": 1146,
+      "width": 960,
+      "height": 1223,
       "supported": true,
       "distinctColors": null,
       "settings": {
@@ -761,7 +729,9 @@
         "maxPaths": 6000,
         "maxSubPaths": 9000,
         "maxBytes": 2097152,
-        "maxMs": 20000
+        "maxMs": 20000,
+        "minDxfSplines": 10,
+        "maxDxfEpsBytesRatio": 6
       },
       "note": "WPA travel poster, 1938 (public domain). The corpus had NO letterforms at all before this, and a wordmark is the case a de-staircasing change endangers most: three sizes of serif type here, down to a caption a few pixels tall, over flat poster colour and a real scanned sky gradient."
     },
@@ -771,8 +741,8 @@
       "file": "third-party/photo-highcontrast-800.jpg",
       "kind": "photo",
       "format": "jpeg",
-      "width": 800,
-      "height": 800,
+      "width": 960,
+      "height": 960,
       "supported": true,
       "distinctColors": null,
       "settings": {

@@ -18,7 +18,6 @@ import test from 'node:test';
 import { Resvg } from '@resvg/resvg-js';
 
 import { canvasIngest, decodeImageFile, flattenOnWhite } from '../../instruments/lib/decode.mjs';
-import { rasterizeExemplarContent } from '../../instruments/lib/render.mjs';
 import {
   boundarySmoothness,
   countCubics,
@@ -62,7 +61,7 @@ const S = engine.DEFAULT_SETTINGS;
  * Defaults with every optional cleanup off.
  *
  * `DEFAULT_SETTINGS` ships Smart anti-aliasing on (the reference product does too —
- * fixtures/reference/OBSERVED-UI.md — and it is what keeps the default output
+ * fixtures/reference/ARTWORK.md — and it is what keeps the default output
  * economical). Its index-image majority pass is also a very effective impulse
  * remover, so on the speckled fixture the noise-removal controls have nothing
  * left to remove and cannot be observed at all. Checks that ask "does THIS
@@ -78,11 +77,9 @@ const photo = await load('photo-gradient-512x384.jpg');
 const fox = await load('reference/fox-sticker.png');
 /** Handed to the engine (alpha preserved). */
 const foxIn = await loadIngest('reference/fox-sticker.png');
-/** The reference product output for that artwork — the blind-A/B exemplar. */
-const FOX_EXEMPLAR = 'reference/fox-sticker-clipart-8colors-smartAA.svg';
 /**
- * The settings the exemplar was captured at (fixtures/reference/OBSERVED-UI.md):
- * Clipart, 8 colours, Smart anti-aliasing, Minimum Area 5px², Enhance on. Every
+ * The settings the A/B comparisons below run at: Clipart, 8 colours, Smart
+ * anti-aliasing, Minimum Area 5px², Enhance on. Every
  * A/B below runs at these, because comparing two different pictures is not an
  * A/B.
  */
@@ -100,18 +97,6 @@ function render(svg, width, height) {
 
 const renderResult = (r) => render(r.svg, r.width, r.height);
 
-/**
- * Rasterize an exemplar for pixel comparison.
- *
- * NOT `render()`: an exemplar is only registered against the source when the
- * reference product wrote the source's own pixel dimensions into it, and captures
- * that declare a padded frame draw the artwork in a corner of it — rendering
- * such a file against its declared box puts the reference product's paw where our
- * margin is, and every comparison then passes for the wrong reason. Shared with
- * the instruments so both measure the same picture (instruments/lib/render.mjs).
- */
-const renderExemplar = async (name) =>
-  (await rasterizeExemplarContent(readFileSync(fixture(name), 'utf8'), fox.width, fox.height)).image;
 
 test('[B2] every slider changes the rendered picture, not just the bytes', async () => {
   // A geometry change that no pixel can see is not "observably changes output".
@@ -213,39 +198,6 @@ test('[quality] thin dark features do not erode away', async () => {
     delta <= 0.01,
     `a palette colour's area moved by ${(delta * 100).toFixed(2)}% between source and trace`,
   );
-});
-
-test('[quality] the gold-standard exemplar is matched on economy and fidelity', async () => {
-  /**
-   * REFERENCE lines 73-83 name the product floor: same source, same colour
-   * budget, "path count within ~3x of the exemplar's (not thousands of specks),
-   * file size within ~5x". On this artwork we are at 0.22x its shapes and 0.42x
-   * its bytes, so 3x/5x would gate nothing at all — the bars here are the
-   * measured numbers with headroom, and they are the same ones
-   * `fixtures/manifest.json` holds on `reference-fox`.
-   */
-  const exemplar = readFileSync(fixture(FOX_EXEMPLAR), 'utf8');
-  const ex = svgStructure(exemplar);
-  const r = await engine.vectorize(foxIn, { ...S, ...EXEMPLAR_SETTINGS });
-  const ours = svgStructure(r.svg);
-
-  assert.ok(
-    ours.subPathCount <= ex.subPathCount * 0.5,
-    `${ours.subPathCount} shapes vs the exemplar's ${ex.subPathCount} ` +
-      `(${(ours.subPathCount / ex.subPathCount).toFixed(2)}x, limit 0.5x)`,
-  );
-  assert.ok(
-    ours.bytes <= ex.bytes * 0.8,
-    `${ours.bytes} bytes vs the exemplar's ${ex.bytes} ` +
-      `(${(ours.bytes / ex.bytes).toFixed(2)}x, limit 0.8x)`,
-  );
-
-  // ...and the rendering has to hold up next to it, at the source size. Ours
-  // scores 1.80 and the reference product 1.03 — three quarters of this canvas is
-  // transparent and both drawings get that part right, which is why the
-  // interesting fidelity numbers below are all measured inside a crop.
-  const mae = meanColorError(fox, render(r.svg, r.width, r.height));
-  assert.ok(mae < 3, `mean colour error ${mae.toFixed(2)} against the source`);
 });
 
 test('[quality] hairlines stay unbroken through the cleanup passes', async () => {
@@ -358,57 +310,18 @@ test('[quality] colour layers are distinct colours, not a near-duplicate patchwo
    * mosaic of two near-identical shades. The metric's window was 24 and
    * reported 0; it is 32 now, and this is the contract that keeps it honest.
    *
-   * This is one of the few bars where we are STRICTER than the reference product
-   * rather than chasing it: its own capture of this artwork ships two such
-   * pairs — rgb(125,64,29) beside rgb(116,58,28) (10.9) and rgb(8,0,0) beside
-   * rgb(0,0,0) (8.0), two browns and a doubled black — which is exactly the
-   * patchwork this forbids, and is most of why our palette comes back one
-   * colour shorter than its seven layers.
+   * The bar is ABSOLUTE — zero pairs — and always was. It used to be asserted
+   * alongside a comparative leg against a checked-in exemplar; that leg is gone
+   * and nothing about this contract changed, which is the tell that it was
+   * never carrying the test.
    */
   const r = await engine.vectorize(foxIn, { ...S, ...EXEMPLAR_SETTINGS });
   const pairs = nearDuplicateFillPairs(r.svg);
-  const exemplar = nearDuplicateFillPairs(readFileSync(fixture(FOX_EXEMPLAR), 'utf8'));
-  assert.equal(
-    exemplar,
-    2,
-    'the reference product ships two near-duplicate layer pairs on this artwork — if that number ' +
-      'moved, re-read the paragraph above before trusting the palette-shortfall bars that cite it',
-  );
   assert.equal(
     pairs,
     0,
     `${pairs} pair(s) of colour layers within 32 RGB units — layers that close are one region ` +
       'split into a patchwork, not two colours a user asked for',
-  );
-});
-
-test('[quality] the DEFAULT quality settings stay in the exemplar economy class', async () => {
-  /**
-   * The exemplar A/B above runs at `enhance: true`, because that is the
-   * configuration the captured output corresponds to — which is how the
-   * DEFAULT one went unmeasured for seven laps. On this artwork the defaults
-   * differ from those settings by exactly one tick (Enhance off), and they cost
-   * 36 sub-paths and 17.2 KB against 25 and 14.6 KB: 0.32x and 0.50x the real
-   * product's, where turning Smart anti-aliasing off as well would be 1.20x and
-   * 0.86x. The reference product's own measured effect for that control is -81 %
-   * path count (fixtures/reference/OBSERVED-UI.md).
-   *
-   * The bars are looser than the enhance-on 0.5x/0.8x and still nowhere near
-   * REFERENCE's 3x/5x product floor, which nothing here would trip.
-   */
-  const exemplar = svgStructure(readFileSync(fixture(FOX_EXEMPLAR), 'utf8'));
-  const r = await engine.vectorize(foxIn, S);
-  const ours = svgStructure(r.svg);
-  assert.ok(
-    ours.subPathCount <= exemplar.subPathCount * 0.7,
-    `${ours.subPathCount} shapes vs the exemplar's ${exemplar.subPathCount} ` +
-      `(${(ours.subPathCount / exemplar.subPathCount).toFixed(2)}x, limit 0.7x) at the default ` +
-      'quality settings',
-  );
-  assert.ok(
-    ours.bytes <= exemplar.bytes * 0.9,
-    `${(ours.bytes / 1024).toFixed(1)} KB vs the exemplar's ${(exemplar.bytes / 1024).toFixed(1)} KB ` +
-      `(${(ours.bytes / exemplar.bytes).toFixed(2)}x, limit 0.9x) at the default quality settings`,
   );
 });
 
@@ -459,12 +372,13 @@ test('[quality-bar] the DEFAULT settings paint no colour the crop does not conta
    * asked categorically: what share of the crop is painted a colour the SOURCE
    * crop does not contain (`foreignColorRatio`, tolerance 40).
    *
-   * The exemplar's own score is the bar, and the exemplar scores zero. So do
-   * we, on the transparent source — the white-flattened variant of the same
-   * artwork scores 0.46 % on the paw, which is what `reference-fox-white` in
-   * fixtures/manifest.json exists to pin.
+   * The bar is ZERO, and it always effectively was: this used to read
+   * `mine <= Math.max(theirs, 0.0005)` against a checked-in exemplar that
+   * scored 0, so the comparison never bound and 0.0005 was the whole contract.
+   * On the transparent source we score zero; the white-flattened variant of the
+   * same artwork scores 0.46 % on the paw, which is what `reference-fox-white`
+   * in fixtures/manifest.json exists to pin.
    */
-  const ex = await renderExemplar(FOX_EXEMPLAR);
   for (const [label, settings] of [
     ['defaults', { ...S }],
     ['the exemplar settings', { ...S, ...EXEMPLAR_SETTINGS }],
@@ -476,84 +390,15 @@ test('[quality-bar] the DEFAULT settings paint no colour the crop does not conta
       ['paw', FOX_PAW],
     ]) {
       const src = cropRegion(fox, box);
-      const theirs = foreignColorRatio(src, cropRegion(ex, box));
       const mine = foreignColorRatio(src, cropRegion(ours, box));
       assert.ok(
-        mine <= Math.max(theirs, 0.0005),
+        mine <= 0.0005,
         `${label}: ${(mine * 100).toFixed(2)} % of the ${name} is painted a colour the source ` +
-          `crop does not contain, against the reference product's ${(theirs * 100).toFixed(2)} % — a ` +
-          'hue that is not in the picture is still a hue that is not in the picture',
+          'crop does not contain — a hue that is not in the picture is still a hue that is ' +
+          'not in the picture',
       );
     }
   }
-});
-
-test('[quality] outlines come back as solid strokes, not thinned or dashed', async () => {
-  /**
-   * `inkRecall` accepts anything darker than luma 128 as "kept", which answers
-   * "was this stroke erased" and not "is it still a stroke": on the paw crop it
-   * scores us 0.997 against the exemplar's 1.000 for toe arcs that come back
-   * visibly thinner than the reference product's.
-   *
-   * Strictly (source ink < 60 must come back < 60) the same crop reads 0.947 of
-   * the exemplar's score and the face 0.951. The bar is relative on purpose: a
-   * global absolute bar cannot be used, because an exemplar drops antialiased
-   * skirts everywhere and its own global score is not the question. The
-   * question is only ever "is the reference product's line more solid than ours,
-   * where ours is worst" — and here it is, by five points.
-   */
-  const ex = await renderExemplar(FOX_EXEMPLAR);
-  const r = await engine.vectorize(foxIn, { ...S, ...EXEMPLAR_SETTINGS });
-  const ours = render(r.svg, r.width, r.height);
-
-  for (const [name, box] of [
-    ['paw', FOX_PAW],
-    ['face', FOX_FACE],
-  ]) {
-    const src = cropRegion(fox, box);
-    const theirs = strictInkRecall(src, cropRegion(ex, box));
-    const mine = strictInkRecall(src, cropRegion(ours, box));
-    assert.ok(
-      mine >= theirs * 0.93,
-      `${name}: strict ink recall ${mine.toFixed(3)} against the reference product's ` +
-        `${theirs.toFixed(3)} (${(mine / theirs).toFixed(3)}x) — its outlines are solid where ` +
-        'ours are thin or broken',
-    );
-  }
-});
-
-test('[quality] colour boundaries are smooth sweeps, not sawtooth', async () => {
-  /**
-   * The signature that makes a many-colour output read as "posterized photo"
-   * rather than "clipart": the seam between two shades of the same colour runs
-   * as a ragged sawtooth with spikes and notches instead of one clean curve.
-   * Nothing else in the suite can see it — both sides of the seam are nearly
-   * the right colour (MAE is fine), no ink is involved (ink recall is fine) and
-   * it is one big region either way (sub-path count is fine).
-   *
-   * `layerCompactness` is perimeter / (2*sqrt(pi*area)) per colour layer,
-   * averaged over the layers that carry the picture: 1.0 for a disc, higher the
-   * more ragged the boundary. Ours 2.99 against the exemplar's 4.55 — on this
-   * artwork we are the smooth one, because the reference product spends two of its
-   * seven layers on near-identical browns whose boundaries interleave.
-   *
-   * The bar is the instruments' own (`maxLayerCompactnessRatio: 0.8` on
-   * `reference-fox`), not the 1.1 it was when we were the ragged one: three
-   * changes closed that gap — the pre-fit boundary low-pass, the linework
-   * moving to the silhouette layer, and the Enhance area floors — and a bar
-   * left where reality no longer is would let any one of them rot without a
-   * test noticing.
-   */
-  const exemplar = layerCompactness(readFileSync(fixture(FOX_EXEMPLAR), 'utf8'));
-  const r = await engine.vectorize(foxIn, { ...S, ...EXEMPLAR_SETTINGS });
-  const ours = layerCompactness(r.svg);
-  assert.ok(
-    ours.mean <= exemplar.mean * 0.8,
-    `mean layer compactness ${ours.mean.toFixed(2)} over ${ours.counted} layers vs the exemplar's ` +
-      `${exemplar.mean.toFixed(2)} over ${exemplar.counted} ` +
-      `(${(ours.mean / exemplar.mean).toFixed(2)}x, limit 0.8x) — our colour boundaries carry ` +
-      'that much more perimeter for the area they enclose',
-  );
 });
 
 test('[quality] the linework is one silhouette, not a network of thin ribbons', async () => {
@@ -616,38 +461,6 @@ test('[B3] every colour the palette promises appears in the drawing', async () =
     [],
     `the palette promises ${r.palette.length} colours and ${missing.length} of them ` +
       `(${missing.join(', ')}) are nowhere in the document`,
-  );
-});
-
-test('[quality] the seam through a shading gradient is one arc, not a mountain range', async () => {
-  /**
-   * The local half of the sawtooth question, and the one a person actually
-   * sees. `layerCompactness` (above) is perimeter over area for a whole layer,
-   * so it cannot separate a shape that is genuinely intricate from a smooth
-   * shape traced onto a noisy per-pixel threshold — and `curveCommandRatio`
-   * cannot either, because our commands ARE cubics. They can be cubics fitted
-   * to a wobble the reference product never had: on the retired exemplar the lap-6
-   * critique measured 43 % more boundary length than the real output for the
-   * same region, with the source showing a soft gradient and the exemplar one
-   * clean arc.
-   *
-   * `layerBoundaryWobble` walks both boundaries at the same fraction of each
-   * drawing's own diagonal (so the exemplar's 10x viewBox needs no scale
-   * factor) and measures the heading change per unit travelled. Ours 28.4
-   * against the exemplar's 80.2 — the bar is 0.45x, the instruments' own
-   * (`maxLayerWobbleRatio` on `reference-fox`), because a bar above 1 is a bar
-   * this drawing cannot reach from the wrong side any more.
-   */
-  const exemplar = layerBoundaryWobble(readFileSync(fixture(FOX_EXEMPLAR), 'utf8'));
-  const r = await engine.vectorize(foxIn, { ...S, ...EXEMPLAR_SETTINGS });
-  const ours = layerBoundaryWobble(r.svg);
-  assert.ok(
-    ours.mean <= exemplar.mean * 0.45,
-    `boundary wobble ${ours.mean.toFixed(1)} over ${ours.counted} layers vs the exemplar's ` +
-      `${exemplar.mean.toFixed(1)} over ${exemplar.counted} ` +
-      `(${(ours.mean / exemplar.mean).toFixed(2)}x, limit 0.45x) — our colour boundaries change ` +
-      'direction that much more often per unit of boundary walked, which is what reads as ' +
-      'posterized photo rather than clipart',
   );
 });
 

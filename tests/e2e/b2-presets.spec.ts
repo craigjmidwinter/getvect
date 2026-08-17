@@ -15,7 +15,7 @@ import {
 /**
  * REFERENCE B2 — model presets.
  *
- * `fixtures/reference/OBSERVED-UI.md` step ① is the ground truth: Clipart (with
+ * REFERENCE B2 is the ground truth: Clipart (with
  * a Detail Level dropdown of Maximum/Ultra/Very High/High/Medium/Low/Minimum),
  * Photo, Sketch (grayscale) and Drawing (black/white with a luminance threshold).
  * These are the first controls a user touches in the reference product, and two of
@@ -31,7 +31,7 @@ const PRESETS = [
   ['drawing', TESTIDS.presetDrawing],
 ] as const;
 
-/** OBSERVED-UI.md: the Clipart preset's Detail Level enum, most to least. */
+/** ARTWORK.md: the Clipart preset's Detail Level enum, most to least. */
 const DETAIL_LEVELS = ['maximum', 'ultra', 'very-high', 'high', 'medium', 'low', 'minimum'];
 
 test('[B2] all four model presets are present', async ({ page }) => {

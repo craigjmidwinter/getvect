@@ -3,7 +3,7 @@
  *
  * Geometry-level conversion: shapes are recovered from the result's SVG and
  * re-emitted as ASCII DXF, in the two variants the reference product offers side by
- * side in its download menu (`fixtures/reference/OBSERVED-UI.md`: "DXF
+ * side in its download menu (REFERENCE E: "DXF
  * (splines)", "DXF (lines)"):
  *
  *   `curves: 'splines'` (default) — R2000 (AC1015). Every cubic run in the

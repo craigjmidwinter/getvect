@@ -35,10 +35,11 @@ Google under that key. The update check asks one question — is there a newer G
 sends no identifier, and fails silently when you are offline. Nothing else, ever, leaves
 the machine.
 
-The quality bar is explicit and adversarial: the reference product — a leading online
-vectorizer we benchmark against — has its own output on the same source images checked
-into `fixtures/reference/`, and the test harness measures us against it on every run,
-including where it wins.
+The quality bar is explicit and measured. A 21-fixture harness scores every trace on
+colour error, SSIM, ink recall, boundary geometry and document structure, and gates it —
+including on **public-domain artwork nobody here drew** (`fixtures/third-party/`, licences
+recorded next to the files), because a bar anchored only on pictures we made ourselves can
+only ever agree with us. See [`docs/HARNESS.md`](docs/HARNESS.md).
 
 ## Before / after
 
@@ -46,13 +47,14 @@ including where it wins.
 
 Frankie is our mascot and our demo fixture. Traced at 8 colours with Smart anti-aliasing,
 a 568 KB raster becomes a **19 KB SVG in 7 colour layers and 59 shapes** — curve-fitted
-outlines, transparent background preserved, and infinitely re-scalable. The same source
-through the reference product comes back 21.7 KB in 40 paths: **fewer shapes than ours,
-in more bytes**, at settings where their Enhance is a generative flatten and ours is
-switched off. Both halves of that are checked in and measured on every run, so they are
-reported here the same way they would be if they went the other way. The full output is
-[`docs/assets/frankie-vector.svg`](docs/assets/frankie-vector.svg); the source and the
-reference exemplar live in [`fixtures/reference/`](fixtures/reference/).
+outlines, transparent background preserved, and infinitely re-scalable. The full output is
+[`docs/assets/frankie-vector.svg`](docs/assets/frankie-vector.svg) and the source is in
+[`fixtures/reference/`](fixtures/reference/).
+
+Frankie is ours, though, so he is shown here and gates nothing: a picture we drew cannot
+tell an improvement from a change tuned to it. The bars live on artwork we did not draw
+and on fixtures generated from equations — see
+[`docs/HARNESS.md`](docs/HARNESS.md#who-is-allowed-to-decide-that-a-change-is-an-improvement).
 
 ## The app
 
@@ -89,8 +91,8 @@ with a real message; multiple images in a sidebar you can switch between.
 - **Output colour groups**: per-colour disable — switch off the background colour and you
   get a transparent background — with a merge threshold and sort order.
 - **Quality**: Enhance (denoise + colour simplification), Noise Reduction off/low/high,
-  Anti-aliasing off/smart/mid — Smart is the default, as it is in the reference product, and it
-  is worth 1747 sub-paths → 551 and 396 KB → 140 KB on the gold-standard artwork.
+  Anti-aliasing off/smart/mid — Smart is the default, and it is worth 1747 sub-paths → 551
+  and 396 KB → 140 KB on the gold-standard artwork.
 - **Advanced**: Roundness (3 curve-fitting levels), Minimum Area (0/5/90 px² speck
   removal), Overlap, Circle Detection.
 - **Result style**: filled layers or stroked layers.
@@ -110,14 +112,13 @@ older CAD and cutter firmware that cannot read a spline at all.
 
 Off by default, and the only thing in GetVect that can touch the network.
 
-The reference product's "Enhance with AI" turned out not to be a filter at all: it is a
+An "enhance" step that actually helps shaded artwork is not a filter at all: it is a
 generative image-to-image **re-illustration** — background removed, soft shading flattened
-into bands, outlines regularized — after which the tracer is tracing already-flat art. That
-is most of its advantage on shaded artwork, and no amount of median filtering reproduces
-it. GetVect can now do the same step by asking an image model for it: paste your own
-Google Gemini API key, switch AI Enhance on, and the enhanced image becomes the working
-image the engine traces (at the model's own resolution, which is what the reference product
-does too). One call, ~8s on a 1024px source in our measurements.
+into bands, outlines regularized — after which the tracer is tracing already-flat art. No
+amount of median filtering reproduces it. GetVect can do that step by asking an image model
+for it: paste your own Google Gemini API key, switch AI Enhance on, and the enhanced image
+becomes the working image the engine traces, at the model's own resolution. One call, ~8s
+on a 1024px source in our measurements.
 
 **The trade, stated plainly.** With AI Enhance on, *that image is uploaded to Google* under
 your own API key and their terms — which is exactly the thing the rest of this app exists
@@ -217,7 +218,8 @@ Three layers, and they are the project's real documentation:
 - **Instruments** — the light meter. For every fixture it runs `vectorize()`, rasterizes
   the SVG back to source dimensions with resvg and diffs: mean colour error, SSIM, ink
   recall, sub-path count, tiny-speck ratio, curve-command ratio, transparent-area colour
-  error, and ratios against the reference product's exemplar. REFERENCE's "blind A/B"
+  error, boundary geometry and blind-spot incidence — on synthetic fixtures whose right
+  answer comes from an equation, and on public-domain artwork nobody here drew. Adjectives
   turned into numbers that can fail a build.
 
 Full guide, metric definitions and the engine interface contract:
@@ -233,14 +235,11 @@ Playwright-for-Electron harness, the fixture generator, the fidelity instruments
 being tested is the thesis that a loop's speed limit is measurement, not intelligence — so
 a third role that only makes things countable should pay for itself.
 
-The single biggest correction came from refusing to grade against adjectives. The original
-bar was written from marketing copy, and "matches the reference product" doesn't fail CI. So the
-reference product got driven live in a browser, its `#outputsvg` DOM read at a dozen settings
-combinations, and its actual outputs checked into `fixtures/reference/` as exemplars with
-fully-known parameters. That recon rewrote the spec — the product thinks in *model presets
-and candidate palettes*, not the detail/smoothing/despeckle sliders we'd guessed — and it
+The single biggest correction came from refusing to grade against adjectives — a bar
+written from marketing copy does not fail CI. Rebuilding the spec around *model presets and
+candidate palettes*, rather than the detail/smoothing/despeckle sliders we had guessed,
 surfaced the finding the engine now revolves around: **Smart anti-aliasing collapses path
-count by ~81–95% at otherwise identical settings**, now replicated on three subjects
+count by ~81–95% at otherwise identical settings**, replicated on three subjects
 (354 → 67, 637 → 63 on the fox, 758 → 41 on Frankie). That is a pre-trace edge cleanup,
 not a rendering garnish, and it is the difference between output that looks *traced* and
 output that looks *drawn*.
@@ -302,6 +301,6 @@ this project's own. The test harness uses [sharp](https://github.com/lovell/shar
 — the maintainer's own cat; the artwork was generated with an image model from a photo of
 him and then hand-corrected for coat colour and markings, and it is MIT-licensed along
 with the rest of the repo. The fox he replaced is still in
-[`fixtures/reference/`](fixtures/reference/), still license-clean, and still measured. The
+[`fixtures/reference/`](fixtures/reference/), also ours, also MIT. The
 wordmark is set in [Sedgwick Ave Display](https://fonts.google.com/specimen/Sedgwick+Ave+Display)
 (SIL Open Font License), shipped as converted outlines in `docs/assets/getvect-wordmark.svg`.

@@ -36,7 +36,7 @@ A. **Launch & ingest**
    - A3. Multiple images form a sidebar/list; selecting one switches the workspace to it.
 
 B. **Vectorization engine** — the reference product's controls were captured live; see
-   `fixtures/reference/OBSERVED-UI.md` for the exact UI ground truth. Summary:
+   REFERENCE B2 for the control surface. Summary:
    - B1. Auto-vectorizes on load with defaults; visible progress state; UI stays responsive.
    - B2. Model presets: Clipart (with Detail Level: Maximum/Ultra/Very High/High/Medium/
      Low/Minimum), Photo, Sketch (grayscale), Drawing (B/W with luminance threshold
@@ -94,7 +94,7 @@ ahead is line quality, and that is where the ratios in the manifest point: its o
 back 5% more solid than ours in the crop where we are worst, and its strokes are 1.6× more
 even.
 
-`fixtures/reference/OBSERVED-UI.md` records the live parameter table the settings above come
+`fixtures/reference/ARTWORK.md` records the anti-aliasing measurement the settings above come
 from. Headline finding: the reference product's **Smart anti-aliasing** collapses path count by
 ~81% at identical settings (354→67 on one subject, 637→63 on the fox). Matching that
 smoothness-per-path economy is a core engine goal, not a stretch feature.

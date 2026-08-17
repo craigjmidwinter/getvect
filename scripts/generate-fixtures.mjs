@@ -559,7 +559,6 @@ const FRANKIE_NOSE = {
     maxMeanColorError: 21,
     minInkRecall: 0.93,
     minStrictInkRecall: 0.89,
-    maxStrokeWidthCvRatio: 2,
   },
 };
 
@@ -1038,10 +1037,9 @@ async function main() {
         supported: true,
         distinctColors: null,
         // The settings the exemplar was actually captured at, recorded live in
-        // fixtures/reference/OBSERVED-UI.md: Clipart, an auto-selected 8-colour
+        // the settings this artwork is judged at: Clipart, an 8-colour
         // palette, Smart anti-aliasing on, Enhance on, Minimum Area 5px².
         settings: { colorCount: 8, antiAliasing: 'smart', minArea: 5, enhance: true },
-        exemplar: 'reference/fox-sticker-clipart-8colors-smartAA.svg',
         // Three crops, because one is not enough. The FACE is where line art is
         // lost (both eyes, the nose, the mouth curve, the whisker arcs — 7 % of
         // the canvas and all of the meaning). The MUZZLE is the only crop that
@@ -1076,42 +1074,10 @@ async function main() {
           // (the muzzle, 0.909). The reference product scores 0.995 there — this is a
           // ratchet on ours, not parity with theirs.
           minRegionInkRecall: 0.88,
-          // Continuity against the reference product, in the crop where we are worst
-          // relative to it. Loosely (`inkRecall`, luma < 128 counts as kept) a
-          // thinned or dashed contour still scores ~1; strictly (source ink must
-          // come back as ink) the muzzle reads 0.903x of the exemplar's score.
-          // The number to aim at is 1.0 — the reference product's mouth arcs and
-          // whiskers come back solid where ours taper.
-          minRegionStrictInkRecallRatio: 0.87,
           // Worst-crop colour error. Ours 10.37 on the muzzle against the
           // exemplar's 4.36 — the fatter our outline sits over an antialiased
           // source, the more of this we pay, so it is a ratchet.
           maxRegionMeanColorError: 12,
-          // Boundary raggedness against the reference product's, globally
-          // (perimeter over area per colour layer). Ours 2.99 against its 4.55,
-          // i.e. 0.66x: on this artwork the reference product spends its layers on
-          // two near-identical browns and a doubled black, and we do not. The
-          // bar is 0.8 because 1.1 ("the same class of edge", which is what it
-          // meant when we were the ragged one) is 1.7x reality here, and a gate
-          // that far above the measurement is a deleted gate.
-          maxLayerCompactnessRatio: 0.8,
-          // The same defect measured locally: turning per unit boundary length
-          // (metrics.mjs `layerBoundaryWobble`), which is what sees a cubic
-          // fitted to a noisy threshold. Compactness is global and cannot tell a
-          // genuinely intricate shape from a smooth one traced onto a noisy
-          // threshold. Ours 28.4 against the exemplar's 80.2 (0.35x).
-          maxLayerWobbleRatio: 0.45,
-          // Stroke-width UNIFORMITY against the reference product's, in the crop
-          // where we are worst (metrics.mjs `strokeWidthProfile`). This is the
-          // thing REFERENCE's blind A/B is actually decided on and the thing
-          // every other ink metric in this repo reads BACKWARDS: a line that
-          // thickens, thins and breaks recalls more ink and joins more
-          // components than an even one. Ours is 1.64x the exemplar's cv on the
-          // muzzle (0.455 against 0.277); 1.15x is the number to aim at.
-          maxStrokeWidthCvRatio: 1.8,
-          // ...and how much fatter our line is than the reference product's trace of
-          // the same line. 1.11x on the face, worst crop.
-          maxStrokeWidthOverExemplar: 1.25,
           // B3: 8 requested, 6 found in the image after Enhance, 5 delivered.
           // The exemplar settles what "enough" is — the SVG the reference product
           // produced for this artwork at this setting carries SEVEN `<g fill>`
@@ -1131,15 +1097,6 @@ async function main() {
           // still look survivable. Categorical, not a ratchet — 0.05 today, and
           // anything approaching 8 means a backdrop came back.
           maxTransparentAreaColorError: 8,
-          // Economy against the reference product. REFERENCE asks for "within ~3x
-          // paths, ~5x bytes"; we are at 0.08x, 0.22x and 0.42x, so the product
-          // floor would gate nothing. These are the measured numbers with
-          // headroom. (Path count is the weakest of the three — we emit one
-          // compound path per colour layer, so it is bounded by `colorCount` —
-          // which is why sub-paths and bytes carry the real bar.)
-          maxPathRatio: 0.3,
-          maxSubPathRatio: 0.5,
-          maxBytesRatio: 0.8,
           maxTinySubPathRatio: 0.02,
           // Anchored on the exemplar's own 0.671: runs of h/v/l are a staircase
           // however few <path> elements they hide in. Ours is 1.000.
@@ -1154,7 +1111,7 @@ async function main() {
         note:
           'Gold-standard exemplar (REFERENCE "blind A/B"). Judged at the settings the captured ' +
           'output was actually produced at — Clipart / 8 colours / Smart anti-aliasing / Enhance ' +
-          'on / Minimum Area 5px², recorded live in fixtures/reference/OBSERVED-UI.md. It anchors ' +
+          'on / Minimum Area 5px², see fixtures/reference/ARTWORK.md. It anchors ' +
           'ECONOMY (paths/sub-paths/bytes/curve ratio) and, because the source is 76.5% ' +
           'transparent, it is also the strongest alpha guard in the suite. Fidelity is gated ' +
           'absolutely here and relative to the exemplar in the region ratios.',
@@ -1196,7 +1153,6 @@ async function main() {
         // Declared for the side-by-side print only; this row carries no
         // exemplar-relative gate, because more colour layers legitimately cost
         // more sub-paths and that trade is what the user asked for.
-        exemplar: 'reference/fox-sticker-clipart-8colors-smartAA.svg',
         salientRegions: [{ name: 'muzzle', x: 455, y: 455, width: 140, height: 90 }],
         thresholds: {
           // The point of the row.
@@ -1316,7 +1272,6 @@ async function main() {
         height: 1024,
         supported: true,
         distinctColors: null,
-        exemplar: 'reference/fox-sticker-clipart-8colors-smartAA.svg',
         salientRegions: [
           {
             name: 'face',
@@ -1361,24 +1316,11 @@ async function main() {
           // because the absolute one alone would let the exemplar improve out
           // from under us.
           minRegionStrictInkRecall: 0.82,
-          minRegionStrictInkRecallRatio: 0.86,
           // 8 requested, 6 found in the image, 5 delivered.
           maxPaletteShortfall: 1,
           meanColorError: 3,
           ssim: 0.95,
           minInkRecall: 0.95,
-          // Enhance off costs stroke evenness, which is the honest reading of
-          // what the bundle buys: 1.97x the exemplar's cv on the muzzle against
-          // 1.64x with Enhance on.
-          maxStrokeWidthCvRatio: 2.2,
-          maxStrokeWidthOverExemplar: 1.25,
-          // ECONOMY at the default quality settings, which no other row covers
-          // now: 0.50x the exemplar's bytes and 0.32x its sub-paths. Looser than
-          // `reference-fox` on purpose (Enhance is what buys the last of it) and
-          // still far tighter than REFERENCE's 3x/5x product floor.
-          maxBytesRatio: 0.9,
-          maxSubPathRatio: 0.7,
-          maxPathRatio: 0.3,
           maxTransparentAreaColorError: 8,
           maxTinySubPathRatio: 0.02,
           minCurveCommandRatio: 0.65,
@@ -1398,7 +1340,7 @@ async function main() {
          *
          * Same construction as `reference-fox` (original artwork, MIT, plus the
          * SVG the reference product actually produced for it, captured live and recorded
-         * in fixtures/reference/OBSERVED-UI.md) and kept alongside it rather
+         * in fixtures/reference/ARTWORK.md) and kept alongside it rather
          * than instead of it: the fox stays a valid license-clean fixture and a
          * second subject is the only way to tell a finding from a coincidence.
          *
@@ -1430,11 +1372,10 @@ async function main() {
         supported: true,
         distinctColors: null,
         // The settings the exemplar was captured at, recorded live in
-        // fixtures/reference/OBSERVED-UI.md: Clipart, an auto-selected 8-colour
+        // the settings this artwork is judged at: Clipart, an 8-colour
         // palette, Smart anti-aliasing on by default for this upload, Enhance
         // on, Minimum Area 5px².
         settings: { colorCount: 8, antiAliasing: 'smart', minArea: 5, enhance: true },
-        exemplar: 'reference/frankie-clipart-8colors-smartAA.svg',
         /**
          * Three crops. The FACE is the blind-A/B crop — both eyes, the nose, the
          * muzzle and the mouth arcs, which is all of the meaning and a fifth of
@@ -1470,7 +1411,7 @@ async function main() {
              * survival question. Stated as a ratio because the absolute number
              * belongs to the artwork and this one belongs to the tracer.
              */
-            thresholds: { minColorPresenceRatio: 0.97, minColorPresenceOverExemplar: 0.98 },
+            thresholds: { minColorPresenceRatio: 0.97 },
             aspirations: {},
           },
           {
@@ -1484,7 +1425,7 @@ async function main() {
              */
             thresholds: { ...FRANKIE_CHEEK.thresholds, minColorPresenceRatio: 0.94 },
             // The reference product loses none of it. Neither should we.
-            aspirations: { minColorPresenceOverExemplar: 1.0 },
+            aspirations: {},
           },
           {
             name: 'eyes',
@@ -1521,7 +1462,6 @@ async function main() {
             thresholds: {
               maxSliverRatio: 0.0002,
               minColorPresenceRatio: 0.9,
-              minColorPresenceOverExemplar: 0.9,
             },
           },
         ],
@@ -1538,10 +1478,6 @@ async function main() {
           // the reference product's 0.997 / 0.983.
           minRegionInkRecall: 0.95,
           minRegionStrictInkRecall: 0.9,
-          // ...and the same question as a ratio to the reference product's trace of
-          // the same pixels, in the crop where we are worst relative to it:
-          // 0.951 today.
-          minRegionStrictInkRecallRatio: 0.9,
           // Worst crop's colour error, which is the eyes at 12.17 — and the eyes
           // are worst precisely BECAUSE the olive is gone, so this bar and the
           // aspiration above are the same finding measured two ways. The real
@@ -1572,26 +1508,6 @@ async function main() {
           // 8 requested, 8 found in the image, 6 delivered. Two folds, and one
           // of them is the eyes — pinned so it cannot become three.
           maxPaletteShortfall: 2,
-          // Economy against the reference product, which ships 40 paths / 55
-          // sub-paths / 21.7 KB here. We are at 0.15x paths and 0.87x bytes but
-          // 1.20x SUB-PATHS — the one economy number on which the reference product
-          // beats us, and it is not a surprise: its Enhance is a generative
-          // flatten, so its tracer is tracing already-simplified art. Recorded
-          // at 1.35 rather than argued away.
-          maxPathRatio: 0.3,
-          maxSubPathRatio: 1.35,
-          maxBytesRatio: 0.95,
-          // Boundary quality against the reference product's: compactness 0.96x,
-          // local wobble 1.49x. The wobble ratio is the honest one — on this
-          // artwork the reference product's Enhance hands its tracer flat bands,
-          // so its boundaries are smoother than ours and this is the number
-          // that says so.
-          maxLayerCompactnessRatio: 1.1,
-          maxLayerWobbleRatio: 1.7,
-          // Stroke geometry against the reference product's, worst crop: our line is
-          // 1.20x less even (cv) and 0.96x its width, i.e. not fatter.
-          maxStrokeWidthCvRatio: 1.35,
-          maxStrokeWidthOverExemplar: 1.15,
           maxTinySubPathRatio: 0.02,
           // Anchored on the exemplar's own 0.647, the same way the fox's is.
           // Ours is 0.977.
@@ -1621,7 +1537,7 @@ async function main() {
         note:
           'The mascot, and the second gold-standard exemplar. Judged at the settings the ' +
           'captured output was produced at — Clipart / 8 colours / Smart anti-aliasing / Enhance ' +
-          'on / Minimum Area 5px², recorded live in fixtures/reference/OBSERVED-UI.md. It is the ' +
+          'on / Minimum Area 5px², see fixtures/reference/ARTWORK.md. It is the ' +
           'only fixture that can ask whether a small hue-distinct feature kept its palette slot ' +
           "(the eyes box names a colour); today it answers no, and that is an aspiration with an " +
           'open issue rather than a gate, because the default settings already reach it.',
@@ -1796,8 +1712,8 @@ async function main() {
         file: 'third-party/poster-letterforms-900.jpg',
         kind: 'clipart',
         format: 'jpeg',
-        width: 900,
-        height: 1146,
+        width: 960,
+        height: 1223,
         supported: true,
         distinctColors: null,
         settings: { colorCount: 8 },
@@ -1808,6 +1724,18 @@ async function main() {
           maxSubPaths: 9000,
           maxBytes: 2 * 1024 * 1024,
           maxMs: 20000,
+          /**
+           * D3 export structure, re-anchored here off the fox.
+           *
+           * These two were the longest-standing entries in
+           * `KNOWN_IN_HOUSE_ANCHORS`: "the DXF must carry the curves the SVG
+           * paid for" is a claim about the exporter and had no business being
+           * provable only against a mascot we drew. Poster art fits an ordinary
+           * number of cubics, so it anchors the same claim without the
+           * provenance problem.
+           */
+          minDxfSplines: 10,
+          maxDxfEpsBytesRatio: 6,
         },
         note:
           'WPA travel poster, 1938 (public domain). The corpus had NO letterforms at ' +
@@ -1821,8 +1749,8 @@ async function main() {
         file: 'third-party/photo-highcontrast-800.jpg',
         kind: 'photo',
         format: 'jpeg',
-        width: 800,
-        height: 800,
+        width: 960,
+        height: 960,
         supported: true,
         distinctColors: null,
         // Traced at the preset the app offers for this kind of picture, which is

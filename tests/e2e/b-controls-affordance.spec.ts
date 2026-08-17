@@ -6,7 +6,7 @@
  *
  *  - B2: with the Drawing preset selected the output is two-tone, but the
  *    COLORS slider still reads 4 and all eleven input-palette sizes stay live.
- *    `fixtures/reference/OBSERVED-UI.md` records that the reference product swaps
+ *    `fixtures/reference/ARTWORK.md` records that the reference product swaps
  *    those controls out for Black/White checkboxes plus the luminance
  *    histogram when Drawing is active. Whatever the replacement, a control
  *    that cannot affect the result must not stay enabled.

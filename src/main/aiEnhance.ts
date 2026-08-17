@@ -6,7 +6,7 @@
  * a generative image-to-image re-illustration pass that removes the background,
  * flattens soft shading into bands and regularizes outlines, after which the
  * tracer is tracing already-flat art (the finding is recorded in
- * `fixtures/reference/OBSERVED-UI.md`). This module reproduces that step by
+ * REFERENCE B4). This module reproduces that step by
  * asking an image model for the same thing in words. Everything downstream —
  * the whole of `src/engine` — is unchanged and still pure: enhance hands back a
  * bitmap, and a bitmap is all the engine has ever taken.

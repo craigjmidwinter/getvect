@@ -109,7 +109,7 @@ pixels to move. A geometry change no pixel can see does not count.
 
 ### Model presets (B2)
 
-`fixtures/reference/OBSERVED-UI.md` step ① is the ground truth.
+REFERENCE B2 is the ground truth.
 
 | testid | element | required attributes / behaviour |
 | --- | --- | --- |
@@ -132,7 +132,7 @@ dimmed treatment Drawing uses (`tests/e2e/b-controls-affordance.spec.ts` accepts
 is selected `color-count` and every `palette-size-option` must be **disabled or absent**
 — leaving a COLORS slider reading 4 next to a two-colour result is the control lying
 about the product. `bw-threshold` is Drawing's input control. Leaving the preset must
-restore the colour controls. (`fixtures/reference/OBSERVED-UI.md` records the real
+restore the colour controls. (`docs/TESTIDS.md` records the real
 product replacing them with Black/White checkboxes plus the luminance histogram;
 matching that exactly is optional, disabling the dead ones is not.)
 
@@ -400,7 +400,7 @@ The checkerboard belongs to the **view**, not to the artwork (`tests/e2e/c5-chec
 | testid | element | required attributes / behaviour |
 | --- | --- | --- |
 | `export-svg` / `export-eps` / `export-dxf` | buttons | Enabled when `data-status="ready"`. Each calls `window.getvect.saveExport({ defaultName, contents, format })`. |
-| `dxf-curves` | `<select>` | Values `splines` (default) \| `lines`, feeding `toDxf(result, { curves })`. Both variants are reference-product downloads (REFERENCE E, `fixtures/reference/OBSERVED-UI.md`) and both have been implemented in `src/engine/dxf.ts` since lap 3 — with no control, the `lines` variant is code the product does not have. `splines` must emit degree-3 `SPLINE` entities; `lines` must emit `POLYLINE`/`VERTEX` and **no** `SPLINE` at all, because the consumers it exists for cannot read one. Gated by `tests/e2e/d3-dxf-variants.spec.ts`. Lives next to the DXF button in the export row (it is an export choice, not a vectorization setting, so changing it never re-traces). **Disabled whenever the DXF button beside it is** — i.e. with no image loaded, and while a save is in flight. A live control in a dead row reads as a bug: with nothing loaded every other control in the export row is greyed and this one alone stays interactive. |
+| `dxf-curves` | `<select>` | Values `splines` (default) \| `lines`, feeding `toDxf(result, { curves })`. Both variants are reference-product downloads (REFERENCE E) and both have been implemented in `src/engine/dxf.ts` since lap 3 — with no control, the `lines` variant is code the product does not have. `splines` must emit degree-3 `SPLINE` entities; `lines` must emit `POLYLINE`/`VERTEX` and **no** `SPLINE` at all, because the consumers it exists for cannot read one. Gated by `tests/e2e/d3-dxf-variants.spec.ts`. Lives next to the DXF button in the export row (it is an export choice, not a vectorization setting, so changing it never re-traces). **Disabled whenever the DXF button beside it is** — i.e. with no image loaded, and while a save is in flight. A live control in a dead row reads as a bug: with nothing loaded every other control in the export row is greyed and this one alone stays interactive. |
 | `export-pdf` / `export-png` | buttons | REFERENCE D5. Same contract as the three above. PDF is a vector document from the engine; PNG is rasterized from the *same* SVG by the renderer (`src/renderer/lib/raster.ts`) and sent with `encoding: 'base64'`. |
 | `export-status` | status element | **Required after a successful export:** `data-last-export-path` = the absolute path returned by the main process. The suite waits on this attribute; without it every D-series test fails. Leave it absent (not empty) before the first export and after a cancelled one. |
 | `export-size` | label | **Required:** `data-bytes` = byte length of the SVG currently in the preview (the reference product shows a live size next to Download). Must update when the result changes. |

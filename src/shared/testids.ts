@@ -36,7 +36,7 @@ export const TESTIDS = {
   revectorizeButton: 'revectorize-button',
   resetSettingsButton: 'reset-settings-button',
 
-  // --- B2. Model presets (REFERENCE B2 / OBSERVED-UI step ①) ---------------
+  // --- B2. Model presets (REFERENCE B2) ---------------
   presetClipart: 'preset-clipart',
   presetPhoto: 'preset-photo',
   presetSketch: 'preset-sketch',

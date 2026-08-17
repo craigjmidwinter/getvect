@@ -172,7 +172,7 @@ const EXPORT_BUTTONS: ReadonlyArray<{ format: ExportFormat; testid: string; titl
   { format: 'png', testid: TESTIDS.exportPng, title: 'PNG raster of the vector result' },
 ];
 
-/** REFERENCE B2 / OBSERVED-UI ①. */
+/** REFERENCE B2. */
 const PRESETS: ReadonlyArray<{ value: ModelPreset; testid: string; label: string; hint: string }> = [
   { value: 'clipart', testid: TESTIDS.presetClipart, label: 'Clipart', hint: 'Few colours — flat artwork' },
   { value: 'photo', testid: TESTIDS.presetPhoto, label: 'Photo', hint: 'Many colours — continuous tone' },
@@ -190,7 +190,7 @@ const DETAIL_LEVELS: ReadonlyArray<{ value: DetailLevel; label: string }> = [
   { value: 'minimum', label: 'Minimum' },
 ];
 
-/** OBSERVED-UI ②: the exact candidate palette sizes the reference product offers. */
+/** REFERENCE B3: the candidate palette sizes the picker offers. */
 const PALETTE_SIZES = [1, 2, 3, 4, 5, 6, 8, 12, 15, 16, 18] as const;
 
 const NOISE_LEVELS: ReadonlyArray<{ value: NoiseReduction; label: string }> = [

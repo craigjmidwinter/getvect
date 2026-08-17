@@ -39,7 +39,7 @@ export interface RasterImage {
  */
 export type ModelPreset = 'clipart' | 'photo' | 'sketch' | 'drawing';
 
-/** Clipart's Detail Level enum, most detail first (REFERENCE B2 / OBSERVED-UI ①). */
+/** Clipart's Detail Level enum, most detail first (REFERENCE B2). */
 export type DetailLevel =
   | 'maximum'
   | 'ultra'

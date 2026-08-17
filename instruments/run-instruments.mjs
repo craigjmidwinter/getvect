@@ -403,6 +403,34 @@ const REGION_GATES = [
   ['maxSliverRatio', 'sliverRatio', 'max', (v) => `${(v * 100).toFixed(3)}%`],
 ];
 
+/**
+ * Thresholds that are declared but can never fire, because the metric they name
+ * is not being produced for this fixture.
+ *
+ * `checkThresholds` skips a null metric, which is the right behaviour for a bar
+ * that simply does not apply — and the wrong behaviour for a bar that USED to
+ * apply and quietly stopped. When the vendored exemplars were removed, every
+ * `*OverExemplar` and `*Ratio`-against-the-exemplar gate in the manifest became
+ * a line of JSON that looks like a promise and checks nothing. This project has
+ * shipped a gate that was never wired to anything once already; this is how it
+ * finds out the second time.
+ */
+function deadGates(m, t, gates = GATES) {
+  if (!t) return [];
+  const dead = [];
+  const known = new Map(gates.map(([key, metric]) => [key, metric]));
+  for (const key of Object.keys(t)) {
+    if (!known.has(key)) {
+      dead.push(`${key} (no such gate)`);
+      continue;
+    }
+    const metric = known.get(key);
+    const value = m[metric];
+    if (value == null || !Number.isFinite(value)) dead.push(`${key} -> ${metric} is not measured`);
+  }
+  return dead;
+}
+
 function checkThresholds(m, t, gates = GATES) {
   if (!t) return [];
   const failures = [];
@@ -1048,6 +1076,17 @@ async function main() {
         aspirations.push(`region "${region.name}" ${a}`);
       }
     }
+
+    // A declared bar that cannot fire is a lie in the manifest, not a pass.
+    const dead = deadGates(metrics, fixture.thresholds);
+    for (const [i, region] of (metrics.regions ?? []).entries()) {
+      const own = regions[i]?.thresholds;
+      if (!own) continue;
+      for (const d of deadGates(region, own, REGION_GATES)) {
+        dead.push(`region "${region.name}" ${d}`);
+      }
+    }
+    for (const d of dead) failures.push(`DEAD GATE: ${d}`);
 
     if (failures.length) failed++;
     results.push({

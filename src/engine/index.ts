@@ -119,13 +119,12 @@ export const DEFAULT_SETTINGS: ResolvedSettings = {
   // correction nobody asked for is a surprise.
   noiseReduction: 'off',
   /**
-   * Anti-aliasing defaults to Smart, because that is what the reference product
-   * does: `fixtures/reference/OBSERVED-UI.md` records "Smart AA was ON by
-   * default here" for a plain clipart upload, and its measured effect at
-   * otherwise identical settings is 354 paths -> 67 (-81 %). Ours is the same
-   * shape of win — 1747 sub-paths -> 603, 396 KB -> 160 KB on the gold-standard
-   * artwork — so shipping it off by default meant the configuration a user
-   * actually gets was the one nothing was tuned for.
+   * Anti-aliasing defaults to Smart because of what it is worth:
+   * `fixtures/reference/ARTWORK.md` measures its effect at otherwise identical
+   * settings across three subjects, −81 % to −94.6 % on path count. On the
+   * gold-standard artwork it is 1747 sub-paths -> 603 and 396 KB -> 160 KB — so
+   * shipping it off by default meant the configuration a user actually gets was
+   * the one nothing was tuned for.
    *
    * It is a *default*, not a bundle member: `enhance` no longer forces it on
    * (see `smartAa` below), so "Anti-aliasing: Off" means off whatever else is
@@ -386,7 +385,7 @@ const round4 = (v: number) => Math.round(v * 10000) / 10000;
  * Enhance's region floor, as a fraction of the canvas.
  *
  * "Enhance image with AI" is a *simplification* bundle (REFERENCE B4, and
- * OBSERVED-UI's record of what the reference product's own version did: a busy
+ * the same simplification bundle: a busy
  * patterned background became near-white), so its floor is proportional to the
  * canvas rather than a pixel count — ~218px² on the 1046×833 gold-standard
  * artwork, ~65px² on a 512px logo. That is a ~15×15 scrap: below it, a region
@@ -697,7 +696,7 @@ export async function vectorize(
   source = reduceNoise(source, opts.noiseReduction);
   /**
    * "Enhance image with AI" is a bundle, not a filter (REFERENCE B4, and
-   * OBSERVED-UI's record of what it did to the reference product's output: a busy
+   * what that bundle does to an output: a busy
    * patterned background became near-white). On top of the denoise +
    * colour-simplification pass it adds a minimum shape area proportional to the
    * canvas — one ten-thousandth of it, ~87px² on the 1046x833 reference
@@ -707,7 +706,7 @@ export async function vectorize(
    * What it deliberately does NOT do any more is reach into Anti-aliasing.
    * It used to force Smart on whenever the control read "Off", so the two
    * settings produced byte-identical documents and the UI reported a state the
-   * engine was not in. OBSERVED-UI step ③ has them as independent controls, so
+   * engine was not in. REFERENCE B4 has them as independent controls, so
    * they are independent controls: Smart is simply the *default* (above).
    */
   const smartAa = opts.antiAliasing === 'smart';
@@ -740,7 +739,7 @@ export async function vectorize(
   /**
    * Anti-aliasing, the half that works on regions rather than pixels.
    *
-   * OBSERVED-UI's reading of the reference product's Smart anti-aliasing is
+   * the anti-aliasing measurement in `fixtures/reference/ARTWORK.md` is
    * "a pre-trace edge cleanup (edge-aware smoothing of the quantized regions)",
    * and that is what this is: a majority filter over the *index* image, which
    * can only ever remove a local minority. Ragged one-pixel transition bands —

@@ -38,7 +38,7 @@ const S = engine.DEFAULT_SETTINGS;
  * Defaults with every optional cleanup off.
  *
  * `DEFAULT_SETTINGS` ships Smart anti-aliasing on (the reference product does too —
- * fixtures/reference/OBSERVED-UI.md — and it is what keeps the default output
+ * fixtures/reference/ARTWORK.md — and it is what keeps the default output
  * economical). Its index-image majority pass is also a very effective impulse
  * remover, so on the speckled fixture the noise-removal controls have nothing
  * left to remove and cannot be observed at all. Checks that ask "does THIS
@@ -60,7 +60,7 @@ const fox = await load('reference/fox-sticker.png');
 const foxIn = canvasIngest(await decodeImageFile(fixture('reference/fox-sticker.png')));
 /**
  * The settings the checked-in exemplar was captured at
- * (fixtures/reference/OBSERVED-UI.md): Clipart, 8 colours, Smart anti-aliasing,
+ * (fixtures/reference/ARTWORK.md): Clipart, 8 colours, Smart anti-aliasing,
  * Enhance on. Colour-budget questions are asked here rather than at 16, because
  * 8 is the budget there is a reference-product capture to argue with.
  */
@@ -528,7 +528,7 @@ test('[B4] an explicit anti-aliasing choice survives the Enhance bundle', async 
    * *ignoring* `settings.antiAliasing`: with Enhance ticked, `off` and `smart`
    * produced byte-identical documents and only `mid` differed. The UI still shows whatever the user chose, so "Anti-aliasing:
    * Off" with Enhance on tells the reader the opposite of what the engine did —
-   * and `fixtures/reference/OBSERVED-UI.md` step ③ records the reference product
+   * and `fixtures/reference/ARTWORK.md` step ③ records the reference product
    * exposing Enhance and Anti-aliasing as independent controls.
    *
    * Either the explicit value wins, or the renderer must stop offering it while

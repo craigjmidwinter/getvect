@@ -659,7 +659,7 @@ no reviewer will ever see the file.
 
 ### What the local set is measuring today
 
-The shaded character artwork and its reference-product captures, as `local-artwork` (16 colours
+The shaded character artwork, as `local-artwork` (16 colours
 + Enhance + Smart AA — the configuration the band defect was reported at) and
 `local-artwork-default` (`DEFAULT_SETTINGS`, no `settings` key). Both declare the face,
 the muzzle and the paw pad. Everything they gate is a ratchet measured on the build that
@@ -687,7 +687,7 @@ Ours is classical: edge-preserving smoothing, then quantization. So:
   chasing the last of it with classical tuning will cost flat art. The exemplar-relative
   band ratios on this subject are therefore reported, not gated; the absolute bars are what
   hold.
-- `fixtures/local/artwork-enhanced-input.png` is that captured canvas, kept as the evidence
+- `fixtures/local/<artwork>-enhanced-input.png` is that captured canvas, kept as the evidence
   behind this paragraph.
 
 And one tension worth naming, because it is ours and not theirs: the only classical way to
@@ -778,7 +778,7 @@ function toEps(result: VectorizeResult): string;
 function toDxf(result: VectorizeResult, options?: { curves?: 'splines' | 'lines' }): string;
 // 'splines' (default) = R2000 with degree-3 SPLINE entities, curve geometry intact;
 // 'lines' = R12 with everything flattened into POLYLINE vertices. Both variants are
-// downloads the reference product offers (fixtures/reference/OBSERVED-UI.md).
+// downloads REFERENCE E requires.
 // The renderer MUST expose the choice (`dxf-curves`, docs/TESTIDS.md): an option no
 // control can reach is not a feature the product has. If that is not wanted, delete the
 // parameter, this line, the testid and tests/e2e/d3-dxf-variants.spec.ts together.

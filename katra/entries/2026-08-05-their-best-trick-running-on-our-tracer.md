@@ -20,12 +20,12 @@ stat:
     d: 42
 ---
 
-![The prompt experiment that proved it: 'convert into a flat vector graphic' beats describing the operations — the style name carries the whole contract](media/gemini-vector-prompt.png)
+![The prompt experiment that proved it: 'convert into a flat vector graphic' beats describing the operations — the style name carries the whole contract](media/local artwork-gemini-vector-prompt.png)
 
 ![The payoff frame: Gemini re-illustrates the input with Craig's own key, our tracer takes it apart in 629 ms — 9 colours, 8 layers, 50 KB, transparent background intact](media/enhance-payoff.png)
 
 The question that started the day was "how come our output looks so much worse than
-vectorizer on the artwork?" — and the answer turned out to be that we'd been
+vectorizer on the local artwork?" — and the answer turned out to be that we'd been
 comparing our tracer against their *illustrator*. Extracting the site's input canvas
 settled it: "Enhance image with AI" is a generative image-to-image pass. The upload
 comes back repainted — background deleted, airbrushed shading flattened to bands,
