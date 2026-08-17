@@ -44,6 +44,7 @@
     "test:engine": "node --test tests/engine/*.test.mjs",
     "test:headed": "playwright test --headed",
     "instruments": "npm run build:node && node instruments/run-instruments.mjs",
+    "instruments:fit": "npm run build:node && node instruments/run-fit-excursion.mjs",
     "instruments:selftest": "node instruments/run-instruments.mjs --engine=instruments/reference-engine.mjs --out=artifacts/metrics-selftest.json --tag=selftest",
     "screenshots": "npm run build && node instruments/run-screenshots.mjs",
     "docs:screenshots": "npm run build && node scripts/docs-screenshots.mjs",

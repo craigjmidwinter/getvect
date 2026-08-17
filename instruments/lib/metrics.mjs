@@ -2058,6 +2058,94 @@ export function svgStructure(svg) {
   };
 }
 
+/**
+ * Largest distance from any of `points` to the polyline `target`, capped.
+ *
+ * This is one direction of a Hausdorff distance, and it exists because "the
+ * curve deviates N px from its chord" turned out to measure the wrong thing:
+ * a fitted segment that spans a J-hook legitimately leaves its own endpoint
+ * span, so chord deviation reads the *feature's* depth and attributes it to
+ * the fitter. The question that decides whether the FITTER misbehaved is only
+ * ever "how far is the fitted curve from the polygon it was asked to fit" —
+ * asked in both directions (curve→input: geometry invented; input→curve:
+ * geometry dropped). See instruments/run-fit-excursion.mjs.
+ *
+ * `target` is treated as closed when `closed` (the trace's rings always are).
+ * Distances are exact point-to-segment distances; a uniform grid over the
+ * target's segments makes the whole corpus measurable (rings run to tens of
+ * thousands of vertices). `cap` bounds the search radius: anything farther
+ * than `cap` is reported as `cap`, which is fine for a defect defined as
+ * "more than a few pixels".
+ */
+export function maxPolylineDeviation(points, target, { closed = true, cap = 32 } = {}) {
+  const m = target.length;
+  if (m === 0 || points.length === 0) return { max: 0, at: null };
+  if (m === 1) {
+    let worst = { max: 0, at: null };
+    for (const p of points) {
+      const d = Math.hypot(p.x - target[0].x, p.y - target[0].y);
+      if (d > worst.max) worst = { max: d, at: { x: p.x, y: p.y } };
+    }
+    return worst;
+  }
+  const cell = 8;
+  const key = (cx, cy) => `${cx},${cy}`;
+  const grid = new Map();
+  const segCount = closed ? m : m - 1;
+  for (let i = 0; i < segCount; i++) {
+    const a = target[i];
+    const b = target[(i + 1) % m];
+    const x0 = Math.floor(Math.min(a.x, b.x) / cell);
+    const x1 = Math.floor(Math.max(a.x, b.x) / cell);
+    const y0 = Math.floor(Math.min(a.y, b.y) / cell);
+    const y1 = Math.floor(Math.max(a.y, b.y) / cell);
+    for (let cy = y0; cy <= y1; cy++) {
+      for (let cx = x0; cx <= x1; cx++) {
+        const k = key(cx, cy);
+        let list = grid.get(k);
+        if (!list) grid.set(k, (list = []));
+        list.push(i);
+      }
+    }
+  }
+  const distToSeg = (p, i) => {
+    const a = target[i];
+    const b = target[(i + 1) % m];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const l2 = dx * dx + dy * dy;
+    let t = l2 > 0 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+  };
+  let worst = { max: 0, at: null };
+  const maxRing = Math.ceil(cap / cell) + 1;
+  for (const p of points) {
+    const cx = Math.floor(p.x / cell);
+    const cy = Math.floor(p.y / cell);
+    let best = Infinity;
+    // Expand square rings of cells outward until the found distance cannot be
+    // beaten by anything in a farther ring.
+    for (let r = 0; r <= maxRing; r++) {
+      if (best <= (r - 1) * cell) break;
+      for (let gy = cy - r; gy <= cy + r; gy++) {
+        for (let gx = cx - r; gx <= cx + r; gx++) {
+          if (Math.max(Math.abs(gx - cx), Math.abs(gy - cy)) !== r) continue;
+          const list = grid.get(key(gx, gy));
+          if (!list) continue;
+          for (const i of list) {
+            const d = distToSeg(p, i);
+            if (d < best) best = d;
+          }
+        }
+      }
+    }
+    if (best > cap) best = cap;
+    if (best > worst.max) worst = { max: best, at: { x: p.x, y: p.y } };
+  }
+  return worst;
+}
+
 function assertSameSize(a, b) {
   if (a.width !== b.width || a.height !== b.height) {
     throw new Error(`size mismatch: ${a.width}x${a.height} vs ${b.width}x${b.height}`);

@@ -453,6 +453,41 @@ function chordLengthParameterize(pts: Pt[], first: number, last: number): number
   return u.map((v) => v / total);
 }
 
+/**
+ * Longest handle the least-squares solve may keep, as a multiple of the run's
+ * chord.
+ *
+ * The 2x2 system in `generateBezier` is near-singular whenever a run is short (a
+ * three-point run has ONE interior sample) or its end tangents nearly cancel,
+ * and then the alphas explode. On the mascot's demo trace a 2x7px sliver at
+ * (173..175, 186..193) produced handles ~477px long on a 1.6px chord —
+ * `c 109.96 464.07 -116.57 -495.31 0.77 1.22`, shipped verbatim in the asset:
+ * a curve that swings four hundred pixels away from a two-pixel feature.
+ *
+ * `computeMaxError` cannot see that swing, which is why it survived: the error
+ * is evaluated at the data points' own parameters, and a three-point run has
+ * exactly one of those. The curve passes through it, the fit is accepted at
+ * error 0.000, and the recursion never splits.
+ *
+ * The cure is the bound Schneider's published code omits and the guard below
+ * only half-had: undersized alphas already fall back to Wu/Barsky chord/3
+ * handles, so oversized ones take the same path, after which the usual
+ * error-then-split recursion judges honestly. A cubic lies inside the convex
+ * hull of its control points, so bounding the handles bounds the curve to the
+ * chord's own scale.
+ *
+ * WHY THREE, and how much room that really leaves. An arc at this fitter's own
+ * 75-degree sweep cap needs 0.36 chords, and the explosions being cured are 70x
+ * the chord and up, so almost any bound in between would work. Measured across
+ * the corpus, the sharpest LEGITIMATE fits are considerably above the mascot's
+ * chin J-hook (0.74): the engraving's hatching reaches 1.37 and the poster's
+ * letterforms 1.82. So the real headroom here is about 1.65x, not the 4x a
+ * chin-only reading suggests — comfortable, but this constant is closer to
+ * genuine tight curls than it looks, and artwork curlier than the poster is the
+ * case that would find it.
+ */
+const MAX_ALPHA_RATIO = 3;
+
 /** Least-squares control points for fixed endpoints and end tangents. */
 function generateBezier(
   pts: Pt[],
@@ -499,34 +534,12 @@ function generateBezier(
 
   const segLength = len(sub(p3, p0));
   const epsilon = 1e-6 * segLength;
-  /**
-   * The least-squares solve is bounded BELOW and, until this was measured, not
-   * above.
-   *
-   * `detA / det` is whatever the normal equations say, and when they are
-   * ill-conditioned they say something enormous. That happens exactly where the
-   * chord carries no information: a small closed contour whose two ends nearly
-   * coincide. Measured on real artwork, a cubic with a **0.85px chord** came
-   * back with handles **625px and 547px** long and swung 184px away from the
-   * 18-point contour it was fitting. Three fixtures carried curves 4875px from
-   * their own polyline.
-   *
-   * The scale a handle must respect is the ARC it is approximating, not the
-   * chord — the chord vanishes on a closed loop while the arc does not. A
-   * handle longer than the whole polyline cannot be right, because the curve's
-   * convex hull then reaches further than the boundary ever goes. Beyond that
-   * bound the solve has failed, so it takes the same Wu/Barsky fallback the
-   * degenerate-low case already took, and `fitCubic` splits on the error the way
-   * it would for any other bad fit.
-   *
-   * For reference, a circular arc within this fitter's own `MAX_ARC_TURN` of 75
-   * degrees wants a handle of about 0.37x its chord, so the bound is nowhere
-   * near any legitimate fit.
-   */
-  let arcLength = 0;
-  for (let i = first; i < last; i++) arcLength += len(sub(pts[i + 1], pts[i]));
-  const alphaMax = Math.max(arcLength, segLength);
-  if (alphaL < epsilon || alphaR < epsilon || alphaL > alphaMax || alphaR > alphaMax) {
+  if (
+    alphaL < epsilon ||
+    alphaR < epsilon ||
+    alphaL > MAX_ALPHA_RATIO * segLength ||
+    alphaR > MAX_ALPHA_RATIO * segLength
+  ) {
     // Wu/Barsky fallback: put the handles a third of the chord out.
     alphaL = segLength / 3;
     alphaR = segLength / 3;
