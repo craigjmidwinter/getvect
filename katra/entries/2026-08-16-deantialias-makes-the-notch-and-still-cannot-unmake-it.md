@@ -6,6 +6,11 @@ tags:
     - engine
     - preprocess
     - instruments
+hash: a6db070
+stat:
+    f: 3
+    a: 200
+    d: 0
 ---
 
 The brief was my own conclusion from the incidence lap: the evidence separating
