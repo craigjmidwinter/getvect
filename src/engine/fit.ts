@@ -455,38 +455,46 @@ function chordLengthParameterize(pts: Pt[], first: number, last: number): number
 
 /**
  * Longest handle the least-squares solve may keep, as a multiple of the run's
- * chord.
+ * own ARC LENGTH.
  *
  * The 2x2 system in `generateBezier` is near-singular whenever a run is short (a
  * three-point run has ONE interior sample) or its end tangents nearly cancel,
  * and then the alphas explode. On the mascot's demo trace a 2x7px sliver at
  * (173..175, 186..193) produced handles ~477px long on a 1.6px chord —
- * `c 109.96 464.07 -116.57 -495.31 0.77 1.22`, shipped verbatim in the asset:
- * a curve that swings four hundred pixels away from a two-pixel feature.
+ * `c 109.96 464.07 -116.57 -495.31 0.77 1.22`, shipped verbatim in the asset: at
+ * 24x it draws a great orange X across a part of the drawing that is blank.
  *
- * `computeMaxError` cannot see that swing, which is why it survived: the error
- * is evaluated at the data points' own parameters, and a three-point run has
- * exactly one of those. The curve passes through it, the fit is accepted at
- * error 0.000, and the recursion never splits.
+ * `computeMaxError` cannot see that swing, which is why it survived every check
+ * we had: the error is evaluated at the data points' own parameters, and a
+ * three-point run has exactly one of those. The curve passes through it, the fit
+ * is accepted at error 0.000, and the recursion never splits.
  *
  * The cure is the bound Schneider's published code omits and the guard below
  * only half-had: undersized alphas already fall back to Wu/Barsky chord/3
  * handles, so oversized ones take the same path, after which the usual
  * error-then-split recursion judges honestly. A cubic lies inside the convex
- * hull of its control points, so bounding the handles bounds the curve to the
- * chord's own scale.
+ * hull of its control points, so bounding the handles bounds the curve.
  *
- * WHY THREE, and how much room that really leaves. An arc at this fitter's own
- * 75-degree sweep cap needs 0.36 chords, and the explosions being cured are 70x
- * the chord and up, so almost any bound in between would work. Measured across
- * the corpus, the sharpest LEGITIMATE fits are considerably above the mascot's
- * chin J-hook (0.74): the engraving's hatching reaches 1.37 and the poster's
- * letterforms 1.82. So the real headroom here is about 1.65x, not the 4x a
- * chin-only reading suggests — comfortable, but this constant is closer to
- * genuine tight curls than it looks, and artwork curlier than the poster is the
- * case that would find it.
+ * WHY THE ARC AND NOT THE CHORD. Two independent laps found this defect and
+ * proposed two bounds — handles capped at 3x the CHORD, and handles capped at
+ * the ARC. Measured over 262,865 fitted runs they disagree 950 times, and each
+ * is wrong where the other is right:
+ *
+ *   - A chord-relative cap is undefined on a CLOSED contour. Six runs in the
+ *     corpus have a chord of exactly 0.0000px against arcs of 166-210px; 3x0 is
+ *     0, so every handle trips the guard and falls back to 0/3 = 0, collapsing
+ *     the cubic to a degenerate point.
+ *   - An arc-relative cap of 1.0 sits exactly on the legitimate p99 and rejects
+ *     900 honest fits, most of them tight curls on short runs.
+ *
+ * The distribution settles the ratio. Over 488,030 handles, alpha/arc runs
+ * p50 0.384, p99 0.893 — and then jumps to 33.5 at p99.9. Legitimate fits and
+ * blowups are cleanly bimodal with an order of magnitude of empty space between
+ * them, so the constant only has to land in the gap: 2.0 leaves 2.2x of headroom
+ * above the honest p99 and still catches the explosions 16x below their floor.
+ * (For reference, an arc at this fitter's own 75-degree sweep cap wants ~0.33.)
  */
-const MAX_ALPHA_RATIO = 3;
+const MAX_ALPHA_ARC_RATIO = 2;
 
 /** Least-squares control points for fixed endpoints and end tangents. */
 function generateBezier(
@@ -534,12 +542,10 @@ function generateBezier(
 
   const segLength = len(sub(p3, p0));
   const epsilon = 1e-6 * segLength;
-  if (
-    alphaL < epsilon ||
-    alphaR < epsilon ||
-    alphaL > MAX_ALPHA_RATIO * segLength ||
-    alphaR > MAX_ALPHA_RATIO * segLength
-  ) {
+  let arcLength = 0;
+  for (let i = first; i < last; i++) arcLength += len(sub(pts[i + 1], pts[i]));
+  const alphaMax = MAX_ALPHA_ARC_RATIO * Math.max(arcLength, segLength);
+  if (alphaL < epsilon || alphaR < epsilon || alphaL > alphaMax || alphaR > alphaMax) {
     // Wu/Barsky fallback: put the handles a third of the chord out.
     alphaL = segLength / 3;
     alphaR = segLength / 3;
