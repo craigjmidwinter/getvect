@@ -453,6 +453,37 @@ function chordLengthParameterize(pts: Pt[], first: number, last: number): number
   return u.map((v) => v / total);
 }
 
+/**
+ * Longest handle the least-squares solve may keep, as a multiple of the run's
+ * chord.
+ *
+ * The 2×2 system below is near-singular whenever a run is short (a three-point
+ * run has ONE interior sample) or its end tangents nearly cancel, and then the
+ * alphas explode: on the frankie demo trace, a 1×7px sliver at (173..175,
+ * 186..193) produced handles ~477px long on a 1.6px chord —
+ * `c 109.96 464.07 -116.57 -495.31 0.77 1.22` in the shipped asset, a curve
+ * that swings four hundred pixels away from a two-pixel feature.
+ * `computeMaxError` cannot see that swing, because it measures at the data
+ * points' own parameters and a three-point run has exactly one of those: the
+ * curve passes through it and the fit is accepted at error 0.000.
+ *
+ * The cure is the bound Schneider's published code was missing and the guard
+ * below only half-has: alphas smaller than epsilon already fall back to
+ * Wu/Barsky chord/3 handles, so send oversized ones down the same path. A
+ * cubic is inside the convex hull of its control points, so bounding the
+ * handles bounds the whole curve to the chord's own scale — after which the
+ * usual error-then-split recursion judges honestly. Three chords is generous:
+ * the sharpest legitimate fits in the corpus (the mascot chin's J-hook) use
+ * ~0.74 chords, an arc at the 75° cap needs 0.36, and the explosions being
+ * cured are 70x the chord and up. Measured on the corpus, the bound changes
+ * no synthetic fixture at all and removes every balloon: 367 fitted contours
+ * across the four third-party fixtures and the mascot whose curves left their
+ * input polygon by >3px (capped measurement, up to 32px+) drop to zero, and
+ * strict ink recall moves UP where it moves at all (engraving 0.815→0.832,
+ * photo 0.963→0.968) — see instruments/run-fit-excursion.mjs.
+ */
+const MAX_ALPHA_RATIO = 3;
+
 /** Least-squares control points for fixed endpoints and end tangents. */
 function generateBezier(
   pts: Pt[],
@@ -499,7 +530,12 @@ function generateBezier(
 
   const segLength = len(sub(p3, p0));
   const epsilon = 1e-6 * segLength;
-  if (alphaL < epsilon || alphaR < epsilon) {
+  if (
+    alphaL < epsilon ||
+    alphaR < epsilon ||
+    alphaL > MAX_ALPHA_RATIO * segLength ||
+    alphaR > MAX_ALPHA_RATIO * segLength
+  ) {
     // Wu/Barsky fallback: put the handles a third of the chord out.
     alphaL = segLength / 3;
     alphaR = segLength / 3;
