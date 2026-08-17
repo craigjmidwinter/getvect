@@ -5,6 +5,11 @@ time: "22:52:04"
 tags:
     - instruments
     - process
+hash: 2499f39
+stat:
+    f: 3
+    a: 95
+    d: 1
 ---
 
 I sent this lap after my own number: the pale cream layer at 4.08x the drawing's
