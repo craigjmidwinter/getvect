@@ -20,7 +20,10 @@ stat:
     d: 42
 ---
 
-![The prompt experiment that proved it: 'convert into a flat vector graphic' beats describing the operations — the style name carries the whole contract](media/local artwork-gemini-vector-prompt.png)
+> **The prompt experiment that proved it:** "convert into a flat vector graphic" beats
+> describing the operations one by one — the style name carries the whole contract.
+> (The screenshot that showed this has been removed along with the third-party artwork
+> it was demonstrated on.)
 
 ![The payoff frame: Gemini re-illustrates the input with Craig's own key, our tracer takes it apart in 629 ms — 9 colours, 8 layers, 50 KB, transparent background intact](media/enhance-payoff.png)
 
