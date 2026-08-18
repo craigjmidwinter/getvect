@@ -43,10 +43,10 @@ only ever agree with us. See [`docs/HARNESS.md`](docs/HARNESS.md).
 
 ## Before / after
 
-![Frankie the cat: 568 KB PNG at 200% zoom next to the 19 KB SVG GetVect traced from it](docs/assets/frankie-before-after.png)
+![Frankie the cat: 568 KB PNG at 200% zoom next to the 17 KB SVG GetVect traced from it](docs/assets/frankie-before-after.png)
 
 Frankie is our mascot and our demo fixture. Traced at 8 colours with Smart anti-aliasing,
-a 568 KB raster becomes a **19 KB SVG in 7 colour layers and 59 shapes** — curve-fitted
+a 568 KB raster becomes a **17 KB SVG in 7 colour layers and 42 shapes** — curve-fitted
 outlines, transparent background preserved, and infinitely re-scalable. The full output is
 [`docs/assets/frankie-vector.svg`](docs/assets/frankie-vector.svg) and the source is in
 [`fixtures/reference/`](fixtures/reference/).
