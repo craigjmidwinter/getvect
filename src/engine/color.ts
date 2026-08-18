@@ -1580,6 +1580,106 @@ export function mapToPalette(
   return out;
 }
 
+/** How far inside the silhouette a background-contaminated pixel can reach. */
+const FRINGE_REACH = 2;
+
+/**
+ * Stop the alpha edge from inventing a colour that exists nowhere beside it.
+ *
+ * A PNG with a transparent background was composited against *something* when
+ * it was authored, and the pixels along the silhouette keep a trace of it. On
+ * the mascot that trace is a faint pink halo just inside the white outline —
+ * genuinely tinted, chroma spread 73, not a grey anti-aliasing ramp. Those
+ * pixels are opaque, so they reach the histogram and `mapToPalette` honestly
+ * assigns them to whichever entry is nearest, which for that pink is the tan
+ * slot (60 away) rather than white (94 away). Being a one-pixel band that hugs
+ * the outline, the result traces as thin tan ribbons riding the silhouette.
+ *
+ * `majorityFilter` is meant to clear exactly this kind of halo and cannot here,
+ * for a reason worth writing down: see-through neighbours cast no vote, so an
+ * interior halo is outvoted from both sides while an edge halo is only opposed
+ * from one and survives on the tie — and `continuesRun` then protects the band
+ * as though it were a thin stroke, because along the edge it looks like one.
+ * Two guards that are each right on their own leave a gap between them.
+ *
+ * The rule here is narrow on purpose: a fringe pixel may keep any colour that
+ * some pixel deeper inside the silhouette also has. It is only reassigned when
+ * its colour appears NOWHERE in the material behind it, which is the signature
+ * of contamination rather than of artwork. A feature that genuinely runs to the
+ * silhouette keeps its own index, because that index is present further in.
+ *
+ * A no-op on artwork with no transparency: `opacityMask` returns null there, so
+ * this is never called, and continuous-tone images keep every thin tonal band
+ * they earn.
+ */
+export function snapAlphaFringe(
+  indices: Uint8Array,
+  width: number,
+  height: number,
+  mask: Uint8Array,
+  paletteSize: number,
+): Uint8Array {
+  const out = Uint8Array.from(indices);
+  const n = width * height;
+
+  // 1 where an opaque pixel lies within FRINGE_REACH of a see-through one.
+  const fringe = new Uint8Array(n);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const p = y * width + x;
+      if (!mask[p]) continue;
+      let near = false;
+      for (let dy = -FRINGE_REACH; dy <= FRINGE_REACH && !near; dy++) {
+        const yy = y + dy;
+        if (yy < 0 || yy >= height) { near = true; break; }   // the canvas edge cuts too
+        for (let dx = -FRINGE_REACH; dx <= FRINGE_REACH; dx++) {
+          const xx = x + dx;
+          if (xx < 0 || xx >= width) { near = true; break; }
+          if (!mask[yy * width + xx]) { near = true; break; }
+        }
+      }
+      fringe[p] = near ? 1 : 0;
+    }
+  }
+
+  const W = FRINGE_REACH + 1;
+  const tally = new Int32Array(paletteSize);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const p = y * width + x;
+      if (!fringe[p]) continue;
+      const self = indices[p];
+      if (self >= paletteSize) continue;
+
+      // what the material behind this pixel is made of — opaque, and past the band
+      tally.fill(0);
+      let seen = 0;
+      for (let dy = -W; dy <= W; dy++) {
+        const yy = y + dy;
+        if (yy < 0 || yy >= height) continue;
+        for (let dx = -W; dx <= W; dx++) {
+          const xx = x + dx;
+          if (xx < 0 || xx >= width) continue;
+          const q = yy * width + xx;
+          if (!mask[q] || fringe[q]) continue;
+          const v = indices[q];
+          if (v < paletteSize) { tally[v]++; seen++; }
+        }
+      }
+      if (seen === 0) continue;          // nothing deeper to appeal to; leave it alone
+      if (tally[self] > 0) continue;     // this colour does exist behind it — artwork, not contamination
+
+      let best = self;
+      let bestN = 0;
+      for (let c = 0; c < paletteSize; c++) {
+        if (tally[c] > bestN) { bestN = tally[c]; best = c; }
+      }
+      out[p] = best;
+    }
+  }
+  return out;
+}
+
 /** Pixel coverage per palette entry. Transparent pixels count for nobody. */
 export function coverageOf(indices: Uint8Array, paletteSize: number): Uint32Array {
   const counts = new Uint32Array(paletteSize);

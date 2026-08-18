@@ -805,6 +805,33 @@
       "note": "A 19th-century engraving (public domain): dense cross-hatching, which is almost entirely one-pixel runs. Nothing else in the corpus looks remotely like this, and it is the hardest case for any filter that judges thin runs — which is exactly why it is here. Traced at the Sketch preset the artwork was drawn for."
     },
     {
+      "id": "third-party-sticker",
+      "provenance": "third-party",
+      "file": "third-party/sticker-figure-900.png",
+      "kind": "clipart",
+      "format": "png",
+      "width": 960,
+      "height": 1271,
+      "supported": true,
+      "distinctColors": null,
+      "settings": {
+        "colorCount": 8
+      },
+      "thresholds": {
+        "meanColorError": 30,
+        "ssim": 0.55,
+        "maxPaths": 4000,
+        "maxSubPaths": 6000,
+        "maxTinySubPathRatio": 0.4,
+        "maxBytes": 1048576,
+        "maxMs": 20000
+      },
+      "aspirations": {
+        "maxAlphaFringeSlivers": 0
+      },
+      "note": "A CC0 figure with a transparent background, and the only artwork in the corpus that is BOTH transparent and not ours. It is here to hold the alpha fringe: a cut-out PNG was composited against something when it was drawn, and the pixels just inside its outline keep a trace of it, which quantizes into thin ribbons riding the silhouette. Nothing opaque can exercise that, so before this fixture the defect had no gate that could fire."
+    },
+    {
       "id": "third-party-lowres",
       "provenance": "third-party",
       "file": "third-party/lowres-poster-250.jpg",

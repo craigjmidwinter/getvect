@@ -1882,6 +1882,54 @@ async function main() {
           'drawn for.',
       },
       {
+        id: 'third-party-sticker',
+        provenance: 'third-party',
+        file: 'third-party/sticker-figure-900.png',
+        kind: 'clipart',
+        format: 'png',
+        width: 960,
+        height: 1271,
+        supported: true,
+        distinctColors: null,
+        settings: { colorCount: 8 },
+        thresholds: {
+          meanColorError: 30,
+          ssim: 0.55,
+          maxPaths: 4000,
+          maxSubPaths: 6000,
+          maxTinySubPathRatio: 0.4,
+          maxBytes: 1024 * 1024,
+          maxMs: 20000,
+        },
+        /**
+         * The reason this fixture exists, and it is NOT met.
+         *
+         * ZERO is the aim because zero is what the defect's absence looks like:
+         * a traced silhouette should carry no hairline of colour that belongs to
+         * nothing behind it, and the mascot reaches zero. Not a ratchet to
+         * whatever we score — `snapAlphaFringe` takes this artwork from 42 to 8,
+         * real progress that is not the finish, and the remaining 8 stay on
+         * screen every run rather than being legislated away.
+         *
+         * The measured reason it is short: this artwork's edge is SOFT, with
+         * partial-alpha runs of median 3px and p90 15px, while the pass reaches a
+         * fixed 2px. Reading the reach from the alpha profile instead was tried
+         * and measured WORSE (33 and 39 against 8) — that band is genuine
+         * feathering as much as contamination, so seeding from it eats real
+         * features. See docs/HARNESS.md, "An adaptive fix that measured worse".
+         */
+        aspirations: {
+          maxAlphaFringeSlivers: 0,
+        },
+        note:
+          'A CC0 figure with a transparent background, and the only artwork in the ' +
+          'corpus that is BOTH transparent and not ours. It is here to hold the alpha ' +
+          'fringe: a cut-out PNG was composited against something when it was drawn, ' +
+          'and the pixels just inside its outline keep a trace of it, which quantizes ' +
+          'into thin ribbons riding the silhouette. Nothing opaque can exercise that, ' +
+          'so before this fixture the defect had no gate that could fire.',
+      },
+      {
         id: 'third-party-lowres',
         provenance: 'third-party',
         file: 'third-party/lowres-poster-250.jpg',

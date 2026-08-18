@@ -57,3 +57,14 @@ should be.
 - **Source page**: https://commons.wikimedia.org/wiki/File:1930s_Japan_Travel_Poster_Kyoto_1.jpg
 - **File fetched**: https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/1930s_Japan_Travel_Poster_Kyoto_1.jpg/250px-1930s_Japan_Travel_Poster_Kyoto_1.jpg
 - **Original**: 750×1029 image/jpeg, fetched rescaled to 200px wide
+
+### `sticker-figure-900.png`
+
+- **Licence**: CC0 — http://creativecommons.org/publicdomain/zero/1.0/deed.en
+- **Usage terms**: Creative Commons Zero, Public Domain Dedication
+- **Author**: dinhochiz
+- **Credit**: Open Clipart Library
+- **Date**: 12 January 2015, 05:05:39
+- **Source page**: https://commons.wikimedia.org/wiki/File:Sambista_clipart.png
+- **File fetched**: https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Sambista_clipart.png/960px-Sambista_clipart.png
+- **Original**: 1503×1990 image/png, fetched rescaled to 900px wide

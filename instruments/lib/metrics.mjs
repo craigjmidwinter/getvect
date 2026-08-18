@@ -2151,3 +2151,176 @@ function assertSameSize(a, b) {
     throw new Error(`size mismatch: ${a.width}x${a.height} vs ${b.width}x${b.height}`);
   }
 }
+
+
+/**
+ * Thin ribbons of colour riding the silhouette — the defect, counted the way a
+ * person counts it.
+ *
+ * A cut-out PNG was composited against something when it was drawn, and the
+ * pixels just inside its outline keep a trace of it. Those pixels are opaque, so
+ * they quantize like any other and can land on a palette entry that belongs to
+ * no region beside them, which traces as a hairline ribbon following the edge.
+ *
+ * THIS REPLACED A LOOSER METRIC, and the reason is worth keeping. The first
+ * version scored the FRACTION OF SILHOUETTE-BAND PIXELS whose colour differs
+ * from the material behind them. That sounds like the same question and is not:
+ * it never reaches zero on real artwork, because a boundary pixel legitimately
+ * differs from what it borders. The mascot, with every visible sliver gone,
+ * still scored 20.35% — so a 5% bar on it was unreachable by construction, and a
+ * bar that cannot be met measures nothing. Worse, it disagreed with the eye: a
+ * change that halved the ratio made the visible ribbons more numerous.
+ *
+ * So this counts SHAPES, not pixels: connected runs of one colour, narrow enough
+ * to read as a hairline, sitting on the alpha edge. It goes to zero when the
+ * defect is gone, which is the only property that makes it worth gating on.
+ *
+ * `null` when the source has no transparency — there is no silhouette to ride,
+ * and a continuous-tone image's honest thin tonal bands must never be scored by
+ * this.
+ */
+export async function alphaFringeSlivers(
+  svg,
+  sourceRgba,
+  { maxWidth = 2.5, reach = 2, minArea = 8, scale = 2, sites = null } = {},
+) {
+  const sw = sourceRgba.width, sh = sourceRgba.height;
+  if (!sw || !sh) return null;
+
+  // bail before rendering anything if there is no silhouette to ride
+  {
+    let clear = 0;
+    for (let p = 0; p < sw * sh; p++) if (sourceRgba.data[p * 4 + 3] < 128) clear++;
+    if (clear === 0) return null;
+  }
+
+  /*
+   * Measured at `scale`, not at source size, and that is not a detail.
+   * At 1x a hairline ribbon is thinner than the pixel meant to record it: it
+   * blends into its neighbours, same-colour runs break up, and the count came
+   * back disagreeing with the geometry it was supposed to be measuring — it
+   * ranked a variant best that the vector shapes said was three times worse.
+   * Rendering at 2x makes a one-pixel ribbon two pixels of solid colour, which
+   * is the smallest thing this can honestly count.
+   */
+  const { rasterizeSvg } = await import('./render.mjs');
+  const rendered = await rasterizeSvg(svg, sw * scale, sh * scale);
+  const W = rendered.image.width, H = rendered.image.height;
+  const out = rendered.image.data;
+  const n = W * H;
+
+  // the source's alpha, sampled up to the render scale
+  const opaque = new Uint8Array(n);
+  for (let y = 0; y < H; y++) {
+    const sy = Math.min(sh - 1, (y / scale) | 0);
+    for (let x = 0; x < W; x++) {
+      const sx = Math.min(sw - 1, (x / scale) | 0);
+      if (sourceRgba.data[(sy * sw + sx) * 4 + 3] >= 128) opaque[y * W + x] = 1;
+    }
+  }
+  reach = reach * scale;
+  maxWidth = maxWidth * scale;
+  minArea = minArea * scale * scale;
+
+  /** 1 where an opaque pixel lies within `reach` of a see-through one. */
+  const edge = new Uint8Array(n);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const p = y * W + x;
+      if (!opaque[p]) continue;
+      let near = false;
+      for (let dy = -reach; dy <= reach && !near; dy++) {
+        const yy = y + dy;
+        if (yy < 0 || yy >= H) continue;
+        for (let dx = -reach; dx <= reach; dx++) {
+          const xx = x + dx;
+          if (xx < 0 || xx >= W) continue;
+          if (!opaque[yy * W + xx]) { near = true; break; }
+        }
+      }
+      if (near) edge[p] = 1;
+    }
+  }
+
+  const key = (p) => (out[p * 4] << 16) | (out[p * 4 + 1] << 8) | out[p * 4 + 2];
+
+  /*
+   * Distance from each pixel to the nearest pixel of a DIFFERENT colour, by two
+   * chamfer passes. The maximum inside a same-colour run is its largest
+   * inscribed radius, i.e. half its width at the widest point — which is what
+   * separates a hairline from a shape, and is computed once for the whole image
+   * rather than per run.
+   */
+  const dist = new Float32Array(n);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const p = y * W + x;
+      const mine = key(p);
+      let border = false;
+      if (x === 0 || y === 0 || x === W - 1 || y === H - 1) border = true;
+      else if (key(p - 1) !== mine || key(p + 1) !== mine || key(p - W) !== mine || key(p + W) !== mine) border = true;
+      dist[p] = border ? 0 : 1e6;
+    }
+  }
+  const A = 1, B = Math.SQRT2;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const p = y * W + x;
+    if (dist[p] === 0) continue;
+    let v = dist[p];
+    if (x > 0) v = Math.min(v, dist[p - 1] + A);
+    if (y > 0) v = Math.min(v, dist[p - W] + A);
+    if (x > 0 && y > 0) v = Math.min(v, dist[p - W - 1] + B);
+    if (x < W - 1 && y > 0) v = Math.min(v, dist[p - W + 1] + B);
+    dist[p] = v;
+  }
+  for (let y = H - 1; y >= 0; y--) for (let x = W - 1; x >= 0; x--) {
+    const p = y * W + x;
+    if (dist[p] === 0) continue;
+    let v = dist[p];
+    if (x < W - 1) v = Math.min(v, dist[p + 1] + A);
+    if (y < H - 1) v = Math.min(v, dist[p + W] + A);
+    if (x < W - 1 && y < H - 1) v = Math.min(v, dist[p + W + 1] + B);
+    if (x > 0 && y < H - 1) v = Math.min(v, dist[p + W - 1] + B);
+    dist[p] = v;
+  }
+
+  // same-colour runs that touch the alpha edge, measured for width
+  const seen = new Uint8Array(n);
+  const stack = new Int32Array(n);
+  let slivers = 0;
+  let sliverArea = 0;
+  for (let start = 0; start < n; start++) {
+    if (seen[start] || !opaque[start] || !edge[start]) continue;
+    const mine = key(start);
+    let sp = 0, area = 0, peak = 0, onEdge = 0, sumX = 0, sumY = 0;
+    stack[sp++] = start;
+    seen[start] = 1;
+    while (sp > 0) {
+      const p = stack[--sp];
+      area++;
+      sumX += p % W;
+      sumY += (p / W) | 0;
+      if (dist[p] > peak) peak = dist[p];
+      if (edge[p]) onEdge++;
+      const x = p % W, y = (p / W) | 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const q = ny * W + nx;
+        if (seen[q] || !opaque[q] || key(q) !== mine) continue;
+        seen[q] = 1;
+        stack[sp++] = q;
+      }
+    }
+    if (area < minArea) continue;
+    // most of it has to lie on the edge, or it is a shape that merely reaches it
+    if (onEdge / area < 0.5) continue;
+    if (2 * peak <= maxWidth) {
+      slivers++;
+      sliverArea += area;
+      if (sites) sites.push({ x: (sumX / area / scale) | 0, y: (sumY / area / scale) | 0, area, width: (2 * peak) / scale });
+    }
+  }
+
+  return { alphaFringeSlivers: slivers, alphaFringeSliverArea: sliverArea };
+}

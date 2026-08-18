@@ -545,6 +545,59 @@ as a CPU problem and it was not one: the full suite is ~64s wall at a mean of 49
 14-core machine, peaking at 66%. `scripts/measure-load.mjs` is the meter. Hiding the
 windows made it slightly *faster* (70.2s to 64.1s) by removing the compositing work.
 
+## An adaptive fix that measured better, by eye and by metric, and broke ink
+
+> **A measurement that counts what nobody can see is not a measurement.** Check what
+> your instrument is looking at before you let it rank anything.
+
+The alpha fringe — hairlines of colour riding a cut-out PNG's silhouette, left by whatever
+the artwork was composited against when it was drawn — was fixed by `snapAlphaFringe`,
+which reassigns a fringe pixel only when its colour appears nowhere in the material behind
+it. It reaches a fixed 2px in. That looked like the obvious thing to improve: measured on
+the corpus's soft-edged figure, the partial-alpha band runs a median of 3px and a p90 of
+15px, so most of the contamination sits beyond the reach. Read the reach from the
+artwork's own alpha instead and it should cover the band exactly.
+
+It does. It was still wrong, and it took four measurements and a picture to find out.
+
+**The first instrument was measuring pixels, not shapes.** It scored the fraction of
+silhouette-band pixels whose colour differs from the material behind them, which never
+reaches zero on real artwork — the mascot, with every visible sliver gone, still scored
+20.35%, so the 5% bar written against it was unreachable by construction. It also
+disagreed with the eye: a change that halved the ratio made the visible hairlines more
+numerous. Replaced by one that counts connected runs narrow enough to read as a hairline,
+which does reach zero.
+
+**The second instrument was counting things nobody can see.** It measured per-layer
+geometry: every thin shape in a layer, including the parts of it hidden under the layers
+painted on top. It ranked the fixed reach three times better than the adaptive one. The
+two raster measurements ranked them the other way round, and so did looking at the
+artwork at 6x — where the adaptive version's silhouette is visibly clean and the fixed
+version still carries a dark hairline. Occluded geometry is not a defect; it is not
+anything.
+
+So the adaptive reach was better. Then `local-snorlax` failed on `inkRecall`, 0.9248
+against a floor of 0.9900 — **seven per cent of the ink outline eaten**. On soft-edged
+artwork the partial-alpha band is genuine feathering as much as contamination, and seeding
+the fringe from it classifies 13.5% of the artwork as fringe against 7.6%, so real
+features fall inside it and get reassigned to their neighbours.
+
+The shipped version is therefore the fixed 2px reach, and the aspiration it does not meet
+stays on screen: `alphaFringeSlivers 30 > 0` on the third-party figure, against 0 on the
+mascot. What closes that gap is not more reach — reach is the thing that ate the ink — but
+telling contamination from feathering, which nothing here can do yet.
+
+Two smaller results from the same lap, both recorded so nobody re-runs them:
+
+- **Locality is load-bearing in `snapAlphaFringe`.** Widening its "what is behind this
+  pixel" window from ~3px to a coarse block grid (~48px) made everything worse: over that
+  radius almost every colour exists somewhere, so the test passes for nearly every pixel
+  and the pass silently stops working. The mascot went from zero slivers to 23.
+- **The corpus earned its keep.** The fixture that failed the adaptive version is not the
+  one it was designed against. A change that improves the image you are looking at and
+  destroys a different one is the exact failure the provenance rule exists to catch, and
+  here it caught one.
+
 ## A viewer that composites its layers can manufacture a defect
 
 > **Before investigating a defect seen through a viewer, prove the viewer is showing you

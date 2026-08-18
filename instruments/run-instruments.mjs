@@ -73,6 +73,7 @@ import {
   strictInkRecall,
   strokeWidthProfile,
   svgStructure,
+  alphaFringeSlivers,
 } from './lib/metrics.mjs';
 
 /**
@@ -350,6 +351,12 @@ const GATES = [
   ['maxCanvasOverflow', 'canvasOverflow', 'max', (v) => `${v.toFixed(2)}px`],
   ['maxStaircaseLocal', 'staircaseLocal', 'max', (v) => v.toFixed(4)],
   ['maxStaircaseSustained', 'staircaseSustained', 'max', (v) => v.toFixed(4)],
+  // Ribbons of colour riding the silhouette that belong to nothing behind it
+  // (metrics.mjs `alphaFringeForeign`). Only produced for artwork with an alpha
+  // channel, so only a transparent fixture may declare this — anywhere else it
+  // would be a DEAD GATE and the run would say so.
+  ['maxAlphaFringeSlivers', 'alphaFringeSlivers', 'max', (v) => String(v)],
+  ['maxAlphaFringeSliverArea', 'alphaFringeSliverArea', 'max', (v) => `${v}px`],
   // B3: how many of the colours the user asked for — and the image actually has
   // — our own folds merged away before the palette was returned.
   ['maxPaletteShortfall', 'paletteShortfall', 'max', String],
@@ -742,6 +749,12 @@ async function main() {
       // `seamSlivers`).
       ...sharpFeatureSurvival(reference, traced),
       ...seamSlivers(reference, traced),
+      // Hairline ribbons riding the SILHOUETTE — a transparent PNG's own edge
+      // contamination, traced as geometry (metrics.mjs `alphaFringeSlivers`).
+      // Counts SHAPES, not pixels, because the pixel version never reached zero
+      // on clean artwork and so could not be gated; see its note. Null without
+      // an alpha channel, so honest thin tonal bands are never scored by this.
+      ...((await alphaFringeSlivers(result.svg, decoded)) ?? {}),
       // How much each palette colour's area drifted between source and trace:
       // catches half-pixel erosion of hairlines that MAE/SSIM average away.
       perColorCoverageDelta: Array.isArray(result.palette)

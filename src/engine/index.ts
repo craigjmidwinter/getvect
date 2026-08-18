@@ -27,6 +27,7 @@ import {
   coverageOf,
   despeckleIndices,
   mapToPalette,
+  snapAlphaFringe,
   mergeSimilarColors,
   mergeSmallGroups,
   normalizePalette,
@@ -736,6 +737,20 @@ export async function vectorize(
   const override = normalizePalette(opts.palette);
   const clusters = computePaletteSync(source, Math.max(1, presetColorCount(opts)), opaque);
   let indices = mapToPalette(source, clusters, opaque);
+  /**
+   * The silhouette's own halo, before the region filters run.
+   *
+   * A transparent PNG was composited against something when it was drawn, and
+   * the pixels just inside its outline keep a trace of it. Those pixels are
+   * opaque, so they are quantized like any other and can land on a palette entry
+   * that exists nowhere beside them — which then traces as a thin ribbon riding
+   * the silhouette. `majorityFilter` below is the pass that clears halos, and it
+   * structurally cannot clear this one: see-through neighbours cast no vote, so
+   * an edge halo is only opposed from one side and survives the tie. Hence a
+   * dedicated pass, and hence it runs first — the filters afterwards then see a
+   * boundary with nothing spurious on it. No-op without an alpha channel.
+   */
+  if (opaque) indices = snapAlphaFringe(indices, width, height, opaque, clusters.length);
   /**
    * Anti-aliasing, the half that works on regions rather than pixels.
    *
