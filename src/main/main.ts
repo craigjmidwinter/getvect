@@ -3,6 +3,7 @@ import { existsSync, promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { registerAiEnhanceIpc } from './aiEnhance';
 import { registerUpdaterIpc } from './updater';
+import { installWindowGuard } from './windowGuard';
 
 /**
  * Electron main process.
@@ -32,6 +33,10 @@ if (isE2E && process.platform === 'darwin') {
     /* headless / non-macOS builds have no dock; nothing to hide */
   }
 }
+
+// Before anything can construct a window: under test, neuter every call that
+// could put one on screen and record the attempt. See src/main/windowGuard.ts.
+installWindowGuard(isE2E);
 
 /**
  * Application identity — everything that makes the running process say
@@ -124,15 +129,30 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // A window that is never shown is a background window, and Chromium
+      // throttles timers and rAF in those. Under test that turns into slow,
+      // flaky specs, so the throttle comes off — the window is hidden for the
+      // human's sake, not to make it idle.
+      ...(isE2E ? { backgroundThrottling: false } : {}),
     },
   });
 
-  // Under e2e the app must never steal focus from whatever the human is doing:
-  // the suite runs constantly in the background and each headed launch would
-  // otherwise activate over their foreground app.
-  mainWindow.once('ready-to-show', () =>
-    isE2E ? mainWindow?.showInactive() : mainWindow?.show(),
-  );
+  /**
+   * Under e2e the window is never put on screen at all.
+   *
+   * This used to be `showInactive()`, on the theory that not taking keyboard
+   * focus was enough. It is not: `showInactive` still *maps the window*, so a
+   * suite that launches Electron once per spec throws dozens of "VECTORIZING…"
+   * windows over whatever the human is doing. Not stealing the keyboard is no
+   * comfort when the window is covering their screen.
+   *
+   * Playwright drives the renderer over CDP, which needs no visible surface, and
+   * `paintWhenInitiallyHidden` (on by default) keeps the compositor running so
+   * the DOM still lays out and paints. `installWindowGuard` above neuters the
+   * calls that could undo this, and tests/e2e/z-window-guard.spec.ts fails if
+   * anything tries.
+   */
+  if (!isE2E) mainWindow.once('ready-to-show', () => mainWindow?.show());
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);

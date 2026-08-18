@@ -346,7 +346,18 @@ section > .wrap > p:last-child { margin-bottom: 0; }
 /* A drag is 1:1 with the pointer; only the zoom buttons get the glide. */
 .demo-stage.is-dragging .demo-layer img { transition: none; }
 .demo-raster img { image-rendering: pixelated; }
+/* Each pane shows ONE image. Clipping only the vector left the raster lying
+   under it across the whole stage, so the right-hand pane was not the traced SVG
+   — it was the traced SVG composited over the source PNG. That is invisible
+   wherever the artwork is opaque, because the vector covers the raster; but the
+   sticker's outer silhouette is the one edge that meets transparency, and the
+   fitted curve rides the MIDLINE of the pixel staircase there, so about half the
+   source's edge pixels stuck out past the curve and showed through from
+   underneath — magnified, with `image-rendering: pixelated`. The demo advertised
+   a staircase the SVG does not contain, on the outline and nowhere else.
+   The two insets are complements, so the seam lands under the divider. */
 .demo-vector { clip-path: inset(0 0 0 calc(var(--pos) * 1%)); }
+.demo-raster { clip-path: inset(0 calc(100% - var(--pos) * 1%) 0 0); }
 
 .demo-divider {
   position: absolute;

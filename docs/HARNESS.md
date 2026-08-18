@@ -504,6 +504,85 @@ Two consequences worth stating:
   it is produced again, or delete the *threshold* and say so — see the provenance rule
   below for who is allowed to anchor what.
 
+## The suite must be invisible to the person at the machine
+
+> **Nothing the suite runs may put a focusable window on screen.** Not shown-inactive,
+> not briefly, not once per spec. `tests/e2e/z-window-guard.spec.ts` fails if it does.
+
+The suite launches Electron once per spec — around 25 launches per run. It used to call
+`showInactive()` on each of them, on the reasoning that a window which does not take
+keyboard focus is harmless. That reasoning is wrong, and the cost of it was dozens of
+"VECTORIZING…" windows appearing over a human's foreground app in the middle of a timed
+game. Not stealing the keyboard is no comfort when you are covering their screen.
+
+Three things stack up, and the first two were already here and were never sufficient
+alone:
+
+- `app.dock.hide()` before ready, and `setActivationPolicy('accessory')` at ready — these
+  stop the process becoming the *active* app.
+- The window is created `show: false` and, under `GETVECT_E2E=1`, **nothing ever shows
+  it**. Playwright drives the renderer over CDP, which needs no visible surface, and
+  `paintWhenInitiallyHidden` keeps the compositor running so the DOM still lays out and
+  paints. `backgroundThrottling: false` comes with it, because a never-shown window is a
+  background window and Chromium throttles rAF and timers in those.
+- `src/main/windowGuard.ts` neuters `show`, `showInactive`, `focus`, `moveTop`,
+  `setAlwaysOnTop`, `maximize`, `restore`, `setFullScreen` and `app.focus()` under test,
+  hides any window constructed `show: true`, and records every attempt with its stack.
+
+The guard deliberately records rather than throws, so a violation surfaces as an assertion
+listing every attempt instead of one stack at the call site. The two halves are separate
+on purpose and both are load-bearing: put `showInactive()` back and the *visibility* test
+still passes — because the guard stopped it — while the *attempt* test fails and names the
+call. Prevention and detection, not one doing double duty.
+
+Screenshot capture needs no exception. `npm run screenshots` and `npm run docs:screenshots`
+already launch under `GETVECT_E2E=1`, and `page.screenshot()` goes through CDP, which
+captures a hidden window correctly — verified, not assumed. No offscreen-rendering mode
+was needed.
+
+Measured either way, for the record, because the visible-window problem was first reported
+as a CPU problem and it was not one: the full suite is ~64s wall at a mean of 49% of a
+14-core machine, peaking at 66%. `scripts/measure-load.mjs` is the meter. Hiding the
+windows made it slightly *faster* (70.2s to 64.1s) by removing the compositing work.
+
+## A viewer that composites its layers can manufacture a defect
+
+> **Before investigating a defect seen through a viewer, prove the viewer is showing you
+> the artifact and nothing else.** Read the artifact directly first.
+
+The site's demo is a before/after slider: a source PNG and the traced SVG, one on top of
+the other, the top one clipped to a moving vertical seam. Only the *vector* layer was
+clipped. The raster layer stayed under it across the whole stage, so the pane labelled
+TRACED SVG was really `vector over raster` — and nothing said so, because wherever the
+artwork is opaque the vector covers the raster exactly.
+
+The one place it does not is the sticker's outer silhouette, the only edge in the drawing
+that meets transparency. The fitter puts its curve on the *midline* of the pixel
+staircase, which is correct, and which leaves about half the source's edge pixels sticking
+out past the curve. Those showed through from underneath, at 16x, with
+`image-rendering: pixelated`. The demo displayed a hard pixel staircase on the outline —
+and only on the outline — that the SVG does not contain.
+
+That cost two rounds of engine-side investigation before anyone read the artifact instead
+of the picture of it. What settled it was measuring the SVG directly:
+
+- **zero** runs of four or more consecutive sub-2.2px segments anywhere in the file;
+- every large layer 100% cubics, no line commands, median segment 30.8px on the outline;
+- traced silhouette against source silhouette, over all 2580 boundary pixels: median
+  0.00px, p90 1.00px, max 2.00px.
+
+None of which is consistent with a preserved staircase. The fix was one line of CSS giving
+the raster the complementary clip. Note also which hypothesis this killed: the natural
+engine-side story — the corner detector pinning each pixel step and forbidding the
+smoothing — measured 0 to 1 corners per 60px on the outline against 0 on the ear arcs,
+with the outline *more* smoothed (0.35px mean shift vs 0.21px) and less frozen (6-8% vs
+22-34%). `detectCorners` runs on the low-passed ring precisely so teeth cannot be pinned,
+and it was doing its job.
+
+The general shape is the same as the dead gate above: something looked like evidence and
+was not. A comparison view is an instrument, and an instrument that composites needs the
+same suspicion as one that measures.
+
 ## Who is allowed to decide that a change is an improvement
 
 Every fixture declares `provenance`, and it decides what the fixture is entitled to do.
