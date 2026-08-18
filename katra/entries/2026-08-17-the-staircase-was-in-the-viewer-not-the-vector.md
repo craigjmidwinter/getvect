@@ -5,6 +5,11 @@ time: "21:01:34"
 tags:
     - site
     - instruments
+hash: 2eae870
+stat:
+    f: 10
+    a: 711
+    d: 6
 ---
 
 Craig looked at the demo and said he had a hard time believing the outline was
