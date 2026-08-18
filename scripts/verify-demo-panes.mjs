@@ -17,6 +17,8 @@
  *
  *   node scripts/verify-demo-panes.mjs                    # the working tree
  *   node scripts/verify-demo-panes.mjs --url https://…    # whatever is deployed
+ *   node scripts/verify-demo-panes.mjs --image fixtures/third-party/x.jpg
+ *                                                        # ...with artwork we did not draw
  *
  * Headless Chromium, launched and owned by this script. It must never drive a
  * browser a human is sitting in front of.
@@ -33,6 +35,16 @@ const argv = process.argv.slice(2);
 const urlAt = argv.indexOf('--url');
 const externalUrl = urlAt !== -1 ? argv[urlAt + 1] : null;
 const keep = argv.includes('--save');
+const imageAt = argv.indexOf('--image');
+const foreignImage = imageAt !== -1 ? argv[imageAt + 1] : null;
+/**
+ * Undo the fix in-page, to prove the check can still fail on this artwork.
+ * A pass is only evidence if a fail was reachable: opaque artwork gets a
+ * backdrop rect in the trace, so the vector may cover the raster everywhere and
+ * the check would pass with or without the clip. That is worth knowing rather
+ * than reporting a green that could not have been red.
+ */
+const breakIt = argv.includes('--break');
 
 const TYPES = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript',
                 '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' };
@@ -58,13 +70,16 @@ async function serveSite() {
  * worst case for this defect because it is where the silhouette meets
  * transparency. Returns the right-hand pane's bounding box.
  */
-const PARK = ({ sx, sy, z }) => {
+const PARK = ({ fx, fy, z }) => {
   const stage = document.getElementById('stage');
   const zoomBtn = document.querySelector(`#zoom button[data-z="${z}"]`);
   if (zoomBtn) zoomBtn.click();
+  const raster = stage.querySelector('.demo-raster img');
+  const NW = raster.naturalWidth || 1195, NH = raster.naturalHeight || 896;
+  const sx = fx * NW, sy = fy * NH;
   const R = stage.getBoundingClientRect();
-  const k = Math.min(R.width / 1195, R.height / 896);
-  const ox = (R.width - 1195 * k) / 2, oy = (R.height - 896 * k) / 2;
+  const k = Math.min(R.width / NW, R.height / NH);
+  const ox = (R.width - NW * k) / 2, oy = (R.height - NH * k) / 2;
   const tx = R.width / 2 - z * (ox + sx * k), ty = R.height / 2 - z * (oy + sy * k);
   stage.style.setProperty('--tx', tx);
   stage.style.setProperty('--ty', ty);
@@ -79,17 +94,92 @@ const PARK = ({ sx, sy, z }) => {
            width: Math.round(R.right - seam - 6), height: Math.round(R.height - 4) };
 };
 
-const SITES = [
-  { name: 'ear notch @ 16x', sx: 560, sy: 160, z: 16 },
-  { name: 'ear crown @ 16x', sx: 600, sy: 130, z: 16 },
-  { name: 'whole cat @ 1x', sx: 597, sy: 448, z: 1 },
+/**
+ * Sites are FRACTIONS of the image, not pixels, so the same check runs against
+ * artwork of any size. The mascot's are the ear notch and ear crown — where the
+ * silhouette meets transparency, which is where the leak showed. Foreign artwork
+ * gets a spread instead: the property must hold everywhere, so any position that
+ * differs is a failure, and there is no reason to hand-pick a flattering one.
+ */
+const MASCOT_SITES = [
+  { name: 'ear notch @ 16x', fx: 560 / 1195, fy: 160 / 896, z: 16 },
+  { name: 'ear crown @ 16x', fx: 600 / 1195, fy: 130 / 896, z: 16 },
+  { name: 'whole cat @ 1x', fx: 0.5, fy: 0.5, z: 1 },
 ];
+
+const FOREIGN_SITES = [
+  { name: 'upper left @ 16x', fx: 0.3, fy: 0.3, z: 16 },
+  { name: 'centre @ 16x', fx: 0.5, fy: 0.5, z: 16 },
+  { name: 'lower right @ 16x', fx: 0.7, fy: 0.66, z: 16 },
+  { name: 'edge @ 16x', fx: 0.5, fy: 0.08, z: 16 },
+  { name: 'whole image @ 4x', fx: 0.5, fy: 0.5, z: 4 },
+  { name: 'whole image @ 1x', fx: 0.5, fy: 0.5, z: 1 },
+];
+
+const SITES = foreignImage ? FOREIGN_SITES : MASCOT_SITES;
+
+/** Trace a corpus image at the demo's own settings and return both as data URIs. */
+async function traceForDemo(file) {
+  const { createRequire } = await import('node:module');
+  const require = createRequire(import.meta.url);
+  const { vectorize } = require(join(root, 'dist/engine/index.js'));
+  const { canvasIngest, decodeImageFile } = await import(join(root, 'instruments/lib/decode.mjs'));
+  const sharp = require('sharp');
+
+  const image = await decodeImageFile(file);
+  // the demo's own settings, so this is the trace a user would get
+  const { svg } = await vectorize(canvasIngest(image), { colorCount: 8, antiAliasing: 'smart', minArea: 5 });
+  const png = await sharp(Buffer.from(image.data.buffer, image.data.byteOffset, image.data.byteLength), {
+    raw: { width: image.width, height: image.height, channels: 4 },
+  }).png().toBuffer();
+
+  return {
+    label: `${file.split('/').pop()} (${image.width}x${image.height}, ${(svg.length / 1024).toFixed(0)} KB SVG)`,
+    pngDataUri: `data:image/png;base64,${png.toString('base64')}`,
+    svgDataUri: `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`,
+  };
+}
 
 const served = externalUrl ? null : await serveSite();
 const target = externalUrl ?? served.url;
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1400, height: 1000 }, deviceScaleFactor: 1 });
 await page.goto(target, { waitUntil: 'networkidle' });
+
+/**
+ * Swap the demo's content for artwork nobody here drew.
+ *
+ * The clip-path fix knows nothing about what it is clipping, so it is
+ * image-agnostic by construction — but "by construction" is an argument, and the
+ * point of the corpus is that our own drawing cannot certify a change. Both
+ * images go in as data URIs against the DEPLOYED page, so it is the shipped CSS
+ * being tested and not a local copy of it.
+ */
+if (foreignImage) {
+  const { pngDataUri, svgDataUri, label } = await traceForDemo(foreignImage);
+  await page.evaluate(({ png, svg }) => {
+    const stage = document.getElementById('stage');
+    const r = stage.querySelector('.demo-raster img');
+    const v = stage.querySelector('.demo-vector img');
+    for (const [img, src] of [[r, png], [v, svg]]) {
+      img.removeAttribute('width');
+      img.removeAttribute('height');
+      img.src = src;
+    }
+  }, { png: pngDataUri, svg: svgDataUri });
+  await page.waitForFunction(() => {
+    const r = document.querySelector('.demo-raster img');
+    const v = document.querySelector('.demo-vector img');
+    return r.complete && v.complete && r.naturalWidth > 0 && v.naturalWidth > 0;
+  }, null, { timeout: 30_000 });
+  console.log(`\ncontent swapped for ${label} — artwork we did not draw`);
+}
+
+if (breakIt) {
+  await page.addStyleTag({ content: '.demo-raster { clip-path: none !important; }' });
+  console.log('\n--break: raster clip removed, reproducing the pre-fix compositing');
+}
+
 await page.locator('#stage').scrollIntoViewIfNeeded();
 
 console.log(`\nverifying ${target}\n`);
@@ -105,8 +195,9 @@ for (const site of SITES) {
   await page.waitForTimeout(200);
   const without = await page.screenshot({ clip: box });
   await page.evaluate(() => {
-    const t = [...document.querySelectorAll('style')].pop();
-    if (t && t.textContent.includes('.demo-raster')) t.remove();
+    const t = [...document.querySelectorAll('style')].reverse()
+      .find((e) => e.textContent.includes('display: none'));
+    if (t) t.remove();
   });
   await page.waitForTimeout(200);
 
