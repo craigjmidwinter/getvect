@@ -8,11 +8,17 @@ name: Release
 #     git commit -am "Release 0.1.1" && git push
 #     git tag v0.1.1 && git push origin v0.1.1
 #
-# The first job step refuses to build if `v<package.json version>` is not the
-# tag that triggered it. A release whose package.json says 0.1.0 and whose dmg
-# is called 0.1.1 is a release that lies to its own updater — `latest-mac.yml`
-# carries the version the *app* reports, and every subsequent update check
-# compares against it.
+# Every build job refuses to start if `v<package.json version>` is not the tag
+# that triggered it. A release whose package.json says 0.1.0 and whose dmg is
+# called 0.1.1 is a release that lies to its own updater — `latest-mac.yml` and
+# `latest.yml` carry the version the *app* reports, and every subsequent update
+# check compares against it.
+#
+# FOUR JOBS, AND THE SHAPE IS THE POINT. `draft` opens exactly one release,
+# `mac` and `windows` build in parallel and upload into it, `publish` un-drafts
+# only once both have finished. A release is never public with half its assets,
+# and no visitor to the site is ever offered a platform whose artefact is still
+# uploading.
 on:
   push:
     tags: ['v*']
@@ -32,13 +38,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: build · publish · un-draft
-    # macOS: the artefacts are a macOS dmg and zip, and the postinstall step
-    # that de-quarantines Electron is macOS-specific. This is also the only
-    # platform GetVect claims to support today.
-    runs-on: macos-latest
-    timeout-minutes: 45
+  # THE DRAFT IS CREATED HERE, NOT BY electron-builder — and that ordering is
+  # the fix for a real failure, not a preference.
+  #
+  # electron-builder runs one publisher per target (zip, dmg). Both look for an
+  # existing release by tag, both find nothing, and both create one: GitHub
+  # happily accepts two *drafts* sharing a tag, because a draft has no tag to
+  # collide on until it is published. The first attempt at v0.1.0 produced
+  # exactly that — two drafts, the dmg and latest-mac.yml in one, a lone
+  # blockmap in the other, and a release the updater could not read.
+  #
+  # A release that already exists when electron-builder starts closes the race:
+  # every publisher finds it and uploads into it. With two runners packaging at
+  # once the race is no longer theoretical, which is why this is its own job
+  # rather than a step inside the mac build — a job both builds must wait for is
+  # the only way to guarantee exactly one release exists before either starts.
+  draft:
+    name: check the version · open the draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
@@ -48,7 +69,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: The tag and package.json must agree
         id: version
@@ -61,6 +81,84 @@ jobs:
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          cat > notes.md <<EOF
+          ## GetVect $VERSION
+
+          Raster → vector, on your machine. Drop in a PNG, JPEG or BMP; get back SVG, EPS, DXF, PDF or PNG.
+
+          **macOS, Apple Silicon** — download \`GetVect-$VERSION-arm64.dmg\`.
+          **Windows, x64** — download \`GetVect-$VERSION-x64.exe\`.
+
+          ### These builds are not signed
+
+          There is no Developer ID certificate and no Authenticode certificate behind them yet.
+
+          On macOS the app is quarantined on first launch. Either right-click it in Applications
+          and choose **Open**, or:
+
+          \`\`\`
+          xattr -dr com.apple.quarantine /Applications/GetVect.app
+          \`\`\`
+
+          On Windows, SmartScreen shows "Windows protected your PC". Choose **More info**, then
+          **Run anyway**. The installer is per-user and never asks for administrator rights.
+
+          The same fact is why GetVect will *tell* you about a new version rather than install
+          one: an unsigned app cannot reliably update itself in place.
+
+          ### Network
+
+          Two network touchpoints, both in your control: optional AI Enhance, and a
+          once-per-launch update check against GitHub Releases (disable with
+          \`GETVECT_NO_UPDATE_CHECK=1\`). Everything else — ingest, tracing, preview and every
+          export — runs offline.
+
+          Full docs: <https://getvect.midwinter.io/docs.html>
+          EOF
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists; reusing it"
+            gh release edit "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --draft --title "GetVect $VERSION" --notes-file notes.md
+          fi
+
+  mac:
+    name: build · publish · macOS
+    # The dmg and the zip can only be made on macOS, and so can the icns the
+    # bundle carries.
+    runs-on: macos-latest
+    needs: draft
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Repeated per build job rather than trusted from `draft`. It is four
+      # lines, it reads package.json on the machine that is about to package it,
+      # and it fails a job that somehow checked out the wrong ref.
+      - name: The tag and package.json must agree
+        run: |
+          TAG="${{ needs.draft.outputs.tag }}"
+          PKG="v$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag $TAG does not match package.json ($PKG). Bump the version, commit, then tag."
+            exit 1
+          fi
 
       - name: Install dependencies
         run: npm ci
@@ -80,60 +178,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      # THE DRAFT IS CREATED HERE, NOT BY electron-builder — and that ordering is
-      # the fix for a real failure, not a preference.
-      #
-      # electron-builder runs one publisher per target (zip, dmg). Both look for
-      # an existing release by tag, both find nothing, and both create one:
-      # GitHub happily accepts two *drafts* sharing a tag, because a draft has no
-      # tag to collide on until it is published. The first attempt at v0.1.0
-      # produced exactly that — two drafts, the dmg and latest-mac.yml in one,
-      # a lone blockmap in the other, and a release the updater could not read.
-      #
-      # A release that already exists when electron-builder starts closes the
-      # race: both publishers find it and upload into it.
-      - name: Create the draft release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.version.outputs.tag }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -euo pipefail
-          cat > notes.md <<EOF
-          ## GetVect $VERSION
-
-          Raster → vector, on your machine. Drop in a PNG, JPEG or BMP; get back SVG, EPS, DXF, PDF or PNG.
-
-          **macOS, Apple Silicon.** Download \`GetVect-$VERSION-arm64.dmg\` below.
-
-          ### This build is not signed
-
-          There is no Developer ID certificate behind it yet, so macOS will quarantine it on
-          first launch. Either right-click the app in Applications and choose **Open**, or:
-
-          \`\`\`
-          xattr -dr com.apple.quarantine /Applications/GetVect.app
-          \`\`\`
-
-          The same fact is why GetVect will *tell* you about a new version rather than install
-          one: an unsigned macOS app cannot update itself in place.
-
-          ### Network
-
-          Two network touchpoints, both in your control: optional AI Enhance, and a
-          once-per-launch update check against GitHub Releases (disable with
-          \`GETVECT_NO_UPDATE_CHECK=1\`). Everything else — ingest, tracing, preview and every
-          export — runs offline.
-
-          Full docs: <https://getvect.midwinter.io/docs.html>
-          EOF
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "release $TAG already exists; reusing it"
-            gh release edit "$TAG" --notes-file notes.md
-          else
-            gh release create "$TAG" --draft --title "GetVect $VERSION" --notes-file notes.md
-          fi
-
       # `--publish always` rather than `gh release create`, because only
       # electron-builder writes `latest-mac.yml` — the feed file the shipped
       # app reads, carrying each artefact's sha512 and size. A release assembled
@@ -141,20 +185,97 @@ jobs:
       # ever learn about it.
       #
       # The release stays a draft (electron-builder.yml, `publish.releaseType`)
-      # so it is never the "latest release" while its assets are still uploading.
+      # until the `publish` job un-drafts it.
       - name: Package and publish
-        run: npm run dist -- --publish always
+        run: npm run dist -- --mac --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Exactly one release for this tag, carrying all three artefacts. The
-      # count check is not paranoia: duplicate drafts are the specific way this
-      # has already gone wrong, and they are invisible on the releases page
-      # until one of them is published.
-      - name: The release must be one release with all three artefacts
+  windows:
+    name: build · publish · Windows
+    runs-on: windows-latest
+    needs: draft
+    timeout-minutes: 45
+
+    # Git bash, not pwsh. The steps below are the mac steps, and a release
+    # workflow whose two halves drift apart in shell dialect is a workflow where
+    # a fix lands on one platform only. `bash` ships on every windows-latest
+    # image; this line is what lets the version guard be the same four lines of
+    # sh on both runners rather than a pwsh translation of them.
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: The tag and package.json must agree
+        run: |
+          TAG="${{ needs.draft.outputs.tag }}"
+          PKG="v$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag $TAG does not match package.json ($PKG). Bump the version, commit, then tag."
+            exit 1
+          fi
+
+      # Plain `npm ci`, and that it works here at all is recent: the postinstall
+      # step used to run `xattr` unconditionally, which does not exist on
+      # Windows, so every install died on a macOS-only de-quarantine. It is
+      # guarded by a platform check now (package.json). If this step ever starts
+      # failing, that guard is the first place to look — the workaround people
+      # reach for, `--ignore-scripts`, would skip electron's own installer too
+      # and leave nothing to package.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Engine contract tests
+        run: npm run test:engine
+
+      - name: Build
+        run: npm run build
+
+      # Writes `latest.yml` into the same draft release the mac job is writing
+      # `latest-mac.yml` into. electron-updater picks its feed by platform, so
+      # both must be present on one release for both platforms to see it.
+      - name: Package and publish
+        run: npm run dist -- --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.version.outputs.tag }}
+
+  publish:
+    name: verify · un-draft
+    runs-on: ubuntu-latest
+    needs: [draft, mac, windows]
+    timeout-minutes: 10
+
+    steps:
+      # Exactly one release for this tag, carrying every artefact from both
+      # runners. The count check is not paranoia: duplicate drafts are the
+      # specific way this has already gone wrong, and they are invisible on the
+      # releases page until one of them is published.
+      #
+      # Both feed files are checked by name. A release with a dmg and no
+      # latest-mac.yml — or an exe and no latest.yml — is a release half the
+      # installed copies can never discover, and it looks completely fine on the
+      # releases page.
+      # No checkout in this job — there is nothing to build, only a release to
+      # inspect — so `gh` is told which repo it is talking about explicitly
+      # rather than inferring it from a git remote that is not there.
+      - name: The release must be one release with every artefact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.draft.outputs.tag }}
         run: |
           set -euo pipefail
           COUNT=$(gh api repos/${{ github.repository }}/releases --jq "[.[] | select(.tag_name == \"$TAG\")] | length")
@@ -164,13 +285,15 @@ jobs:
           fi
           ASSETS=$(gh release view "$TAG" --json assets --jq '.assets[].name')
           echo "$ASSETS"
-          for want in '\.dmg$' '\.zip$' '^latest-mac\.yml$'; do
+          for want in '\.dmg$' '\.zip$' '^latest-mac\.yml$' '\.exe$' '^latest\.yml$'; do
             echo "$ASSETS" | grep -qE "$want" || { echo "::error::no asset matching $want"; exit 1; }
           done
 
-      # Last: the release goes public only once every asset is up and checked.
+      # Last: the release goes public only once every asset from every platform
+      # is up and checked.
       - name: Publish the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.version.outputs.tag }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.draft.outputs.tag }}
         run: gh release edit "$TAG" --draft=false --latest

@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GetVect — raster to vector, on your machine</title>
-<meta name="description" content="A local desktop vectorizer for macOS. Drop in a PNG, JPEG or BMP; get SVG, EPS, DXF, PDF or PNG. No account, no credits, offline by default.">
+<meta name="description" content="A local desktop vectorizer for macOS and Windows. Drop in a PNG, JPEG or BMP; get SVG, EPS, DXF, PDF or PNG. No account, no credits, offline by default.">
 <meta name="theme-color" content="#12141a">
 <link rel="icon" href="assets/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="assets/favicon.png">
 <link rel="stylesheet" href="styles.css">
 <meta property="og:type" content="website">
 <meta property="og:title" content="GetVect — raster to vector, on your machine">
-<meta property="og:description" content="A local desktop vectorizer for macOS. No account, no credits, offline by default.">
+<meta property="og:description" content="A local desktop vectorizer for macOS and Windows. No account, no credits, offline by default.">
 <meta property="og:url" content="https://getvect.midwinter.io/">
 <meta property="og:image" content="https://getvect.midwinter.io/assets/frankie-before-after.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -63,12 +63,15 @@
           </ul>
           <div class="cta-row">
             <!-- href is the releases page, which always works; download.js
-                 swaps in the direct .dmg link once it has resolved one. -->
+                 swaps in the direct .dmg or .exe link once it has resolved the
+                 one for the visitor's OS. The label names both platforms
+                 because with JavaScript off that is all the page can honestly
+                 claim to know. -->
             <a class="btn btn-primary" id="hero-download"
-               href="https://github.com/craigjmidwinter/getvect/releases/latest">Download for macOS</a>
+               href="https://github.com/craigjmidwinter/getvect/releases/latest">Download — macOS &amp; Windows</a>
             <a class="btn" href="docs.html">Read the docs</a>
             <a class="btn" href="https://github.com/craigjmidwinter/getvect">Source on GitHub</a>
-            <span class="meta">MIT · Apple Silicon · unsigned</span>
+            <span class="meta">MIT · macOS &amp; Windows · unsigned</span>
           </div>
         </div>
         <div class="hero-art">
@@ -286,19 +289,25 @@
   <section id="download">
     <div class="wrap">
       <p class="eyebrow">Download</p>
-      <h2>One dmg. No account, no installer that asks questions.</h2>
+      <h2>One file. No account, no installer that asks questions.</h2>
       <p class="lede">
-        macOS on Apple Silicon (M1 and later) is the only build today — that is where GetVect
-        is developed and where every acceptance test runs. Intel Macs, Windows and Linux are
-        buildable from source (<code>npm run dist</code>) but are not tested and are not
-        published, so they are not offered here as if they were.
+        macOS on Apple Silicon (M1 and later) and Windows on x64. Both come out of the same
+        tag, built and checked by the same workflow, and both carry the engine contract tests
+        that ran before they were packaged. Intel Macs and Linux are buildable from source
+        (<code>npm run dist</code>) but are not tested and are not published, so they are not
+        offered here as if they were.
       </p>
 
       <div class="cta-row">
         <a class="btn btn-primary" id="download-button"
-           href="https://github.com/craigjmidwinter/getvect/releases/latest">Download for macOS</a>
+           href="https://github.com/craigjmidwinter/getvect/releases/latest">Download — macOS &amp; Windows</a>
+        <!-- download.js renames this to the OS it did *not* just resolve, once
+             it has resolved one. Until then it is a truthful catch-all rather
+             than a guess about which machine you are on. -->
+        <a class="btn" id="download-other"
+           href="https://github.com/craigjmidwinter/getvect/releases/latest">Every platform's build</a>
         <a class="btn" href="https://github.com/craigjmidwinter/getvect/releases">All releases</a>
-        <span class="meta" id="download-meta">Latest release · Apple Silicon · .dmg</span>
+        <span class="meta" id="download-meta">Latest release · .dmg for macOS, .exe for Windows</span>
       </div>
 
       <div class="callout">
@@ -310,6 +319,11 @@
         <p><strong>Right-click</strong> GetVect in Applications and choose <strong>Open</strong>,
           then <strong>Open</strong> again in the dialog. Or, in Terminal:</p>
         <p><code>xattr -dr com.apple.quarantine /Applications/GetVect.app</code></p>
+        <p>Windows has its own version of the same conversation: SmartScreen says "Windows
+          protected your PC" because there is no Authenticode certificate either. Choose
+          <strong>More info</strong>, then <strong>Run anyway</strong>. The installer is
+          per-user and never asks for administrator rights — an unsigned installer demanding
+          admin is exactly the shape of the thing you are told not to run.</p>
         <p>The same missing certificate is why GetVect <em>tells</em> you about a new version
           instead of installing one: macOS refuses to let an unsigned app update itself in
           place, and an updater that downloaded 150 MB and then failed would be worse than no

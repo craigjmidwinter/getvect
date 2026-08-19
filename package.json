@@ -28,7 +28,7 @@
   "main": "dist/main/main.js",
   "type": "commonjs",
   "scripts": {
-    "postinstall": "node node_modules/electron/install.js && xattr -cr node_modules/electron/dist/Electron.app || true",
+    "postinstall": "node node_modules/electron/install.js && node -e \"if (process.platform === 'darwin') require('child_process').execFileSync('xattr', ['-cr', 'node_modules/electron/dist/Electron.app'])\" || exit 0",
     "clean": "node scripts/clean.mjs",
     "build:node": "tsc -p tsconfig.node.json && node scripts/bundle-updater.mjs",
     "build:renderer": "vite build",

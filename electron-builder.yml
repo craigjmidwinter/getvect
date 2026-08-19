@@ -1,8 +1,8 @@
 # electron-builder configuration — `npm run dist`.
 #
-# Output lands in release/ (git-ignored): release/mac-<arch>/GetVect.app plus a
-# dmg and a zip. Run `npm run build` first; this packages dist/, it does not
-# compile it.
+# Output lands in release/ (git-ignored): on macOS, release/mac-<arch>/GetVect.app
+# plus a dmg and a zip; on Windows, an nsis installer. Run `npm run build` first;
+# this packages dist/, it does not compile it.
 #
 # UNSIGNED ON PURPOSE. `mac.identity: null` disables code signing, so what comes
 # out is a local/ad-hoc build that Gatekeeper will quarantine on another
@@ -15,15 +15,17 @@ copyright: © 2026 Craig Midwinter
 
 # Where `npm run dist -- --publish always` uploads, and — via the app-update.yml
 # electron-builder writes into the bundle's resources — where the shipped app
-# looks for `latest-mac.yml` when it checks for updates once per launch
-# (src/main/updater.ts).
+# looks for its feed file when it checks for updates once per launch
+# (src/main/updater.ts): `latest-mac.yml` on macOS, `latest.yml` on Windows.
 #
 # `releaseType: draft` is load-bearing. electron-builder creates the release,
 # then uploads the dmg, the zip and latest-mac.yml one at a time; a release that
 # went public at step one would be the newest release on GitHub — and therefore
 # what the site's Download button resolves to — while it was still missing its
-# assets. The release workflow un-drafts it as its last step, after every asset
-# is up (.github/workflows/release.yml).
+# assets. That window is wider now that two runners upload into the same
+# release: the mac job can be finished while Windows is still packaging. The
+# release workflow un-drafts as a final job that waits on both
+# (.github/workflows/release.yml).
 publish:
   provider: github
   owner: craigjmidwinter
@@ -97,7 +99,32 @@ linux:
   target:
     - AppImage
 
+# Windows is a published platform as of the release that added `release-windows`
+# to the workflow: the same tag produces the dmg/zip and the exe, and the same
+# electron-builder run writes `latest.yml` — the Windows twin of `latest-mac.yml`
+# — so an installed copy on either OS can discover the next version.
+#
+# `arch: x64` is stated rather than left to the default because the default is
+# "whatever the runner is", and a silent flip to arm64 on some future
+# windows-latest image would strand every existing installation: electron-updater
+# matches the feed against the installed build, and an arm64 exe is not an
+# update to an x64 one. x64 also runs under emulation on Windows-on-ARM, so one
+# artefact reaches every Windows machine.
+#
+# artifactName mirrors the mac scheme (`GetVect-0.1.0-arm64.dmg`) instead of
+# nsis's default `GetVect Setup 0.1.0.exe`. Same reason the site has to resolve
+# downloads through the API: the version belongs in the filename, so a file
+# sitting in a Downloads folder still says which GetVect it is. The default also
+# carries a space, which is a small papercut in every URL and every terminal.
+#
+# nsis options are left at their defaults deliberately: a one-click, per-user
+# install into %LOCALAPPDATA% needs no elevation, which matters for a build with
+# no code-signing certificate behind it — an unsigned installer asking for admin
+# is the exact shape of the thing people are told not to run.
 win:
   icon: build/icon.png
   target:
-    - nsis
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-${arch}.${ext}

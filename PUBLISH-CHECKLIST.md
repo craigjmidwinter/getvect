@@ -202,10 +202,10 @@ gh browse craigjmidwinter/getvect
   iconutil -c icns /tmp/GetVect.iconset -o build/icon.icns
   ```
 
-- **Cutting a release. Done — it is three commands and a tag.**
-  [`.github/workflows/release.yml`](./.github/workflows/release.yml) fires on any `v*` tag:
-  macOS runner, `npm ci`, typecheck, engine contracts, `npm run build`, then
-  `npm run dist -- --publish always`.
+- **Cutting a release. Done — it is three commands and a tag, and it now ships two
+  platforms.** [`.github/workflows/release.yml`](./.github/workflows/release.yml) fires on
+  any `v*` tag. The same three commands produce the macOS **and** the Windows build; there
+  is nothing extra to run, and no second ritual to remember.
 
   ```bash
   npm version 0.1.1 --no-git-tag-version    # bump package.json only
@@ -213,29 +213,65 @@ gh browse craigjmidwinter/getvect
   git tag v0.1.1 && git push origin v0.1.1  # this is what starts the workflow
   ```
 
-  **The tag and `package.json` must agree** — the workflow's first step compares
+  Four jobs, and the shape is load-bearing:
+
+  | job | runner | what it does |
+  | --- | --- | --- |
+  | `draft` | ubuntu | version guard, then opens **exactly one** draft release |
+  | `mac` | macOS | `npm ci`, typecheck, engine contracts, build, `npm run dist -- --mac --publish always` |
+  | `windows` | Windows | the same steps with `--win` |
+  | `publish` | ubuntu | asserts every artefact is present, then un-drafts |
+
+  `mac` and `windows` run in parallel and upload into the release `draft` opened. `publish`
+  waits on both, so a release is never public carrying half its assets.
+
+  **The tag and `package.json` must agree** — each build job compares
   `v$(node -p "require('./package.json').version")` against the tag and refuses to build on
-  a mismatch. That is not pedantry: `latest-mac.yml` carries the version the *app* reports,
-  so a release tagged 0.1.1 built from a package.json saying 0.1.0 produces a feed every
+  a mismatch. That is not pedantry: the feed files carry the version the *app* reports, so a
+  release tagged 0.1.1 built from a package.json saying 0.1.0 produces a feed every
   installed copy will read as "you already have this", forever.
 
-  Three things must be on the release page, and the workflow checks for all three before it
-  publishes: the **dmg**, the **zip**, and **`latest-mac.yml`**. The last one is the whole
-  reason `--publish always` is used instead of `gh release create` — only electron-builder
-  writes the feed file, with each artefact's sha512 and size, and a release assembled by
-  hand is a release no installed copy can ever discover.
+  Five things must be on the release page, and `publish` checks for all five: the **dmg**,
+  the **zip**, **`latest-mac.yml`**, the **exe**, and **`latest.yml`**. The two feed files
+  are the whole reason `--publish always` is used instead of `gh release create` — only
+  electron-builder writes them, with each artefact's sha512 and size, and a release
+  assembled by hand is a release no installed copy can ever discover. electron-updater picks
+  its feed by platform, so a release with a `latest-mac.yml` and no `latest.yml` is one
+  every Windows installation is permanently blind to, and it looks completely fine on the
+  releases page.
 
   The release is created as a **draft** (`publish.releaseType` in
-  [`electron-builder.yml`](./electron-builder.yml)) and un-drafted by the workflow's last
-  step. Otherwise it would be GitHub's "latest release" — and therefore what the site's
-  Download button resolves to — while its assets were still uploading.
+  [`electron-builder.yml`](./electron-builder.yml)) and un-drafted by the `publish` job.
+  Otherwise it would be GitHub's "latest release" — and therefore what the site's Download
+  button resolves to — while its assets were still uploading.
 
   **The draft is created by the workflow, before electron-builder runs**, and that ordering is a
   fix rather than a preference. electron-builder runs one publisher per target (zip, dmg); both
   look for a release by tag, both find none, and both create one — GitHub accepts two *drafts*
   sharing a tag, because a draft has no tag to collide on. The first v0.1.0 attempt did exactly
-  that and split its own artefacts across two invisible drafts. The verification step now also
-  asserts there is exactly one release for the tag.
+  that and split its own artefacts across two invisible drafts. Two runners packaging at once
+  would only widen that race, which is why the draft is its own job that both builds wait on.
+  The verification step also asserts there is exactly one release for the tag.
+
+- **Testing the Windows build without cutting a release.**
+  [`.github/workflows/win-smoke.yml`](./.github/workflows/win-smoke.yml) is
+  `workflow_dispatch`-only: it runs the Windows job's exact steps, packages with
+  `--publish never`, and uploads the installer as a workflow artefact. No release is
+  touched, no tag exists afterwards, and its token is `contents: read`.
+
+  ```bash
+  gh workflow run win-smoke.yml     # optional: -f ref=<branch|tag|sha>
+  gh run watch
+  ```
+
+  Run it after touching package.json's install scripts, the `electron` or
+  `electron-builder` versions, or anything under `win:` in `electron-builder.yml`. The
+  reason it exists is that a `v*` tag is the worst possible moment to learn that Windows
+  stopped building, and a pushed tag is not something you can take back.
+
+  The specific thing it guards: `npm ci` on Windows used to die in `postinstall`, which ran
+  the macOS-only `xattr -cr` de-quarantine unconditionally. That call is behind a
+  `process.platform === 'darwin'` check now, and nothing but this workflow tests it.
 
   Not run on a tag: the Playwright acceptance suite. Driving a real Electron window on a
   hosted runner is still too flaky to stand between a tag and a release (same reasoning as

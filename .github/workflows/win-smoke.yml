@@ -1,0 +1,92 @@
+name: Windows smoke build
+
+# Build the Windows installer and hand it back as a workflow artefact. Nothing
+# is published, no release is touched, no tag is created.
+#
+# THIS EXISTS SO THAT "does Windows still build?" IS NOT A QUESTION ONLY A
+# RELEASE CAN ANSWER. The Release workflow's Windows job runs on a `v*` tag,
+# which is the one moment nobody wants to discover that `npm ci` broke on a
+# platform nobody develops on — and a tag is not something you can take back
+# once pushed. This runs the same steps on demand, and the worst outcome is a
+# red run and a downloadable exe nobody installs.
+#
+# Run it from the Actions tab, or:
+#
+#     gh workflow run win-smoke.yml
+#     gh run watch
+#
+# Reach for it after touching package.json's install scripts, the electron or
+# electron-builder versions, or anything under the `win:` key in
+# electron-builder.yml.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch, tag or SHA to build (default: the default branch)'
+        required: false
+
+# Read-only on purpose. This workflow has no business writing a release, and a
+# token that cannot is a better guarantee of that than a missing `--publish`
+# flag.
+permissions:
+  contents: read
+
+concurrency:
+  group: win-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: npm ci · typecheck · engine tests · package
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    # The same reasoning as the release workflow's Windows job: git bash, so
+    # these steps stay readable next to the macOS ones instead of drifting into
+    # a pwsh dialect.
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # The step this workflow exists to protect. `npm ci` on Windows used to
+      # die in postinstall on a macOS-only `xattr` call; the guard that fixed it
+      # lives in package.json and has nothing testing it but this run.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Engine contract tests
+        run: npm run test:engine
+
+      - name: Build
+        run: npm run build
+
+      # `--publish never` is the whole point. electron-builder still writes
+      # `latest.yml` next to the installer, so the feed file a real release
+      # depends on is produced and inspectable here too — it just goes nowhere.
+      - name: Package (no publish)
+        run: npm run dist -- --win --publish never
+
+      - name: What came out
+        run: ls -la release/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: getvect-windows-installer
+          path: |
+            release/*.exe
+            release/latest.yml
+          if-no-files-found: error
+          retention-days: 14

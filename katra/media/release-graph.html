@@ -1,0 +1,90 @@
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --ink: #14161c;
+    --dim: #6b6f7a;
+    --rule: #cfcbc4;
+    --mac: #3d7de0;
+    --win: #1f9e6e;
+    --accent: #e0533d;
+    --chip: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --ink: #eceaf0;
+      --dim: #9aa0ac;
+      --rule: #3a3f49;
+      --mac: #6ba3f5;
+      --win: #4fc99a;
+      --accent: #f07a63;
+      --chip: #1c1f26;
+    }
+  }
+  html, body { margin: 0; background: var(--bg); }
+  body {
+    font: 13px/1.45 ui-sans-serif, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    padding: 18px 14px 14px;
+  }
+  svg { display: block; width: 100%; height: auto; }
+  .t { font-weight: 620; }
+  .s { font-size: 11px; fill: var(--dim); }
+  .m { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 10.5px; }
+</style>
+<svg viewBox="0 0 720 350" role="img"
+     aria-label="The release workflow as four jobs: draft opens one draft release, mac and windows build in parallel and upload into it, publish verifies five artefacts and un-drafts.">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--rule)"/>
+    </marker>
+  </defs>
+
+  <!-- draft -->
+  <rect x="8" y="128" width="126" height="72" rx="8" fill="var(--chip)" stroke="var(--rule)"/>
+  <text class="t" x="22" y="152" fill="var(--ink)">draft</text>
+  <text class="s" x="22" y="169">ubuntu</text>
+  <text class="s" x="22" y="184">version guard</text>
+  <text class="s" x="22" y="196">opens 1 draft release</text>
+
+  <!-- fan out -->
+  <path d="M138 164 C160 164 160 72 182 72" fill="none" stroke="var(--rule)" stroke-width="1.6" marker-end="url(#a)"/>
+  <path d="M138 164 C160 164 160 256 182 256" fill="none" stroke="var(--rule)" stroke-width="1.6" marker-end="url(#a)"/>
+
+  <!-- mac -->
+  <rect x="188" y="34" width="196" height="78" rx="8" fill="var(--chip)" stroke="var(--mac)" stroke-width="1.6"/>
+  <text class="t" x="202" y="58" fill="var(--mac)">mac</text>
+  <text class="s" x="202" y="75">macos-latest · npm ci · typecheck</text>
+  <text class="s" x="202" y="88">engine contracts · build</text>
+  <text class="m" x="202" y="103" fill="var(--dim)">dist --mac --publish always</text>
+
+  <!-- windows -->
+  <rect x="188" y="218" width="196" height="78" rx="8" fill="var(--chip)" stroke="var(--win)" stroke-width="1.6"/>
+  <text class="t" x="202" y="242" fill="var(--win)">windows</text>
+  <text class="s" x="202" y="259">windows-latest · npm ci · typecheck</text>
+  <text class="s" x="202" y="272">engine contracts · build</text>
+  <text class="m" x="202" y="287" fill="var(--dim)">dist --win --publish always</text>
+
+  <!-- assets uploaded -->
+  <text class="m" x="398" y="60" fill="var(--mac)">GetVect-0.1.1-arm64.dmg</text>
+  <text class="m" x="398" y="76" fill="var(--mac)">GetVect-0.1.1-arm64.zip</text>
+  <text class="m" x="398" y="92" fill="var(--mac)">latest-mac.yml</text>
+  <text class="m" x="398" y="252" fill="var(--win)">GetVect-0.1.1-x64.exe</text>
+  <text class="m" x="398" y="268" fill="var(--win)">latest.yml</text>
+
+  <!-- fan in -->
+  <path d="M384 72 C560 72 560 150 596 150" fill="none" stroke="var(--rule)" stroke-width="1.6" marker-end="url(#a)"/>
+  <path d="M384 256 C560 256 560 178 596 178" fill="none" stroke="var(--rule)" stroke-width="1.6" marker-end="url(#a)"/>
+
+  <!-- publish -->
+  <rect x="600" y="126" width="112" height="76" rx="8" fill="var(--chip)" stroke="var(--accent)" stroke-width="1.6"/>
+  <text class="t" x="613" y="150" fill="var(--accent)">publish</text>
+  <text class="s" x="613" y="167">needs: both</text>
+  <text class="s" x="613" y="181">5 assets present?</text>
+  <text class="s" x="613" y="195">then un-draft</text>
+
+  <!-- the gate note -->
+  <line x1="8" y1="320" x2="712" y2="320" stroke="var(--rule)"/>
+  <text class="s" x="8" y="338">The release is public only after this last box. Before it, the site's Download button cannot resolve to a half-uploaded release.</text>
+</svg>
