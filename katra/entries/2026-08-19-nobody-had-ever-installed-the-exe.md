@@ -6,6 +6,11 @@ tags:
     - release
     - windows
     - verification
+hash: 7d26940
+stat:
+    f: 3
+    a: 255
+    d: 0
 ---
 
 ```embed
