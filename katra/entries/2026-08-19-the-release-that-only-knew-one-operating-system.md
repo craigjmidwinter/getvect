@@ -5,6 +5,13 @@ time: "15:01:33"
 tags:
     - release
     - ci
+hashes:
+    - 8f2b79e
+    - b4aa584
+stat:
+    f: 12
+    a: 749
+    d: 114
 ---
 
 The engine has been fine on Windows for a while. We just proved it: 80 of 80
@@ -105,6 +112,38 @@ It guards one specific thing that nothing else tests: that `npm ci` works on
 Windows. That is a claim about a `process.platform` check in a JSON string, and
 the only machine that can falsify it is a Windows runner.
 
+## It caught something on the first pull
+
+The first smoke run failed, and it failed *past* the thing it was built to
+protect. `npm ci` green. Typecheck green. Then:
+
+```
+> node --test tests/engine/*.test.mjs
+Could not find 'D:\a\getvect\getvect\tests\engine\*.test.mjs'
+```
+
+A second shell assumption, hiding behind the first. npm runs package scripts
+through `sh` on macOS and `cmd.exe` on Windows — the `shell: bash` on the
+workflow job does not reach inside `npm run` — and cmd.exe does not expand
+globs. Node 20 gets the asterisk verbatim and cannot do anything with it.
+
+The repair that looks obvious is `node --test tests/engine/`, and it fails in the
+opposite direction: Node 20 walks a directory looking for test files, Node 22+
+treats the argument as a module and throws `MODULE_NOT_FOUND`. CI is on Node 20
+and this machine is on Node 24, so that form is broken *here* and works *there* —
+the exact inverse of the bug it was meant to fix. There is no string that is
+correct on both.
+
+So `scripts/run-engine-tests.mjs` does the expansion in Node, with `readdir`, and
+hands `node --test` an explicit list. `run-tests.mjs` imports the same discovery
+instead of globbing a second time — which incidentally removed its use of
+`fs/promises`' `glob`, Node 22+, meaning `npm test` could not have run on the
+release workflow's Node 20 either. Two versions of the same assumption, found
+because one machine finally disagreed.
+
+That is the lever working. This bug was always there; on a tag it would have
+surfaced as a red release, ten minutes after a tag that cannot be unpushed.
+
 ## The site had to stop assuming
 
 `download.js` resolves the Download button through the GitHub API rather than
@@ -130,4 +169,32 @@ asks for administrator rights. That last part is a claim about nsis defaults, an
 it is the reason the nsis block was left at its defaults rather than configured:
 an unsigned installer demanding elevation is the exact shape of the thing people
 are correctly told not to run.
+```
+
+## Where it stands
+
+The second smoke run is green end to end, and it produced exactly what a release
+will carry:
+
+```
+GetVect-0.1.0-x64.exe            100,240,145 bytes
+GetVect-0.1.0-x64.exe.blockmap
+latest.yml
+```
+
+80 of 80 engine contracts on the Windows runner, the same 80 as macOS, from
+`npm ci` with no flags. macOS CI is green on both commits, so the postinstall
+guard and the new test discovery cost the platform that already worked nothing.
+
+```warning
+Nothing has actually been *installed* yet. The exe exists as a workflow artefact
+and no human has double-clicked it, so the SmartScreen wording on the site and
+the "per-user, no admin prompt" claim are both read off nsis's documented
+defaults rather than off a screen. The window icon, the Start-menu entry and the
+uninstaller are all in the same category.
+
+And no published release carries an exe until the next `v*` tag. Until then a
+Windows visitor to the site gets the catch-all releases link — correct, and
+indistinguishable from the API being throttled, which is the whole reason the
+button's own copy names both platforms.
 ```
