@@ -576,7 +576,7 @@ artwork at 6x — where the adaptive version's silhouette is visibly clean and t
 version still carries a dark hairline. Occluded geometry is not a defect; it is not
 anything.
 
-So the adaptive reach was better. Then `local-snorlax` failed on `inkRecall`, 0.9248
+So the adaptive reach was better. Then `local-artwork` failed on `inkRecall`, 0.9248
 against a floor of 0.9900 — **seven per cent of the ink outline eaten**. On soft-edged
 artwork the partial-alpha band is genuine feathering as much as contamination, and seeding
 the fringe from it classifies 13.5% of the artwork as fringe against 7.6%, so real
@@ -797,6 +797,17 @@ is still a file you may measure against.**
 - A local row's gates are enforced like any other, and a local **failure** does fail the
   run. That is the point: the whole exercise is worthless if the numbers cannot go red.
 
+> **2026-08-19 — the original local set is gone.** Craig ruled the standing local set
+> deleted: three rows on the shaded character artwork, carrying ~80 threshold checks —
+> including 14 gate kinds (`maxBandFit`, `maxLayerWobbleRatio`, `maxStrokeWidthCvRatio`,
+> …) that no tracked fixture declares. Those gates were only ever enforced on one
+> machine, which is the dishonesty the ruling ended: a gate a reviewer cannot run is a
+> report wearing a gate's clothes. The metrics are still computed and printed on tracked
+> fixtures; they are now reported-not-gated everywhere, which is what they always were
+> for everyone but that machine. The mechanism above stays — it is sound, and the next
+> unshippable artwork can use it — but a future local set starts from its own measured
+> thresholds, not these.
+
 ### The schema
 
 `manifest.local.json` is `{ "fixtures": [ … ] }` and each entry is exactly a tracked
@@ -822,7 +833,7 @@ no reviewer will ever see the file.
 }
 ```
 
-### What the local set is measuring today
+### What the local set was measuring (deleted 2026-08-19)
 
 The shaded character artwork, as `local-artwork` (16 colours
 + Enhance + Smart AA — the configuration the band defect was reported at) and
@@ -852,8 +863,10 @@ Ours is classical: edge-preserving smoothing, then quantization. So:
   chasing the last of it with classical tuning will cost flat art. The exemplar-relative
   band ratios on this subject are therefore reported, not gated; the absolute bars are what
   hold.
-- `fixtures/local/<artwork>-enhanced-input.png` is that captured canvas, kept as the evidence
-  behind this paragraph.
+- The captured canvas (`fixtures/local/<artwork>-enhanced-input.png`) was the evidence
+  behind this paragraph until 2026-08-19, when the whole local set was deleted (see the
+  note under *The mechanism*). The numbers above stand as recorded measurements; their
+  inputs no longer exist anywhere, so they can be read but not re-run.
 
 And one tension worth naming, because it is ours and not theirs: the only classical way to
 soften that seam further is to **keep** more of the ramp — three or four bands across the

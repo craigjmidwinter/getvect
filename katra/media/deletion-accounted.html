@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; padding: 16px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         background: #f6f7f9; color: #1c2027; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #14161c; color: #dfe3ea; }
+    .col { background: #1b1e26; border-color: #333a46; }
+    h3 { color: #8b93a3; } .sub { color: #78808f; }
+  }
+  .wrap { display: flex; gap: 16px; max-width: 780px; margin: 0 auto; flex-wrap: wrap; }
+  .col { flex: 1 1 320px; background: #fff; border: 1px solid #d5dae2; border-radius: 8px; padding: 14px 16px; }
+  h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: #5b6270; }
+  ul { margin: 0; padding: 0; list-style: none; }
+  li { padding: 4px 0 4px 22px; position: relative; }
+  li::before { position: absolute; left: 0; font-weight: 700; }
+  .del::before { content: '−'; color: #d64545; }
+  .ok::before { content: '\2713'; color: #2e9e5b; }
+  .sub { display: block; font-size: 11px; color: #6a7180; }
+</style>
+<div class="wrap">
+  <div class="col">
+    <h3>Deleted (all git-ignored; git saw nothing)</h3>
+    <ul>
+      <li class="del">fixtures/local/ — 1.8 MB <span class="sub">the un-redistributable artwork, its captures, and competitor-derived exemplars</span></li>
+      <li class="del">3 fixture rows, ~80 threshold checks <span class="sub">enforced on exactly one machine in the world</span></li>
+      <li class="del">14 gate kinds declared nowhere else <span class="sub">maxBandFit, maxLayerWobbleRatio, maxStrokeWidthCvRatio, …</span></li>
+      <li class="del">artifacts/local/ — 1.9 MB + 73 derived files <span class="sub">every rendered trace of the artwork, critic runs included</span></li>
+    </ul>
+  </div>
+  <div class="col">
+    <h3>What the truth-telling run says</h3>
+    <ul>
+      <li class="ok">engine contracts 80/80</li>
+      <li class="ok">acceptance suite 143/143</li>
+      <li class="ok">instruments: 19 pass · 0 fail <span class="sub">2 skips are the unsupported-format rows, by design</span></li>
+      <li class="ok">no [local] overlay line <span class="sub">this machine's run is now byte-identical to CI's and any reviewer's</span></li>
+      <li class="ok">orphaned metrics still printed, not gated <span class="sub">which is what they always were, for everyone but this machine</span></li>
+    </ul>
+  </div>
+</div>
