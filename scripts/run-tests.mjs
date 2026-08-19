@@ -19,9 +19,9 @@
  * Pass through any extra arguments to Playwright: `npm test -- -g "\[B3\]"`.
  */
 import { spawn } from 'node:child_process';
-import { glob } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findEngineTests } from './run-engine-tests.mjs';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -36,9 +36,12 @@ function run(command, args) {
   });
 }
 
-const engineTests = [];
-for await (const entry of glob('tests/engine/*.test.mjs', { cwd: root })) engineTests.push(entry);
-engineTests.sort();
+// Shared with `npm run test:engine` rather than globbed again here: two
+// discovery paths for "which files are the contracts" is two places for a new
+// test file to be silently missed by one of them. (It also used to be
+// `node:fs/promises`' `glob`, which is Node 22+ — this file would not have run
+// at all on the Node 20 the release workflow uses.)
+const engineTests = await findEngineTests(root);
 
 console.log(`\n=== engine contracts (${engineTests.length} files) ===\n`);
 const engineCode = await run(process.execPath, ['--test', ...engineTests]);

@@ -41,7 +41,7 @@
     "pretest": "npm run build",
     "test": "node scripts/run-tests.mjs",
     "pretest:engine": "npm run build:node",
-    "test:engine": "node --test tests/engine/*.test.mjs",
+    "test:engine": "node scripts/run-engine-tests.mjs",
     "test:headed": "playwright test --headed",
     "instruments": "npm run build:node && node instruments/run-instruments.mjs",
     "instruments:fit": "npm run build:node && node instruments/run-fit-excursion.mjs",
