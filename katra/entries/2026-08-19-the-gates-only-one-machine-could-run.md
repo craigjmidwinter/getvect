@@ -6,6 +6,11 @@ tags:
     - fixtures
     - provenance
     - harness
+hash: 838247e
+stat:
+    f: 3
+    a: 117
+    d: 4
 ---
 
 ```embed
