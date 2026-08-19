@@ -1,4 +1,5 @@
 ---
+publish: true
 title: The staircase was in the viewer, not the vector
 date: "2026-08-17"
 time: "21:01:34"

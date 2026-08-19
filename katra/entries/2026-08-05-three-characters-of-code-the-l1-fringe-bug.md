@@ -1,4 +1,5 @@
 ---
+publish: true
 title: 'Three characters of code: the L1 fringe bug'
 date: "2026-08-05"
 time: "16:04:51"

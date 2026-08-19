@@ -1,4 +1,5 @@
 ---
+publish: true
 title: 'Verifying a parallel lap: three findings confirmed, one refuted'
 date: "2026-08-16"
 time: "22:31:01"

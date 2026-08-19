@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; padding: 16px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         background: #f6f7f9; color: #1c2027; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #14161c; color: #dfe3ea; }
+    .col { background: #1b1e26; border-color: #333a46; }
+    h3 { color: #8b93a3; }
+    .sub { color: #78808f; }
+  }
+  .wrap { display: flex; gap: 16px; max-width: 760px; margin: 0 auto; flex-wrap: wrap; }
+  .col { flex: 1 1 300px; background: #fff; border: 1px solid #d5dae2; border-radius: 8px; padding: 14px 16px; }
+  h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: #5b6270; }
+  ul { margin: 0; padding: 0; list-style: none; }
+  li { padding: 4px 0 4px 22px; position: relative; }
+  li::before { position: absolute; left: 0; font-weight: 700; }
+  .in::before { content: '+'; color: #2e9e5b; }
+  .gone::before { content: '\2713'; color: #2e9e5b; }
+  .stays::before { content: '!'; color: #d64545; }
+  .stays { color: #d64545; font-weight: 600; }
+  .sub { display: block; font-size: 11px; color: #6a7180; font-weight: 400; }
+</style>
+<div class="wrap">
+  <div class="col">
+    <h3>Silent install writes (unelevated, Medium-IL token)</h3>
+    <ul>
+      <li class="in">%LOCALAPPDATA%\Programs\GetVect\ <span class="sub">GetVect.exe, FileVersion 0.1.0 — 349 MB from a 100 MB exe</span></li>
+      <li class="in">…\resources\app-update.yml <span class="sub">owner/repo/provider: how an installed copy hears about the next release</span></li>
+      <li class="in">…\Uninstall GetVect.exe</li>
+      <li class="in">HKCU …\Uninstall\ key <span class="sub">"GetVect 0.1.0" — and nothing in HKLM, nothing in Program Files</span></li>
+      <li class="in">Start Menu\Programs\GetVect.lnk <span class="sub">per-user (%APPDATA%)</span></li>
+      <li class="in">%LOCALAPPDATA%\getvect-updater\installer.exe <span class="sub">the installer caches a full copy of itself — 100 MB</span></li>
+    </ul>
+  </div>
+  <div class="col">
+    <h3>Silent uninstall removes</h3>
+    <ul>
+      <li class="gone">%LOCALAPPDATA%\Programs\GetVect\ <span class="sub">entire tree</span></li>
+      <li class="gone">HKCU uninstall key</li>
+      <li class="gone">Start Menu shortcut</li>
+      <li class="stays">%LOCALAPPDATA%\getvect-updater\installer.exe <span class="sub">SURVIVES — every install/uninstall cycle leaves 100 MB behind</span></li>
+    </ul>
+  </div>
+</div>

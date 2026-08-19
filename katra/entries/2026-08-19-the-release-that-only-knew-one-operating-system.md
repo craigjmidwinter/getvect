@@ -1,4 +1,5 @@
 ---
+publish: true
 title: The release that only knew one operating system
 date: "2026-08-19"
 time: "15:01:33"

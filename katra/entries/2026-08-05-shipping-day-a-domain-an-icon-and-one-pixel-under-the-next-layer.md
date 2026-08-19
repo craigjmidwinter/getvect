@@ -1,4 +1,5 @@
 ---
+publish: true
 title: 'Shipping day: a domain, an icon, and one pixel under the next layer'
 date: "2026-08-05"
 time: "11:15:24"

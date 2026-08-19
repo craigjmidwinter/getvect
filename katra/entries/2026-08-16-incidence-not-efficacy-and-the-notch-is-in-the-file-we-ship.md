@@ -1,4 +1,5 @@
 ---
+publish: true
 title: Incidence, not efficacy — and the notch is in the file we ship
 date: "2026-08-16"
 time: "18:59:04"

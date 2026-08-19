@@ -1,0 +1,65 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root { --bg:#fbfaf8; --ink:#1a1a1a; --mut:#6f6f6a; --rule:#ded9d1; --hot:#c2451e; --cool:#7c8ea3; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16181b; --ink:#eceae6; --mut:#98988f; --rule:#31343a; --hot:#e8703f; --cool:#93a1b3; }
+  }
+  html,body { margin:0; background:var(--bg); color:var(--ink);
+    font:13.5px/1.5 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { padding:20px 22px 12px; }
+  h2 { font-size:15px; margin:0 0 4px; letter-spacing:-0.01em; }
+  p.sub { margin:0 0 6px; color:var(--mut); font-size:12.5px; max-width:60em; }
+  .note { margin-top:12px; padding:11px 13px; border-left:3px solid var(--hot);
+    background:color-mix(in srgb, var(--hot) 8%, transparent); border-radius:0 5px 5px 0; font-size:12.5px; }
+</style>
+<div class="wrap">
+  <h2>Staircase by colour layer, on the mascot</h2>
+  <p class="sub">Bars: defect rate per pixel of boundary, relative to the drawing's average.
+  Dots: the single worst site on that layer.</p>
+
+  <svg viewBox="0 0 700 250" width="100%" role="img" aria-label="Per-layer staircase rate and worst site">
+    <g stroke="var(--rule)" stroke-width="1">
+      <line x1="200" y1="14" x2="200" y2="222"/>
+      <line x1="300" y1="14" x2="300" y2="222"/><line x1="400" y1="14" x2="400" y2="222"/>
+      <line x1="500" y1="14" x2="500" y2="222"/><line x1="600" y1="14" x2="600" y2="222"/>
+    </g>
+    <g font-size="10" fill="currentColor" opacity=".45">
+      <text x="200" y="238" text-anchor="middle">0</text><text x="300" y="238" text-anchor="middle">1x avg</text>
+      <text x="400" y="238" text-anchor="middle">2x</text><text x="500" y="238" text-anchor="middle">3x</text>
+      <text x="600" y="238" text-anchor="middle">4x</text>
+    </g>
+    <g id="bars" font-size="11.5"></g>
+  </svg>
+
+  <div class="note">
+    The white outline holds <strong>24 % of the drawing's boundary</strong>, carries the
+    <strong>single worst site</strong> (0.3304) — and has a <strong>below-average</strong> defect
+    rate. The staircase concentrates on the pale cream and pink, two small interior layers nobody
+    has looked at. A long clean edge with one bad spot on it is exactly what an eye finds.
+  </div>
+</div>
+<script>
+  const rows = [
+    ["white outline",  0.83, 0.3304, "24.4%", true],
+    ["body orange",    0.75, 0.3219, "37.6%", false],
+    ["pale cream",     4.08, 0.1268, "6.6%",  false],
+    ["pink",           3.29, 0.1008, "2.5%",  false],
+    ["olive",          1.02, 0.0531, "2.5%",  false],
+    ["stripe orange",  0.78, 0.0528, "16.0%", false],
+    ["ink",            0.12, 0.0121, "10.3%", false],
+  ];
+  const X = v => 200 + v * 100;
+  const g = document.getElementById("bars");
+  let y = 22;
+  for (const [label, enr, worst, share, hi] of rows) {
+    const w = Math.max(2, X(enr) - 200);
+    g.insertAdjacentHTML("beforeend",
+      `<text x="194" y="${y+9}" text-anchor="end" fill="currentColor" opacity="${hi?1:.75}" ${hi?'font-weight="600"':''}>${label}</text>` +
+      `<text x="120" y="${y+9}" text-anchor="end" font-size="10" fill="currentColor" opacity=".4">${share} of edge</text>` +
+      `<rect x="200" y="${y}" width="${w}" height="12" rx="2" fill="${enr>1.5?'var(--hot)':'var(--cool)'}" opacity="${hi?1:.8}"/>` +
+      `<circle cx="${200 + worst*300}" cy="${y+6}" r="4.5" fill="none" stroke="currentColor" stroke-width="1.8" opacity=".85"/>` +
+      `<text x="${w+208}" y="${y+9}" font-size="10" fill="currentColor" opacity=".5">${enr.toFixed(2)}x</text>`);
+    y += 28;
+  }
+</script>

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Katra</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<!--
+  Katra viewer — "Field Notebook × Workbench". A persistent app shell (fixed
+  left nav, main canvas, contextual right rail) rendered client-side from
+  data.json. Views: Overview (a Future→Now→Past time spine), Board (tasks by
+  status), Roadmap (epics by horizon), Timeline, the Library lists (Entries,
+  Decisions, Reference), and a single-node reading view. Zero dependencies;
+  markdown + rich components are pre-rendered to HTML in Go.
+-->
+<div class="kv-app">
+  <aside class="kv-side" id="side"></aside>
+  <div class="kv-canvas" id="canvas"></div>
+</div>
+
+<div class="kv-lightbox" id="lightbox" hidden>
+  <img id="lightbox-img" alt="">
+  <button class="kv-lightbox-close" id="lightbox-close" aria-label="close">×</button>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

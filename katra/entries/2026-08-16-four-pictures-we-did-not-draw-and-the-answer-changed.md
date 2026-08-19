@@ -1,4 +1,5 @@
 ---
+publish: true
 title: Four pictures we did not draw, and the answer changed
 date: "2026-08-16"
 time: "18:49:43"

@@ -1,4 +1,5 @@
 ---
+publish: true
 title: Their best trick, running on our tracer
 date: "2026-08-05"
 time: "10:03:35"

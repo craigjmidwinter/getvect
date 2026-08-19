@@ -1,0 +1,70 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root { --bg:#fbfaf8; --ink:#1a1a1a; --mut:#6f6f6a; --rule:#e0dcd4;
+          --syn:#8d99a8; --house:#c2451e; --third:#2e7d5b; --good:#2e7d5b; --bad:#c2451e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16181b; --ink:#eceae6; --mut:#98988f; --rule:#31343a;
+            --syn:#93a1b3; --house:#e8703f; --third:#4bbd8a; --good:#4bbd8a; --bad:#e8703f; }
+  }
+  html,body { margin:0; background:var(--bg); color:var(--ink);
+    font:13.5px/1.5 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { padding:20px 22px 12px; }
+  h2 { font-size:15px; margin:0 0 3px; letter-spacing:-0.01em; }
+  p.sub { margin:0 0 6px; color:var(--mut); font-size:12.5px; max-width:60em; }
+  .key { display:flex; gap:16px; font-size:11.5px; color:var(--mut); margin:10px 0 6px; flex-wrap:wrap; }
+  .sw { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; }
+</style>
+<div class="wrap">
+  <h2>How often the blind spot occurs, against what the fix did there</h2>
+  <p class="sub">Sandwiched one-pixel runs that both cleanup guards protect, per megapixel of index image,
+  measured after both passes and before the tracer. Log scale.</p>
+  <div class="key">
+    <span><span class="sw" style="background:var(--third)"></span>third-party — nobody here drew it</span>
+    <span><span class="sw" style="background:var(--house)"></span>in-house</span>
+    <span><span class="sw" style="background:var(--syn)"></span>synthetic</span>
+  </div>
+  <svg viewBox="0 0 700 330" width="100%" role="img" aria-label="Blind-spot incidence per megapixel by fixture">
+    <g font-size="10" fill="currentColor" opacity="0.45">
+      <text x="228" y="322">1</text><text x="330" y="322">10</text>
+      <text x="432" y="322">100</text><text x="534" y="322">1000</text>
+    </g>
+    <g stroke="var(--rule)" stroke-width="1">
+      <line x1="230" y1="10" x2="230" y2="308"/><line x1="332" y1="10" x2="332" y2="308"/>
+      <line x1="434" y1="10" x2="434" y2="308"/><line x1="536" y1="10" x2="536" y2="308"/>
+    </g>
+    <g id="bars" font-size="11"></g>
+  </svg>
+  <script>
+    const rows = [
+      ["third-party-photo",        2604.2, "third", "neutral-or-better"],
+      ["third-party-lineart",       992.0, "third", "WORSE"],
+      ["third-party-lowres",        921.3, "third", "WORSE — doubled"],
+      ["third-party-poster",        913.1, "third", "slightly worse"],
+      ["local-artwork-default",      49.4, "third", "better"],
+      ["reference-frankie-default",  17.7, "house", "mixed"],
+      ["reference-frankie",          16.8, "house", "better — the 'win'"],
+      ["local-artwork",              12.6, "third", "irrelevant; ink lost"],
+      ["local-artwork-enhanced",      6.5, "third", "mixed"],
+      ["reference-fox (3 rows)",      2.9, "house", "unchanged"],
+      ["all 8 synthetic",             0.0, "syn",   "unchanged"],
+    ];
+    const COL = { third:"var(--third)", house:"var(--house)", syn:"var(--syn)" };
+    const X = v => 230 + 102 * Math.log10(Math.max(v, 1));
+    const g = document.getElementById("bars");
+    let y = 16;
+    for (const [label, v, kind, verdict] of rows) {
+      const w = v >= 1 ? X(v) - 230 : 0;
+      const bad = /WORSE|lost/.test(verdict);
+      g.insertAdjacentHTML("beforeend",
+        `<text x="224" y="${y+8}" text-anchor="end" fill="currentColor" opacity="0.85">${label}</text>` +
+        (w > 0
+          ? `<rect x="230" y="${y}" width="${w}" height="11" rx="2" fill="${COL[kind]}"/>`
+          : `<rect x="229" y="${y}" width="2.5" height="11" fill="${COL[kind]}"/>`) +
+        `<text x="${230 + Math.max(w,4) + 7}" y="${y+9}" font-size="10" ` +
+          `fill="${bad ? 'var(--bad)' : 'currentColor'}" opacity="${bad ? 1 : 0.5}" ` +
+          `${bad ? 'font-weight="600"' : ''}>${v.toFixed(0)} · ${verdict}</text>`);
+      y += 26;
+    }
+  </script>
+</div>

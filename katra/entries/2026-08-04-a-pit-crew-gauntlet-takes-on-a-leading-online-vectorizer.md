@@ -1,4 +1,5 @@
 ---
+publish: true
 title: A pit crew gauntlet takes on a leading online vectorizer
 date: "2026-08-04"
 time: "20:16:37"

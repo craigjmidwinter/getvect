@@ -1,4 +1,5 @@
 ---
+publish: true
 title: The fixture and the beneficiary were the same object
 date: "2026-08-16"
 time: "18:37:37"

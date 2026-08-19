@@ -1,4 +1,5 @@
 ---
+publish: true
 title: Two laps, two bounds, and the distribution that settled it
 date: "2026-08-16"
 time: "22:38:32"

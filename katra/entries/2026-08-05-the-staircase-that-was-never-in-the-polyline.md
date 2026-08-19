@@ -1,4 +1,5 @@
 ---
+publish: true
 title: The staircase that was never in the polyline
 date: "2026-08-05"
 time: "18:36:08"

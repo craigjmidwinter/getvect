@@ -1,4 +1,5 @@
 ---
+publish: true
 title: Frankie takes the throne
 date: "2026-08-05"
 time: "12:26:11"

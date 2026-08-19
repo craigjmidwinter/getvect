@@ -1,4 +1,5 @@
 ---
+publish: true
 title: 'The white outline: right about the worst spot, wrong about the rule'
 date: "2026-08-16"
 time: "22:43:43"

@@ -1,4 +1,5 @@
 ---
+publish: true
 title: The fitter was innocent of the notch and guilty of something else
 date: "2026-08-16"
 time: "22:14:06"

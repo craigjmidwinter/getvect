@@ -1,4 +1,5 @@
 ---
+publish: true
 title: The corner that was never recovering
 date: "2026-08-16"
 time: "18:26:18"

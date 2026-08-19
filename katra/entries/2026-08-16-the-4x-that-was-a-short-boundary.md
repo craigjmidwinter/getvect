@@ -1,4 +1,5 @@
 ---
+publish: true
 title: The 4x that was a short boundary
 date: "2026-08-16"
 time: "22:52:04"

@@ -1,4 +1,5 @@
 ---
+publish: true
 title: Nobody had ever installed the exe
 date: "2026-08-19"
 time: "15:17:56"

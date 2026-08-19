@@ -1,4 +1,5 @@
 ---
+publish: true
 title: deAntialias makes the notch, and still cannot unmake it
 date: "2026-08-16"
 time: "21:57:56"

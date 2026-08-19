@@ -1,4 +1,5 @@
 ---
+publish: true
 title: The staircase was real, the hypothesis was not
 date: "2026-08-16"
 time: "18:10:29"

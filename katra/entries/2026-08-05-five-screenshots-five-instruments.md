@@ -1,4 +1,5 @@
 ---
+publish: true
 title: Five screenshots, five instruments
 date: "2026-08-05"
 time: "13:52:29"
