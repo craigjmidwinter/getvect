@@ -6,6 +6,11 @@ tags:
     - standards
     - hygiene
     - security
+hash: ef1b520
+stat:
+    f: 18
+    a: 307
+    d: 5
 ---
 
 ```embed
