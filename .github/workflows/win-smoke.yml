@@ -32,7 +32,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: win-smoke-${{ github.ref }}
+  # The ref *input* is part of the key: two dispatches smoke-testing different
+  # branches are different jobs, not a supersession.
+  group: win-smoke-${{ github.event.inputs.ref || github.ref }}
   cancel-in-progress: true
 
 jobs:

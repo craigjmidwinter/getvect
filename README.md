@@ -91,8 +91,12 @@ with a real message; multiple images in a sidebar you can switch between.
 - **Output colour groups**: per-colour disable — switch off the background colour and you
   get a transparent background — with a merge threshold and sort order.
 - **Quality**: Enhance (denoise + colour simplification), Noise Reduction off/low/high,
-  Anti-aliasing off/smart/mid — Smart is the default, and it is worth 1747 sub-paths → 551
-  and 396 KB → 140 KB on the gold-standard artwork.
+  Anti-aliasing off/smart/mid — Smart is the default. When it landed (August 2026) it
+  measured 1747 sub-paths → 551 and 396 KB → 140 KB on the then gold-standard artwork;
+  that artwork has since been removed for licensing, so the number is a record, not a
+  re-runnable benchmark. What stays gated on every run is what Smart AA must not cost:
+  sharp corners and curve quality (`tests/engine/sharp-corners.test.mjs`, the
+  `minCurveCommandRatio` bars in `fixtures/manifest.json`).
 - **Advanced**: Roundness (3 curve-fitting levels), Minimum Area (0/5/90 px² speck
   removal), Overlap, Circle Detection.
 - **Result style**: filled layers or stroked layers.

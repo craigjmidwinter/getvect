@@ -46,7 +46,9 @@
     var data = navigator.userAgentData;
     var platform = (data && data.platform) || navigator.platform || '';
     var ua = navigator.userAgent || '';
-    if (/win/i.test(platform) || /windows/i.test(ua)) return 'windows';
+    // Anchored: "Darwin" contains "win", and a platform string that *starts*
+    // with it ("Win32", "Windows") is the only honest signal.
+    if (/^win/i.test(platform) || /windows/i.test(ua)) return 'windows';
     return 'mac';
   }
 

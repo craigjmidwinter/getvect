@@ -128,6 +128,11 @@ function createWindow(): void {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // Not the hardened default, and not free to flip: with `sandbox: true`
+      // 33 acceptance specs fail (the AI-enhance stubs and the export paths —
+      // measured 2026-08-20). contextIsolation plus the typed preload bridge
+      // is the boundary the renderer actually gets; closing the sandbox too
+      // means reworking how the e2e harness stubs the main process first.
       sandbox: false,
       // A window that is never shown is a background window, and Chromium
       // throttles timers and rAF in those. Under test that turns into slow,

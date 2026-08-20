@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; padding: 16px; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         background: #f6f7f9; color: #1c2027; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #14161c; color: #dfe3ea; }
+    td, th { border-color: #333a46 !important; }
+    caption { color: #8b93a3; }
+  }
+  table { border-collapse: collapse; width: 100%; max-width: 780px; margin: 0 auto; }
+  th, td { border: 1px solid #ccd2db; padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .fx { color: #2e9e5b; font-weight: 700; }
+  .df { color: #b58a2c; font-weight: 700; }
+  .es { color: #d64545; font-weight: 700; }
+  caption { caption-side: bottom; padding-top: 10px; font-size: 11.5px; color: #5b6270; }
+</style>
+<table>
+  <tr><th>Finding</th><th>Disposition</th></tr>
+  <tr><td>Site copy claims Windows downloadable today; only release is mac-only</td><td class="es">ESCALATED — cut v0.1.1 or soften copy (Craig, ask 72676a)</td></tr>
+  <tr><td>ci.yml had no permissions block (only workflow without one)</td><td class="fx">FIXED — contents: read</td></tr>
+  <tr><td>sandbox:false undocumented in main.ts</td><td class="fx">FIXED comment (flip measured: 33 specs fail) <span class="df">+ DEFERRED flip</span></td></tr>
+  <tr><td>download.js /win/i matches "Darwin"</td><td class="fx">FIXED — anchored /^win/i</td></tr>
+  <tr><td>win-smoke concurrency ignored the ref input</td><td class="fx">FIXED — input in the group key</td></tr>
+  <tr><td>No CHANGELOG.md</td><td class="fx">FIXED — Keep-a-Changelog, v0.1.0 + Unreleased</td></tr>
+  <tr><td>README/site cite unreproducible Smart-AA numbers as present-tense</td><td class="fx">FIXED — date-marked as records, gates named</td></tr>
+  <tr><td>npm audit: sharp high (build-tooling only), esbuild/nanoid (dev)</td><td class="df">DEFERRED — katra tasks, nothing ships</td></tr>
+  <tr><td>No linter/formatter at all</td><td class="df">DEFERRED — katra task (own lap)</td></tr>
+  <tr><td>file:read IPC takes any path (picker-only callers today)</td><td class="df">DEFERRED — allowlist task</td></tr>
+  <tr><td>No test behind the renderer no-network/CSP claim</td><td class="df">DEFERRED — spec task</td></tr>
+  <tr><td>No CSP on the static site</td><td class="df">DEFERRED — needs the two allowances tested</td></tr>
+  <tr><td>Katra tasks/epics/decisions never used (devlog-only practice)</td><td class="df">STARTED — this pass filed 1 epic + 8 tasks</td></tr>
+  <tr><td>Secrets: tree and history</td><td class="fx">CLEAN — zero hits, nothing to disposition</td></tr>
+  <tr><td>Landing page 250 KB of the 1 MB budget; headline numbers verified exact</td><td class="fx">CLEAN — 568 KB→17,844 B, 7 layers, 42 subpaths re-counted</td></tr>
+  <caption>Every finding from the four sweep legs, dispositioned. Fixed = landed this commit;
+  deferred = filed as a katra task with reasoning; escalated = Craig's call, evidence quoted.</caption>
+</table>

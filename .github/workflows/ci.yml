@@ -6,6 +6,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Nothing here touches the token beyond checkout; say so, like every other
+# workflow in this directory does, instead of inheriting the repo default.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
