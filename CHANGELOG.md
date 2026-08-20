@@ -12,9 +12,15 @@ detailed record of *why* things changed; this file is the short answer to
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.1] — 2026-08-20
+
+First release with a Windows build.
+
 ### Added
-- **Windows support, end to end.** The next tag builds a Windows x64 installer
-  (`GetVect-<version>-x64.exe`) from the same workflow as the macOS build, with
+- **Windows support, end to end.** This tag builds a Windows x64 installer
+  (`GetVect-0.1.1-x64.exe`) from the same workflow as the macOS build, with
   its own update feed (`latest.yml`). The engine's 80 contracts pass on
   Windows; the installer has been verified on a real machine — silent install,
   per-user, no administrator rights — and the site's download button resolves
@@ -50,5 +56,6 @@ First public release.
 - Unsigned: macOS quarantines it on first launch (right-click → Open, or
   `xattr -dr com.apple.quarantine /Applications/GetVect.app`).
 
-[Unreleased]: https://github.com/craigjmidwinter/getvect/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/craigjmidwinter/getvect/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/craigjmidwinter/getvect/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/craigjmidwinter/getvect/releases/tag/v0.1.0
