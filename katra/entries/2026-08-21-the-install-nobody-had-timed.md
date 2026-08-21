@@ -5,6 +5,11 @@ time: "07:50:10"
 tags:
     - ergonomics
     - standards
+hash: 5e63812
+stat:
+    f: 13
+    a: 264
+    d: 19
 advances:
     - ergonomics-pass-leg-g
 ---
