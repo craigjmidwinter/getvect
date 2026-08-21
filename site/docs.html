@@ -42,9 +42,11 @@
       <p class="eyebrow">Documentation</p>
       <h1>Running GetVect</h1>
       <p class="lede">
-        There is no installer yet — GetVect runs from source, or from an app bundle you package
-        yourself. Everything below is what the app actually does today; the acceptance suite is
-        the source of truth, and where this page and the suite disagree, the suite wins.
+        Install it from the <a href="https://github.com/craigjmidwinter/getvect/releases/latest">latest
+        release</a> (a dmg for macOS, an exe for Windows — both unsigned, see the download page for
+        the first-launch step), or run it from source. Everything below is what the app actually
+        does today; the acceptance suite is the source of truth, and where this page and the suite
+        disagree, the suite wins.
       </p>
       <ul class="toc">
         <li><a href="#start">Getting started</a></li>
@@ -492,8 +494,23 @@ npm run screenshots   <span class="c"># a labelled contact sheet of the whole fl
         merges colour groups, and nothing raises it behind your back.</p>
 
       <h3>Tests fail on Linux</h3>
-      <p>Electron needs a display. Run the suite under <code>xvfb-run -a</code>. Windows is
-        untested.</p>
+      <p>Electron needs a display. Run the suite under <code>xvfb-run -a</code>. On Windows the
+        engine contracts run in CI before every release; the full Electron acceptance suite is
+        driven on macOS only.</p>
+
+      <h3>Removing GetVect completely</h3>
+      <p><strong>macOS:</strong> drag <code>GetVect.app</code> out of Applications, then remove
+        the state the app created (settings, and the encrypted AI key if you saved one):</p>
+<pre><code>rm -rf ~/Library/Application\ Support/GetVect
+rm -rf ~/Library/Caches/getvect-updater</code></pre>
+      <p><strong>Windows:</strong> Settings → Apps → GetVect → Uninstall. The uninstaller removes
+        the app, the Start Menu entry and its registry key, but leaves two things behind —
+        measured, not guessed:</p>
+<pre><code>Remove-Item -Recurse "$env:APPDATA\GetVect"
+Remove-Item -Recurse "$env:LOCALAPPDATA\getvect-updater"</code></pre>
+      <p>The second one is a ~100&nbsp;MB cached copy of the installer that the install itself
+        creates and the uninstaller does not clean up. Until that is fixed, these two lines are
+        the difference between "uninstalled" and "gone".</p>
     </div>
   </section>
 

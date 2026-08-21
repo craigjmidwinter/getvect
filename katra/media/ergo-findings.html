@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; padding: 16px; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         background: #f6f7f9; color: #1c2027; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #14161c; color: #dfe3ea; }
+    td, th { border-color: #333a46 !important; }
+    .seq { background: #1b1e26; border-color: #333a46; }
+    caption, h3 { color: #8b93a3; }
+  }
+  .wrap { max-width: 780px; margin: 0 auto; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 18px; }
+  th, td { border: 1px solid #ccd2db; padding: 6px 10px; text-align: left; }
+  th { font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  td.n { text-align: right; }
+  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin: 0 0 8px; color: #5b6270; }
+  .seq { background: #fff; border: 1px solid #d5dae2; border-radius: 8px; padding: 12px 16px; }
+  .seq ol { margin: 0; padding-left: 20px; }
+  .seq li { padding: 2px 0; }
+  .bad { color: #d64545; font-weight: 600; }
+  caption { caption-side: bottom; font-size: 11.5px; color: #5b6270; padding-top: 6px; }
+</style>
+<div class="wrap">
+  <h3>Fresh install, docs only, timed</h3>
+  <table>
+    <tr><th>Path</th><th>Steps</th><th class="n">Time to success</th></tr>
+    <tr><td>macOS end-user (dmg)</td><td>download · mount · copy · de-quarantine</td><td class="n">~42 s</td></tr>
+    <tr><td>Windows end-user (exe)</td><td>download · silent install · verified 0.1.1</td><td class="n">~54 s</td></tr>
+    <tr><td>Developer (clone → green tests)</td><td>clone · npm install (9.6 s) · typecheck · 80/80</td><td class="n">~57 s</td></tr>
+    <caption>Every path lands an order of magnitude inside the standard's 5-minute bar.
+    First GUI launch untimed on both platforms — no headed app on anyone's screen.</caption>
+  </table>
+  <h3>The finding: exit 0, working install destroyed</h3>
+  <div class="seq">
+    <ol>
+      <li>Working GetVect 0.1.1 installed per-user, verified</li>
+      <li>Installer re-run with an unwritable target (<code>/S /D=C:\Windows\System32\GetVect</code>)</li>
+      <li>NSIS upgrade logic <span class="bad">uninstalls the working copy first</span></li>
+      <li>New copy fails on the ACL — <span class="bad">silently</span></li>
+      <li>Registry key written anyway: "GetVect 0.1.1", UninstallString → <span class="bad">a file that does not exist</span></li>
+      <li>Installer exits <span class="bad">0</span></li>
+    </ol>
+  </div>
+</div>

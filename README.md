@@ -13,7 +13,7 @@ No account, no credits, no subscription. Offline by default.
 
 [![CI](https://github.com/craigjmidwinter/getvect/actions/workflows/ci.yml/badge.svg)](https://github.com/craigjmidwinter/getvect/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey)
+![Platform: macOS | Windows](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
 
 </div>
 
@@ -148,9 +148,11 @@ out of scope permanently — that's the point.
 ## Download
 
 **[Latest release →](https://github.com/craigjmidwinter/getvect/releases/latest)** — macOS
-on Apple Silicon (M1 and later). Grab `GetVect-<version>-arm64.dmg`. Intel Macs, Windows
-and Linux build from source (below) but are not tested and not published, so they are not
-offered as if they were.
+on Apple Silicon (M1 and later): grab `GetVect-<version>-arm64.dmg`. Windows on x64 (since
+v0.1.1): grab `GetVect-<version>-x64.exe` — one click, per-user, never asks for
+administrator rights. Both come off the same tag and carry the same 80 engine contracts,
+run on each platform before packaging. Intel Macs and Linux build from source (below) but
+are not tested and not published, so they are not offered as if they were.
 
 **The build is unsigned**, so macOS quarantines it on download and says it "cannot be
 opened". Nothing is wrong with the file — nobody has paid Apple to vouch for it. Either
@@ -159,6 +161,34 @@ right-click GetVect in Applications and choose **Open**, or:
 ```bash
 xattr -dr com.apple.quarantine /Applications/GetVect.app
 ```
+
+On Windows the same missing certificate means SmartScreen says "Windows protected your
+PC" — choose **More info**, then **Run anyway**.
+
+### Uninstall
+
+What GetVect puts on your machine, and how to take all of it off again:
+
+**macOS** — drag `GetVect.app` out of Applications, then remove the state the app
+created if you want a clean slate:
+
+```bash
+rm -rf ~/Library/Application\ Support/GetVect   # settings + the encrypted AI key, if you saved one
+rm -rf ~/Library/Caches/getvect-updater         # update-check cache
+```
+
+**Windows** — Settings → Apps → GetVect → Uninstall (or run `Uninstall GetVect.exe`
+from `%LOCALAPPDATA%\Programs\GetVect`). The uninstaller removes the app, its Start
+Menu entry and its registry key, but **leaves two things it should tell you about**:
+
+```powershell
+Remove-Item -Recurse "$env:APPDATA\GetVect"                  # settings + AI key, created on first launch
+Remove-Item -Recurse "$env:LOCALAPPDATA\getvect-updater"     # ~100 MB cached copy of the installer
+```
+
+The installer caches itself in `getvect-updater` and the uninstaller does not clean it
+up — measured, not guessed. Until that is fixed, these two lines are the honest
+difference between "uninstalled" and "gone".
 
 ### Updates
 
@@ -291,8 +321,11 @@ was green, the instruments must not regress, and any new UI has to declare its t
 ## Status
 
 Pre-1.0 and honest about it. The acceptance suite is the source of truth for what works
-today — run `npm test` and read the summary. macOS is the only platform currently
-exercised; Linux needs `xvfb-run -a` for the Electron tests and Windows is untested.
+today — run `npm test` and read the summary. macOS is where the full acceptance suite
+runs; on Windows the 80 engine contracts run in CI before every release and the
+installer's behaviour (silent, per-user, no admin) has been verified on a real machine —
+but the app's UI has not been driven end-to-end there. Linux needs `xvfb-run -a` for the
+Electron tests and is untested.
 
 ## License & credits
 

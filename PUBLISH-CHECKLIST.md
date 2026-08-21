@@ -27,8 +27,8 @@ by SHA. This is the procedure, and it has been run more than once.
 > present. An unverified backup is a check that agrees with itself.
 
 ```bash
-# git-filter-repo is installed at /opt/homebrew/bin/git-filter-repo.
-# It refuses to run on a non-fresh clone, hence --force.
+# git-filter-repo: `brew install git-filter-repo` (or pipx). It refuses to
+# run on a non-fresh clone, hence --force.
 git filter-repo --force --invert-paths --path PATH [--path PATH ...]
 
 # A word in commit messages ships with every clone too. Write the rules to a
@@ -208,9 +208,11 @@ gh browse craigjmidwinter/getvect
   is nothing extra to run, and no second ritual to remember.
 
   ```bash
-  npm version 0.1.1 --no-git-tag-version    # bump package.json only
-  git commit -am "Release 0.1.1" && git push
-  git tag v0.1.1 && git push origin v0.1.1  # this is what starts the workflow
+  # <next-version> = the version you are about to ship, e.g. 0.1.2 — pick it,
+  # add its CHANGELOG.md entry first, and use it in all three lines.
+  npm version <next-version> --no-git-tag-version    # bump package.json only
+  git commit -am "Release <next-version>" && git push
+  git tag v<next-version> && git push origin v<next-version>  # this starts the workflow
   ```
 
   Four jobs, and the shape is load-bearing:

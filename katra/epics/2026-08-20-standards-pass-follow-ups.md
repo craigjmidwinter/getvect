@@ -4,7 +4,7 @@ date: "2026-08-20"
 time: "16:32:10"
 summary: Deferred findings from the 2026-08-20 hygiene + security + performance sweep
 type: epic
-status: planned
+status: active
 horizon: next
 ---
 
