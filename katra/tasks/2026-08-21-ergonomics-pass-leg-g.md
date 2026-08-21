@@ -6,7 +6,7 @@ tags:
     - ergonomics
 summary: 'New ERGONOMICS section + Leg G: fresh docs-only install both platforms, failure paths, upgrade+uninstall incl. state cleanup, copy-paste audit'
 type: task
-status: doing
+status: done
 effort: M
 epic: standards-pass-follow-ups
 ---
