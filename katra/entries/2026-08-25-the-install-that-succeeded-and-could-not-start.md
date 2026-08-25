@@ -6,10 +6,10 @@ tags:
     - ergonomics
     - standards
     - distribution
-hash: PENDING
+hash: 9163581
 stat:
-    f: 0
-    a: 0
+    f: 2
+    a: 99
     d: 0
 ---
 
