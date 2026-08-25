@@ -23,7 +23,7 @@
   "bugs": {
     "url": "https://github.com/craigjmidwinter/getvect/issues"
   },
-  "author": "Craig Midwinter (https://craigmidwinter.com)",
+  "author": "Craig Midwinter (https://midwinter.io)",
   "license": "MIT",
   "engines": {
     "node": ">=20"

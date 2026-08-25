@@ -291,7 +291,7 @@ The whole build is chronicled as it happened in [`katra/entries/`](katra/entries
 and
 [the ground-truth recon](katra/entries/2026-08-04-driving-the-real-vectorizer-for-ground-truth-smart-aa-is-the-whole-ballgame.md).
 Longer-form writing on the loop itself lives at
-[craigmidwinter.com](https://craigmidwinter.com).
+[midwinter.io/blog](https://midwinter.io/blog/).
 
 ## Layout
 
