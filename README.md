@@ -165,6 +165,25 @@ xattr -dr com.apple.quarantine /Applications/GetVect.app
 On Windows the same missing certificate means SmartScreen says "Windows protected your
 PC" — choose **More info**, then **Run anyway**.
 
+### Homebrew — macOS, and no Gatekeeper prompt
+
+```bash
+brew install craigjmidwinter/tap/getvect
+getvect
+```
+
+This is a **formula, not a cask**, and that is the whole reason it exists. A cask fetches
+the `.dmg` through the same path a browser uses, so macOS stamps `com.apple.quarantine` on
+it and you are back in the paragraph above. A formula builds from source on your machine:
+nothing arrives as a downloaded application bundle, so there is nothing to quarantine, no
+Gatekeeper prompt, and no attribute to strip. It does not depend on anyone buying a
+certificate.
+
+The trade is time and a toolchain — Homebrew pulls in Node, then runs an `npm install` and
+a full build, so budget a few minutes rather than the seconds a `.dmg` takes. It also
+cannot live in homebrew-core: core does not accept GUI/Electron applications as formulas,
+and a core *cask* would reintroduce the quarantine this is here to avoid.
+
 ### Uninstall
 
 What GetVect puts on your machine, and how to take all of it off again:
@@ -176,6 +195,10 @@ created if you want a clean slate:
 rm -rf ~/Library/Application\ Support/GetVect   # settings + the encrypted AI key, if you saved one
 rm -rf ~/Library/Caches/getvect-updater         # update-check cache
 ```
+
+Installed with Homebrew instead? `brew uninstall getvect` takes the build and the launcher.
+The two lines above still apply — that state is written by the app on first launch, not by
+the installer, so no uninstaller of either kind knows about it.
 
 **Windows** — Settings → Apps → GetVect → Uninstall (or run `Uninstall GetVect.exe`
 from `%LOCALAPPDATA%\Programs\GetVect`). The uninstaller removes the app, its Start
