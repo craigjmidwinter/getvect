@@ -1,5 +1,6 @@
 /**
- * Put the analytics tag and its disclosure into a built devlog.
+ * Put the things the devlog's renderer cannot into a built devlog: the analytics
+ * tag, its disclosure, and the social card metadata.
  *
  * WHY THIS IS A SCRIPT AND NOT AN EDIT TO site/devlog/.
  *
@@ -49,6 +50,34 @@ const NOTE = [
 
 const MARKER = 'gv-analytics-note';
 
+/**
+ * THE SOCIAL CARD. katra renders this page with `<title>Katra</title>` and no og
+ * tags — app.js sets the real title client-side from data.json, which is too late
+ * for a link preview, since no scraper runs it. Shared devlog links therefore
+ * previewed as "Katra", grey box, no description — on the page katra's own
+ * attribution footer drives readers to.
+ *
+ * og:title is what every major platform actually renders, so adding these fixes
+ * the preview without rewriting the generated <title>.
+ *
+ * Deliberately no og:image:width/height here. index.html and docs.html declare
+ * them and pay for it with a gated claim in regenerate-derived-assets.mjs; this
+ * file is injected and outside that gate, so declaring the numbers here would be
+ * an ungated copy of a value that can change. The dimensions are an optimisation,
+ * not a requirement.
+ */
+const SITE = 'https://getvect.midwinter.io';
+const CARD = [
+  '<meta property="og:type" content="website">',
+  '<meta property="og:title" content="GetVect devlog">',
+  '<meta property="og:description" content="The committed build log: what was measured, what was decided, and the failures behind both.">',
+  `<meta property="og:url" content="${SITE}/devlog/">`,
+  `<meta property="og:image" content="${SITE}/assets/frankie-before-after.png">`,
+  '<meta property="og:image:alt" content="The mascot\'s face at 200% zoom: source pixels on the left, traced curves on the right.">',
+  '<meta name="twitter:card" content="summary_large_image">',
+  `<meta name="twitter:image" content="${SITE}/assets/frankie-before-after.png">`,
+].join('\n');
+
 async function inject(siteDir) {
   const index = join(siteDir, 'index.html');
 
@@ -61,10 +90,19 @@ async function inject(siteDir) {
     process.exit(1);
   }
 
-  // Two independent insertions, each guarded, so a partially-injected file
-  // (someone added the tag by hand) converges instead of doubling up.
+  // Independent insertions, each guarded, so a partially-injected file (someone
+  // added the tag by hand) converges instead of doubling up.
   let out = html;
   let changed = [];
+
+  if (!out.includes('og:title')) {
+    if (!out.includes('</head>')) {
+      console.error('devlog-analytics: no </head> in the built index.html');
+      process.exit(1);
+    }
+    out = out.replace('</head>', `${CARD}\n</head>`);
+    changed.push('social card');
+  }
 
   if (!out.includes(WEBSITE_ID)) {
     if (!out.includes('</head>')) {
