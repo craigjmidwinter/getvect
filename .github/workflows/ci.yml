@@ -54,6 +54,14 @@ jobs:
         # is why this job is on macOS.
         run: node scripts/regenerate-derived-assets.mjs --check
 
+      - name: Devlog still carries its tag, disclosure and social card
+        # site/devlog/ is `katra build` output copied across by hand at publish
+        # time, so injecting at build time only protects the build. A rebuild
+        # that skipped the injector would drop all three from the page that
+        # actually ships — and the page would still render perfectly, which is
+        # why this is checked rather than noticed.
+        run: node scripts/devlog-analytics.mjs --check
+
   # ---------------------------------------------------------------------------
   # Playwright acceptance suite (tests/e2e). Not enabled yet: driving a real
   # Electron window on a hosted runner is flaky — window activation, GPU and

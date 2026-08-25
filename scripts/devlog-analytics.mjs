@@ -131,5 +131,50 @@ async function inject(siteDir) {
   console.log(`devlog-analytics: added ${changed.join(' + ')} → ${index}`);
 }
 
-const target = process.argv[2] ?? join(ROOT, 'artifacts', 'devlog', 'site');
-await inject(target);
+/**
+ * --check: assert the COMMITTED snapshot still carries all three insertions.
+ *
+ * Injecting at build time only protects the build. `site/devlog/` is a
+ * checked-in copy of that output, moved across by hand at publish time, so the
+ * path that actually reaches visitors is one nobody was checking: rebuild the
+ * devlog, copy it over without running this script, and the tag, the disclosure
+ * and the social card all disappear from a page that still loads perfectly.
+ *
+ * That is the failure this script was written to prevent, surviving one level up
+ * from where it was fixed. So the deployed copy gets a gate, and CI runs it.
+ */
+async function check(siteDir) {
+  const index = join(siteDir, 'index.html');
+  let html;
+  try {
+    html = await fs.readFile(index, 'utf8');
+  } catch {
+    console.error(`devlog-analytics --check: cannot read ${index}`);
+    process.exit(1);
+  }
+
+  const missing = [
+    ['analytics tag', WEBSITE_ID],
+    ['disclosure', MARKER],
+    ['social card', 'og:title'],
+  ].filter(([, needle]) => !html.includes(needle));
+
+  if (missing.length) {
+    console.error(`\n${index} is missing: ${missing.map(([what]) => what).join(', ')}\n`);
+    console.error(
+      'That file is `katra build` output copied here at publish time. A rebuild\n' +
+        'that skipped this script drops these silently — the page still renders,\n' +
+        'the numbers just stop and every shared link loses its preview.\n\n' +
+        `Fix: node scripts/devlog-analytics.mjs ${siteDir}\n`,
+    );
+    process.exit(1);
+  }
+  console.log(`devlog-analytics --check: tag, disclosure and social card all present in ${index}`);
+}
+
+const args = process.argv.slice(2);
+const checking = args.includes('--check');
+const dir = args.find((a) => !a.startsWith('--'));
+
+if (checking) await check(dir ?? join(ROOT, 'site', 'devlog'));
+else await inject(dir ?? join(ROOT, 'artifacts', 'devlog', 'site'));
