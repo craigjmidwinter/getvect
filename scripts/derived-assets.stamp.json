@@ -9,7 +9,7 @@
   "sources": {
     "mascot": "785227fed6a2880ffaf4233c1038efda4b6f6ac5f56d5e1cfdb4a8c4450fc29f",
     "engine": "fda064f67c4e157f73be43bea22efbfaf86ae496cb79bd43346a3b3c089a0d1d",
-    "script": "341a06be01e0fdc0608eb4c7f72c988ad3b10271df75ee68dd79a7f962d0038c"
+    "script": "45c7e891ed0ec6557a8d0e218d0063870da469e983cf14f02a110a9b20cb8c3f"
   },
   "measured": {
     "sourceBytes": 568678,
@@ -22,6 +22,8 @@
     "colorCount": 8,
     "zoomPct": 200,
     "width": 1195,
-    "height": 896
+    "height": 896,
+    "ogWidth": 1280,
+    "ogHeight": 560
   }
 }

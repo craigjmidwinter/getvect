@@ -175,6 +175,10 @@ const CLAIMS = [
   ['site/index.html', 'SVG KB (prose)', /becomes a (\d+) KB SVG/, 'svgKB'],
   ['site/index.html', 'colour layers (prose)', /KB SVG in (\d+) colour layers/, 'layers'],
   ['site/index.html', 'shapes (prose)', /colour layers and (\d+) shapes/, 'shapes'],
+  ['site/index.html', 'og:image width', /og:image:width" content="(\d+)"/, 'ogWidth'],
+  ['site/index.html', 'og:image height', /og:image:height" content="(\d+)"/, 'ogHeight'],
+  ['site/docs.html', 'og:image width', /og:image:width" content="(\d+)"/, 'ogWidth'],
+  ['site/docs.html', 'og:image height', /og:image:height" content="(\d+)"/, 'ogHeight'],
 ];
 
 /**
@@ -411,6 +415,12 @@ async function main() {
     zoomPct: BEFORE_AFTER.zoom * 100,
     width: trace.width,
     height: trace.height,
+    // The social card IS the before/after composite, so the og:image:width and
+    // og:image:height the pages declare are a claim about this geometry. Kept
+    // here so changing BEFORE_AFTER turns the claim red instead of leaving two
+    // HTML files quietly describing an image that is no longer that shape.
+    ogWidth: BEFORE_AFTER.width,
+    ogHeight: BEFORE_AFTER.height,
   };
   const sources = await sourcesHash();
 
@@ -604,6 +614,18 @@ async function runCheck(trace, measured, sources) {
 
   const rows = driftTable(measured);
   const drifted = rows.filter((r) => r.drift !== 'ok');
+
+  // Prose drift is a warning (see the note further down) because a number in a
+  // sentence is a human's call. `og:image:width`/`height` are not prose: no
+  // human reads them, nobody rounds them for readability, and a wrong pair
+  // mis-renders every social card silently — the page still loads and the card
+  // is just cropped wrong. So these drift into `problems` and fail the run.
+  for (const r of drifted.filter((r) => r.label.startsWith('og:image'))) {
+    problems.push(
+      `${r.file} declares ${r.label} ${r.claimed}, but the card is ${r.measured} — ` +
+        'the meta tag and the generated image must agree',
+    );
+  }
 
   if (problems.length) {
     console.error('\nDerived assets are stale — run `npm run assets`.\n');
