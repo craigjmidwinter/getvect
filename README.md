@@ -176,8 +176,14 @@ This is a **formula, not a cask**, and that is the whole reason it exists. A cas
 the `.dmg` through the same path a browser uses, so macOS stamps `com.apple.quarantine` on
 it and you are back in the paragraph above. A formula builds from source on your machine:
 nothing arrives as a downloaded application bundle, so there is nothing to quarantine, no
-Gatekeeper prompt, and no attribute to strip. It does not depend on anyone buying a
-certificate.
+Gatekeeper prompt, and no attribute to strip.
+
+**What this does not do is sign anything.** GetVect is still unsigned and un-notarized, and
+the `.dmg` above still behaves exactly as described. Homebrew changes how you install, not
+whether the app has a certificate — it sidesteps quarantine because nothing is downloaded
+as an application bundle, which is a different fact from being trusted by Apple. The
+signing story is tracked in [PUBLISH-CHECKLIST.md](./PUBLISH-CHECKLIST.md) and is not
+solved here.
 
 The trade is time and a toolchain — Homebrew pulls in Node, then runs an `npm install` and
 a full build, so budget a few minutes rather than the seconds a `.dmg` takes. It also

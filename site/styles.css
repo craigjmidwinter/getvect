@@ -706,3 +706,12 @@ footer {
      two destinations that are not */
   .bar nav a.opt { display: none; }
 }
+
+/* The analytics disclosure. Deliberately in the footer of every page that
+   carries the tag, at reading size rather than fine print — a promise the
+   reader can check is only worth making where they can see it. */
+.foot-note {
+  font-size: 0.8rem;
+  color: var(--muted);
+  max-width: 34ch;
+}

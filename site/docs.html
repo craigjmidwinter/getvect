@@ -15,6 +15,7 @@
 <meta property="og:url" content="https://getvect.midwinter.io/docs.html">
 <meta property="og:image" content="https://getvect.midwinter.io/assets/frankie-before-after.png">
 <meta name="twitter:card" content="summary_large_image">
+<script defer src="https://umami.midwinter.dev/script.js" data-website-id="b003dfbc-7aa2-438c-8c23-3c218bfde0ef"></script>
 </head>
 <body>
 
@@ -477,7 +478,13 @@ npm run screenshots   <span class="c"># a labelled contact sheet of the whole fl
       <p>Every GetVect build — the published dmg and anything from <code>npm run dist</code> — is
         <strong>unsigned and not notarized</strong>. A downloaded unsigned app is quarantined, and
         on Apple Silicon Gatekeeper refuses it outright rather than offering the right-click →
-        Open escape hatch. Remove the quarantine attribute yourself:</p>
+        Open escape hatch.</p>
+      <p>The cleanest way past this is not to download a bundle at all:</p>
+<pre><code>brew install craigjmidwinter/tap/getvect</code></pre>
+      <p>That formula builds from source on your machine, so there is no downloaded application
+        bundle to quarantine and no attribute to remove. It does <em>not</em> sign or notarize
+        anything — the build is still unsigned, and the dmg still behaves as described above.</p>
+      <p>Otherwise, remove the quarantine attribute yourself:</p>
 <pre><code>xattr -dr com.apple.quarantine /Applications/GetVect.app</code></pre>
       <p>Only do that for a bundle you built yourself, or one whose provenance you trust. The
         release page carries the same instruction, and the checksum of every published artefact is
@@ -558,6 +565,7 @@ Remove-Item -Recurse "$env:LOCALAPPDATA\getvect-updater"</code></pre>
   <div class="wrap foot-in">
     <img src="assets/frankie-mascot.png" alt="" width="34" height="26">
     <span>MIT · © 2026 Craig Midwinter</span>
+    <span class="foot-note">Self-hosted, cookieless analytics. No personal data, no third party.</span>
     <span class="foot-links">
       <a href="./">Overview</a>
       <a href="https://github.com/craigjmidwinter/getvect">GitHub</a>

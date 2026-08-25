@@ -188,6 +188,12 @@ async function build() {
   const work = join(ROOT, 'artifacts', 'devlog');
   await stage(join(work, 'katra'));
   execFileSync('katra', ['build', '--out', join(work, 'site')], { cwd: work, stdio: 'inherit' });
+  // The analytics tag lives here rather than in the snapshot under site/devlog,
+  // because that snapshot is katra's output and the next publish would overwrite
+  // a hand-added tag silently — the pages would still load and the numbers would
+  // just stop. See scripts/devlog-analytics.mjs.
+  execFileSync('node', [join(ROOT, 'scripts', 'devlog-analytics.mjs'), join(work, 'site')],
+    { stdio: 'inherit' });
   console.log(`\nbuilt → ${join(work, 'site')}  (not deployed)`);
 }
 
