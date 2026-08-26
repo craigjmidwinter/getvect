@@ -14,6 +14,23 @@ detailed record of *why* things changed; this file is the short answer to
 
 Nothing yet.
 
+## [0.1.5] — 2026-08-26
+
+**GetVect now ships the licence texts of the software it includes.** Every build
+before this one carried none — not one file, not even Electron's own. MIT, BSD
+and Apache-2.0 all require their notice and licence text to accompany the
+software, so this was a real gap, and an awkward one for a project whose whole
+pitch is being open source.
+
+The notice covers the 22 packages whose code is actually inside the app, each
+licence reproduced in full, plus Electron's own licence and Chromium's. It is
+generated from what the bundlers included rather than written by hand, so it
+cannot drift from the code it describes. Find it under **Help ▸ Third-Party
+Licences**, or beside About on macOS.
+
+The About panel now also says **MIT Licensed** next to the copyright, which it
+should have said all along.
+
 ## [0.1.4] — 2026-08-26
 
 **GetVect can now update itself on macOS.** Because the build is signed, the app
