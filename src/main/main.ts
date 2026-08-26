@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
 import { existsSync, promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { registerAiEnhanceIpc } from './aiEnhance';
@@ -82,14 +82,99 @@ if (!isE2E) {
   app.setName('GetVect');
 }
 
+/**
+ * The bundled third-party licence notice, or undefined if this build has none.
+ *
+ * Generated at build time into `build/third-party/` and shipped by
+ * `extraResources`, because MIT, BSD and Apache-2.0 require their text to
+ * accompany the DISTRIBUTION — a notice that only exists in the repository does
+ * not discharge that.
+ */
+function thirdPartyNotice(): string | undefined {
+  const dir = isPackaged
+    ? path.join(process.resourcesPath, 'third-party')
+    : path.join(__dirname, '..', '..', 'build', 'third-party');
+  const file = path.join(dir, 'THIRD-PARTY-LICENSES.md');
+  return existsSync(file) ? file : undefined;
+}
+
+/**
+ * Put the notice somewhere a person can actually reach.
+ *
+ * Electron's native About panel takes no custom buttons, so "reachable from
+ * About" means a menu item next to it. The app otherwise runs on the default
+ * menu, so this rebuilds that menu from standard roles — which keeps every
+ * default behaviour (copy, paste, quit, window management, the About item
+ * itself) rather than reimplementing them — and appends one entry.
+ *
+ * If the notice is missing the item is not added, because a menu entry that
+ * opens nothing is worse than no entry: it tells the reader the file exists.
+ */
+function installLicenceMenu(): void {
+  const notice = thirdPartyNotice();
+  if (!notice) return;
+
+  const openNotice = {
+    label: 'Third-Party Licences',
+    click: () => void shell.openPath(notice),
+  };
+
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(process.platform === 'darwin'
+      ? [
+          {
+            label: 'GetVect',
+            submenu: [
+              { role: 'about' as const },
+              { type: 'separator' as const },
+              openNotice,
+              { type: 'separator' as const },
+              { role: 'services' as const },
+              { type: 'separator' as const },
+              { role: 'hide' as const },
+              { role: 'hideOthers' as const },
+              { role: 'unhide' as const },
+              { type: 'separator' as const },
+              { role: 'quit' as const },
+            ],
+          },
+        ]
+      : []),
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'GetVect on GitHub',
+          click: () => void shell.openExternal('https://github.com/craigjmidwinter/getvect'),
+        },
+        // On macOS this is the second way in; on Windows and Linux, where there
+        // is no native About panel, it is the only one.
+        openNotice,
+      ],
+    },
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 /** Dock icon + About panel. Called at ready, never under e2e. */
 function applyAppIdentity(): void {
   app.setAboutPanelOptions({
     applicationName: 'GetVect',
     applicationVersion: app.getVersion(),
-    copyright: '© 2026 Craig Midwinter',
+    // The licence belongs on the same surface as the copyright. A bare © with
+    // no licence named reads as all-rights-reserved to anyone who does not
+    // already know, which quietly contradicts the one fact this project most
+    // wants a reader to notice.
+    copyright: '© 2026 Craig Midwinter · MIT Licensed',
     website: 'https://github.com/craigjmidwinter/getvect',
   });
+
+  installLicenceMenu();
 
   // A packaged .app already carries its icon in the bundle (CFBundleIconFile ->
   // icon.icns), which is higher fidelity than a single 512px PNG; only dev runs

@@ -45,6 +45,11 @@ const result = await build({
   external: ['electron'],
   // Licence headers of everything inlined, kept at the end of the file.
   legalComments: 'eof',
+  // The exact list of files esbuild pulled in. `generate-third-party-notices.mjs`
+  // reads it to build the notice from what was ACTUALLY bundled rather than from
+  // what package.json declares — the two differ here, and the declared list is
+  // the larger one.
+  metafile: true,
   outfile,
   logLevel: 'warning',
 });
@@ -55,5 +60,8 @@ if (result.warnings.length > 0) {
   console.error(`[bundle-updater] ${result.warnings.length} warning(s) — see above`);
   process.exit(1);
 }
+
+const metaPath = path.join(root, 'dist', 'main', 'vendor', 'electron-updater.meta.json');
+await (await import('node:fs/promises')).writeFile(metaPath, JSON.stringify(result.metafile));
 
 console.log(`[bundle-updater] wrote ${path.relative(root, outfile)}`);
