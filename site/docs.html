@@ -479,6 +479,20 @@ npm run screenshots   <span class="c"># a labelled contact sheet of the whole fl
         signature. An environment fix that lives in one shell session is not a fix, which is why
         this is a hook rather than a note.</p>
 
+      <h3>Code signing policy</h3>
+      <p>Free code signing for <strong>Windows</strong> builds is being arranged through the
+        <a href="https://signpath.org/">SignPath Foundation</a>. It is not in place yet: today's
+        <code>.exe</code> is unsigned and SmartScreen will warn. <strong>macOS is a separate
+        certificate and is not covered by SignPath</strong> — see below.</p>
+      <p><strong>Roles.</strong> Committers and reviewers: Craig Midwinter. Approvers: Craig
+        Midwinter. Releases are cut from tags by a workflow that refuses to publish an artefact
+        it cannot verify.</p>
+      <p><strong>Privacy policy:</strong> two network touchpoints, both disclosed — a
+        once-per-launch update check against GitHub Releases (opt out with
+        <code>GETVECT_NO_UPDATE_CHECK=1</code>) and opt-in AI Enhance under your own API key.
+        Nothing else leaves the machine; see <a href="#ai-enhance">AI Enhance</a> and
+        <a href="./#privacy">what GetVect does on the network</a>.</p>
+
       <h3>"GetVect is damaged and can't be opened"</h3>
       <p>Every GetVect build — the published dmg and anything from <code>npm run dist</code> — is
         <strong>unsigned and not notarized</strong>. A downloaded unsigned app is quarantined, and

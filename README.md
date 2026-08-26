@@ -165,13 +165,26 @@ xattr -dr com.apple.quarantine /Applications/GetVect.app
 On Windows the same missing certificate means SmartScreen says "Windows protected your
 PC" — choose **More info**, then **Run anyway**.
 
-**Where the signing is going.** Windows code signing is being arranged through the
+### Code signing policy
+
+Free code signing for **Windows** builds is being arranged through the
 [SignPath Foundation](https://signpath.org/), which issues certificates free of charge to
-open-source projects; until it is in place the `.exe` is unsigned and SmartScreen keeps
-warning. macOS is a separate certificate and a separate problem — **SignPath does not cover
-it** — and the release pipeline for it is built and gated but not yet credentialed
-([SIGNING.md](./SIGNING.md)). Neither platform is signed today, and this stays written that
-way until one of them is.
+open-source projects. It is not in place yet: today's `.exe` is unsigned and SmartScreen
+keeps warning.
+
+**macOS is a separate certificate and is not covered by SignPath.** Its release pipeline is
+built and gated — an unsigned artefact cannot be published, by construction — see
+[SIGNING.md](./SIGNING.md).
+
+**Roles.** Committers and reviewers: Craig Midwinter. Approvers: Craig Midwinter. GetVect is
+a single-maintainer project; releases are cut from tags by
+[a workflow](.github/workflows/release.yml) that refuses to publish an artefact it cannot
+verify.
+
+**Privacy policy.** [What GetVect does on the network](#what-it-does-on-the-network): two
+touchpoints, both disclosed — a once-per-launch update check against GitHub Releases
+(opt-out via `GETVECT_NO_UPDATE_CHECK=1`) and opt-in AI Enhance under your own API key.
+Nothing else leaves the machine.
 
 ### Homebrew — macOS, and no Gatekeeper prompt
 

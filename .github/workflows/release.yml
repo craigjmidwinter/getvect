@@ -174,16 +174,16 @@ jobs:
       # built — not after twenty minutes of packaging.
       - name: Signing credentials must be present
         env:
-          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
-          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
-          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          NOTARY_KEY_P8_BASE64: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
         run: |
           set -uo pipefail
           missing=""
-          for name in MACOS_CERT_P12_BASE64 MACOS_CERT_PASSWORD \
-                      APPLE_API_KEY_P8_BASE64 APPLE_API_KEY_ID APPLE_API_ISSUER_ID; do
+          for name in MACOS_CERTIFICATE_P12_BASE64 MACOS_CERTIFICATE_PASSWORD \
+                      NOTARY_KEY_P8_BASE64 NOTARY_KEY_ID NOTARY_ISSUER_ID; do
             eval "value=\${$name:-}"
             [ -n "$value" ] || missing="$missing $name"
           done
@@ -227,8 +227,8 @@ jobs:
       # masked, but a traced shell is how masked values end up in logs anyway.
       - name: Import the Developer ID certificate
         env:
-          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
-          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set +x
@@ -236,11 +236,26 @@ jobs:
           KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
           P12="$RUNNER_TEMP/cert.p12"
 
-          echo "$MACOS_CERT_P12_BASE64" | base64 --decode > "$P12"
+          echo "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$P12"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security import "$P12" -k "$KEYCHAIN" -P "$MACOS_CERT_PASSWORD" \
+
+          # THE APPLE INTERMEDIATE, AND IT IS NOT OPTIONAL.
+          #
+          # A leaf certificate with no chain to a trusted root is not a signing
+          # identity, and the symptom is the least helpful message in this whole
+          # process: `security find-identity` reports "0 valid identities found"
+          # while the certificate is demonstrably present in the keychain. It
+          # cost real time locally before anyone realised the import had worked
+          # and the chain had not. A fresh runner has no Apple intermediates, so
+          # CI would hit exactly this every time.
+          curl -fsSL -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" \
+            https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$KEYCHAIN" \
+            -T /usr/bin/codesign || true
+
+          security import "$P12" -k "$KEYCHAIN" -P "$MACOS_CERTIFICATE_PASSWORD" \
             -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
             -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
@@ -248,16 +263,45 @@ jobs:
           rm -f "$P12"
 
           # An import that "succeeded" without producing a usable identity is
-          # the failure this catches — it is what a cert with no matching
-          # private key looks like, and it would otherwise surface much later as
-          # an opaque electron-builder error.
+          # what BOTH known traps look like from here: a cert without its
+          # private key, or a cert whose chain is missing. Checking the count
+          # rather than the import's exit status is the difference between
+          # failing here with a named cause and failing twenty minutes later
+          # inside electron-builder with an opaque one.
           COUNT=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep -c 'Developer ID Application' || true)
           if [ "$COUNT" -lt 1 ]; then
             echo "::error::the certificate imported but no Developer ID Application identity is usable."
-            echo "::error::MACOS_CERT_P12_BASE64 probably holds a certificate without its private key. See SIGNING.md."
+            echo "::error::Two known causes, both of which look like this: the p12 holds a certificate"
+            echo "::error::without its private key, or the Apple intermediate is missing so the leaf has"
+            echo "::error::no chain. See SIGNING.md, 'Two traps'."
             exit 1
           fi
           echo "usable Developer ID identities: $COUNT"
+
+      # Fail on bad notary credentials in seconds, not after a twenty-minute
+      # package-and-upload. `notarytool history` on a fresh key prints "No
+      # submission history." and exits 0 — that IS the success case, and it is
+      # the cheapest possible proof that the key, the key id and the issuer id
+      # agree with each other and with Apple.
+      - name: The notary credentials must authenticate
+        env:
+          NOTARY_KEY_P8_BASE64: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          set +x
+          set -euo pipefail
+          KEY="$RUNNER_TEMP/notary.p8"
+          echo "$NOTARY_KEY_P8_BASE64" | base64 --decode > "$KEY"
+          if ! xcrun notarytool history --key "$KEY" \
+                 --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" >/dev/null 2>&1; then
+            rm -f "$KEY"
+            echo "::error::the notary credentials did not authenticate with Apple."
+            echo "::error::Check NOTARY_KEY_P8_BASE64, NOTARY_KEY_ID and NOTARY_ISSUER_ID agree with each other. See SIGNING.md."
+            exit 1
+          fi
+          rm -f "$KEY"
+          echo "notary credentials authenticate"
 
       - name: Package and publish
         env:
@@ -265,9 +309,9 @@ jobs:
           # electron-builder reads these three for notarization. APPLE_API_KEY
           # is a PATH, not the key itself.
           APPLE_API_KEY: ${{ runner.temp }}/apple-api-key.p8
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER_ID }}
-          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
+          NOTARY_KEY_P8_BASE64: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
           CSC_KEYCHAIN: ${{ runner.temp }}/signing.keychain-db
           # Quoted: the identity contains a colon, which an unquoted YAML scalar
           # reads as a mapping. Caught by parsing this file locally rather than
@@ -276,7 +320,7 @@ jobs:
         run: |
           set +x
           set -euo pipefail
-          echo "$APPLE_API_KEY_P8_BASE64" | base64 --decode > "$APPLE_API_KEY"
+          echo "$NOTARY_KEY_P8_BASE64" | base64 --decode > "$APPLE_API_KEY"
           npm run dist -- --mac --publish always \
             -c.mac.identity="$SIGN_IDENTITY" \
             -c.mac.notarize=true

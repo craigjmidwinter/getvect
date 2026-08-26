@@ -354,13 +354,35 @@
           switches on.</p>
       </div>
 
-      <div class="callout callout--flat">
+      <div class="callout callout--flat" id="privacy">
         <span class="tag">What it does on the network</span>
         <p>Two network touchpoints, both in your control: optional
           <a href="#enhance">AI Enhance</a>, and a once-per-launch update check against GitHub
           Releases (disable with <code>GETVECT_NO_UPDATE_CHECK=1</code>). The check asks one
           question, sends no identifier, and fails silently when you are offline. Everything
           else — ingest, tracing, preview and every export — never leaves the machine.</p>
+      </div>
+
+      <!--
+        SignPath Foundation requires a section using the exact term "Code signing
+        policy" on the home and download pages, carrying the roles and a privacy
+        policy. The prescribed attribution string is deliberately absent until
+        signing is actually live — it is present tense about a service not yet
+        rendered, and they will download the unsigned exe and see that.
+      -->
+      <div class="callout callout--flat" id="code-signing-policy">
+        <span class="tag">Code signing policy</span>
+        <p>Free code signing for Windows builds is being arranged through the
+          <a href="https://signpath.org/">SignPath Foundation</a>. It is not in place yet:
+          today's <code>.exe</code> is unsigned and SmartScreen will warn. macOS is a separate
+          certificate and is not covered by SignPath.</p>
+        <p><strong>Roles.</strong> Committers and reviewers: Craig Midwinter. Approvers:
+          Craig Midwinter. GetVect is a single-maintainer project; releases are cut from
+          tags by <a href="https://github.com/craigjmidwinter/getvect/blob/main/.github/workflows/release.yml">a
+          workflow</a> that refuses to publish an artefact it cannot verify.</p>
+        <p><strong>Privacy policy:</strong> <a href="#privacy">what GetVect does on the
+          network</a>, stated in full above — two touchpoints, both disclosed, one opt-in and
+          one opt-out.</p>
       </div>
     </div>
   </section>

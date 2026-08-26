@@ -88,6 +88,15 @@ if hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT" >/dev/null 2>&
     echo "── signing authority"
     codesign -dvvv "$APP" 2>&1 | grep -E 'Authority|TeamIdentifier|Timestamp' | sed 's/^/   /' || true
     echo
+
+    # Identity metadata, which SignPath requires to be set AND enforced. It runs
+    # here so it is checked on the artefact being uploaded and again on the one
+    # re-downloaded from the release, exactly like the signature checks.
+    HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if ! bash "$HERE/verify-artifact-metadata.sh" "$APP" 2>&1 | sed 's/^/   /'; then
+      fail=1
+    fi
+    echo
   else
     echo "::error::no .app found inside $DMG"
     fail=1

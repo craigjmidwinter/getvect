@@ -13,130 +13,158 @@ certificate, no API key. This is the release path only.
 ## The shape of the gate, before the list of secrets
 
 The release workflow does not "have a signing step". **An unsigned artefact
-cannot ship.** Three properties, each of which is a thing that has gone wrong in
-real projects:
+cannot ship.** Three properties, each one a thing that has gone wrong in real
+projects:
 
 1. **The artefact is verified, not the build.** After packaging, the finished
    `.dmg` is checked with `codesign --verify --deep --strict`, `spctl -a -t
-   install` and `xcrun stapler validate`, plus the same three against the `.app`
-   inside it. *A signing step that ran* and *a file that is signed* are different
-   claims, and only the file can answer the second.
+   install` and `xcrun stapler validate` — plus the same three against the
+   `.app` inside it, because a signed dmg can carry an unsigned app and the
+   outer signature says nothing about the inner one. *A signing step that ran*
+   and *a file that is signed* are different claims.
 
 2. **Absent credentials fail; they never skip.** The credential check has no
    `if:` on it. The usual way this gate breaks is a condition like
-   `if: secrets.CSC_LINK != ''` guarding the signing steps — which cannot tell
-   "this is not a release" from "someone deleted the secret", and publishes an
-   unsigned build with a green check in the second case. This workflow only runs
-   on a release tag, so there is no legitimate path that does not need to sign.
+   `if: secrets.X != ''` guarding the signing steps — which cannot tell "this is
+   not a release" from "someone deleted the secret", and publishes an unsigned
+   build with a green check in the second case. This workflow only runs on a
+   release tag, so there is no legitimate path that does not need to sign.
 
-3. **The last check runs on the re-downloaded asset.** A separate job downloads
-   the `.dmg` from the release and runs the same script against it. The file that
-   was verified and the file a user gets are only the same file if you check.
-   It runs while the release is still a draft, so a failure means nothing was
-   ever public.
+3. **The last check runs on the re-downloaded asset.** A separate macOS job
+   downloads the `.dmg` from the release and runs the same script against it.
+   The file that was verified and the file a user gets are only the same file if
+   you check. It runs while the release is still a draft, so a failure there
+   means nothing was ever public.
 
-The three checks live in `scripts/verify-signed-dmg.sh` — one script, run twice,
-so the pre-upload and post-download gates cannot drift apart.
+The checks live in `scripts/verify-signed-dmg.sh` — one script, run twice, so the
+pre-upload and post-download gates cannot drift apart.
 
 ---
 
 ## The five secrets
 
 Set these as **repository secrets** (Settings → Secrets and variables → Actions).
+The exact names matter; the workflow looks for these and nothing else.
 
-| Secret | What it is | Who has it |
+| Secret | Value | Where it comes from |
 |---|---|---|
-| `MACOS_CERT_P12_BASE64` | The Developer ID certificate *and its private key*, as base64 | derived from a file on Craig's machine — command below |
-| `MACOS_CERT_PASSWORD` | The password protecting that `.p12` | **Craig — nobody else knows it** |
-| `APPLE_API_KEY_P8_BASE64` | The App Store Connect API key file (`AuthKey_XXXX.p8`), base64 | **Craig — downloadable once, from Apple** |
-| `APPLE_API_KEY_ID` | That key's ID, e.g. `2X9R4ABCDE` | **Craig — from Apple** |
-| `APPLE_API_ISSUER_ID` | The issuer UUID for the team | **Craig — from Apple** |
-
-**On "two secrets".** This was scoped as two, and it is honestly five. The API key
-is *three* values because Apple issues it as three — the key ID, the issuer ID
-and the `.p8` file — and collapsing them loses the `.p8` entirely. The
-certificate is two: the blob and the password that protects it. Only the last
-four require information nobody else has; the first is mechanical.
-
-### Before setting anything: the certificate needs a real password
-
-As of 2026-08-25 the `.p12` at `~/.apple-signing/developer_id.p12` **opens with
-an empty password.** Verified:
+| `MACOS_CERTIFICATE_P12_BASE64` | contents of `~/.apple-signing/developer_id_p12_base64.txt` | the exported Developer ID `.p12`, base64 |
+| `MACOS_CERTIFICATE_PASSWORD` | contents of `~/.apple-signing/p12_password.txt` | the password that `.p12` was exported with |
+| `NOTARY_KEY_P8_BASE64` | contents of `~/.apple-signing/authkey_p8_base64.txt` | the App Store Connect API key, base64 |
+| `NOTARY_KEY_ID` | `6RS2C83FF9` | App Store Connect → Integrations → Keys |
+| `NOTARY_ISSUER_ID` | `c80776f3-5436-4638-97a7-4545770309a8` | the same page, issuer ID |
 
 ```bash
-openssl pkcs12 -in ~/.apple-signing/developer_id.p12 -passin pass: -nokeys -noout   # succeeds
+gh secret set MACOS_CERTIFICATE_P12_BASE64 --repo craigjmidwinter/getvect < ~/.apple-signing/developer_id_p12_base64.txt
+gh secret set MACOS_CERTIFICATE_PASSWORD   --repo craigjmidwinter/getvect < ~/.apple-signing/p12_password.txt
+gh secret set NOTARY_KEY_P8_BASE64         --repo craigjmidwinter/getvect < ~/.apple-signing/authkey_p8_base64.txt
+printf '6RS2C83FF9' | gh secret set NOTARY_KEY_ID --repo craigjmidwinter/getvect
+printf 'c80776f3-5436-4638-97a7-4545770309a8' | gh secret set NOTARY_ISSUER_ID --repo craigjmidwinter/getvect
 ```
 
-That is a Developer ID private key valid until 2031 protected by nothing. It is
-survivable while it sits in a `0600` file in a `0700` directory on one machine.
-**It stops being survivable the moment it is base64'd into a CI secret**, because
-an empty password means the blob alone is enough to sign as Craig.
+**On the count.** The last two are identifiers rather than secrets — they appear
+in Apple's own UI and leak nothing — and they are stored as secrets anyway so
+there is one place to look rather than two. That is why this is five entries and
+was described as four: the two identifiers are one logical thing (the notary key)
+and three separate values, because Apple issues it as three. Five names to paste.
 
-So the order matters:
-
-```bash
-# 1. Re-export with a real password. You will be prompted twice for a new one;
-#    that value becomes MACOS_CERT_PASSWORD.
-openssl pkcs12 -in ~/.apple-signing/developer_id.p12 -passin pass: -nodes \
-  | openssl pkcs12 -export -out ~/.apple-signing/developer_id-protected.p12
-
-# 2. Confirm the new file does NOT open with an empty password.
-openssl pkcs12 -in ~/.apple-signing/developer_id-protected.p12 -passin pass: -nokeys -noout \
-  && echo "STILL UNPROTECTED — do not upload this" \
-  || echo "protected, good"
-
-# 3. Only now, remove the unprotected original.
-rm ~/.apple-signing/developer_id.p12
-```
-
-The private key does pair with the issued certificate — checked without a
-keychain prompt, by comparing moduli:
-
-```bash
-openssl x509 -in ~/.apple-signing/developerID_application.cer -inform DER -noout -modulus | openssl md5
-openssl rsa  -in ~/.apple-signing/developer_id.key -noout -modulus | openssl md5
-# identical => importing produces a working signing identity; the CSR does not need redoing
-```
-
-### Setting them
-
-```bash
-# The certificate blob (mechanical — no information only you have):
-gh secret set MACOS_CERT_P12_BASE64 --repo craigjmidwinter/getvect \
-  < <(base64 -i ~/.apple-signing/developer_id-protected.p12)
-
-# The password you just chose:
-gh secret set MACOS_CERT_PASSWORD --repo craigjmidwinter/getvect
-
-# The App Store Connect key, from App Store Connect → Users and Access → Integrations → Keys.
-# The .p8 downloads exactly once; if it is lost, revoke and make a new one.
-gh secret set APPLE_API_KEY_P8_BASE64 --repo craigjmidwinter/getvect \
-  < <(base64 -i ~/Downloads/AuthKey_XXXXXXXXXX.p8)
-gh secret set APPLE_API_KEY_ID --repo craigjmidwinter/getvect       # e.g. 2X9R4ABCDE
-gh secret set APPLE_API_ISSUER_ID --repo craigjmidwinter/getvect    # the issuer UUID
-```
-
-The signing identity string itself is **not** a secret and is not one of the
-five. It defaults to `Developer ID Application: Craig Midwinter (6UV93L24YL)` in
-the workflow, and can be overridden with a repository *variable*
-`MACOS_SIGN_IDENTITY` if the certificate is ever reissued under a different name.
+The signing identity string is **not** among them. It defaults in the workflow to
+`Developer ID Application: Craig Midwinter (6UV93L24YL)` and can be overridden
+with a repository *variable* `MACOS_SIGN_IDENTITY` if the certificate is ever
+reissued under a different name.
 
 ---
 
-## What happens on a release tag until these exist
+## Two traps, both of which produce a misleading error
 
-**The release fails, by design, at the first step of the macOS job**, before
-anything is built:
+Both were hit for real during setup. Both cost time because the message points
+somewhere other than the cause.
+
+### 1. The `.p12` must be exported with OpenSSL's `-legacy` flag
+
+Without it, `security import` fails with:
+
+```
+MAC verification failed during PKCS12 import (wrong password?)
+```
+
+**The password is fine.** OpenSSL 3 defaults to a MAC algorithm that macOS's
+`security` cannot read, and the error blames the password — so the natural
+response is to re-type, re-export and re-check a password that was never wrong.
+
+```bash
+openssl pkcs12 -export -legacy -out developer_id.p12 \
+  -inkey developer_id.key -in developer_id.pem
+```
+
+### 2. A certificate with no chain is not an identity
+
+After a successful import, `security find-identity -v -p codesigning` can still
+report:
+
+```
+0 valid identities found
+```
+
+with the certificate plainly present in the keychain. The leaf needs Apple's
+intermediate to chain to a trusted root, and **a fresh CI runner has no Apple
+intermediates at all**, so CI hits this every time unless it is installed:
+
+```bash
+curl -fsSLO https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+security import DeveloperIDG2CA.cer -k "$KEYCHAIN" -T /usr/bin/codesign
+```
+
+The release workflow does this before importing the `.p12`, and then **checks the
+identity count rather than the import's exit status** — because both traps look
+identical from the outside: an import that succeeded and produced nothing usable.
+Failing there with a named cause is the difference between a two-minute fix and
+twenty minutes of opaque electron-builder output.
+
+---
+
+## Verifying the credentials without a release
+
+**The signing identity:**
+
+```bash
+security find-identity -v -p codesigning
+# 1) CBA6881A6604D4A497F9D06195DD0CD5AA5DBDD6 "Developer ID Application: Craig Midwinter (6UV93L24YL)"
+#    1 valid identities found
+```
+
+**The notary credentials** — and this is the check the workflow reuses, because it
+is the cheapest proof that the key, key id and issuer id agree with each other
+and with Apple:
+
+```bash
+xcrun notarytool history --key AuthKey.p8 --key-id 6RS2C83FF9 \
+  --issuer c80776f3-5436-4638-97a7-4545770309a8
+# No submission history.
+```
+
+**"No submission history." with exit 0 is the success case.** A fresh key has
+never submitted anything; what is being tested is that Apple accepted the
+credentials at all. Reading that as a failure is the obvious mistake and it is
+why it is written down.
+
+---
+
+## What happens on a release tag if a secret is missing
+
+**The release fails at the first step of the macOS job**, before anything is
+built:
 
 ```
 ::error::macOS release signing is not configured. Missing repository secret(s): …
 ::error::A release cannot be published unsigned. See SIGNING.md for what each one is and how to set it.
 ```
 
-That failure is the gate working. It was induced and confirmed before any
-credential existed — with all five absent, and with four present and one absent,
-which is the likelier accident — and confirmed to pass with all five set, because
-a gate that cannot pass is as broken as one that cannot fail.
+That failure is the gate working. It was induced three ways before any credential
+existed: all five absent, **four present and one absent** — the likelier accident,
+since nobody deletes five secrets but somebody rotates one and mistypes the name —
+and all five present, which must pass, because a gate that cannot pass sends the
+next person to rip out working code to satisfy it.
 
 ## Checking a build by hand
 
@@ -144,10 +172,10 @@ a gate that cannot pass is as broken as one that cannot fail.
 scripts/verify-signed-dmg.sh release/GetVect-0.1.1-arm64.dmg
 ```
 
-Against today's unsigned builds this **fails**, and should.
+Against an unsigned build this fails with six distinct reasons and exits 1.
 
 ## Windows
 
-Windows executables are not signed by this workflow. That is a separate track —
-see the SignPath Foundation note on the site's download section. Nothing in this
-file applies to the `.exe`.
+Windows executables are not signed by this workflow, and nothing in this file
+applies to the `.exe`. That is a separate track — see the **Code signing policy**
+section on the site.
