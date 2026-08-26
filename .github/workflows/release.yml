@@ -410,10 +410,69 @@ jobs:
       # Writes `latest.yml` into the same draft release the mac job is writing
       # `latest-mac.yml` into. electron-updater picks its feed by platform, so
       # both must be present on one release for both platforms to see it.
+      # WINDOWS SIGNING: PRESENT, AND OFF UNTIL A PROVIDER EXISTS.
+      #
+      # There is no Authenticode certificate yet. The rule the macOS half is held
+      # to — absent credentials on a release tag is a hard failure, never a skip —
+      # is right, and applying it to Windows *today* would not prevent shipping
+      # unsigned, it would prevent shipping at all, because there is no credential
+      # to supply. That is a release freeze, not a gate.
+      #
+      # So the switch is an explicit repository VARIABLE, `WINDOWS_SIGNING`, and
+      # the distinction from the antipattern is the whole point:
+      #
+      #   `if: secrets.X != ''`   cannot tell "not configured" from "someone
+      #                           deleted the secret" — it fails open, silently.
+      #   `vars.WINDOWS_SIGNING`  is a deliberate, version-controlled declaration
+      #                           that a human set. A deleted secret while it is
+      #                           on is a HARD FAILURE, exactly like macOS.
+      #
+      # Turning it on without wiring a provider is also safe: the verification
+      # below then fails, which is correct, because the artefact would not be
+      # signed. There is no configuration of this that ships an unsigned exe
+      # while claiming otherwise.
+      - name: Windows signing policy
+        env:
+          WINDOWS_SIGNING: ${{ vars.WINDOWS_SIGNING }}
+          WINDOWS_CERT_PRESENT: ${{ secrets.WINDOWS_SIGNING_TOKEN != '' }}
+        run: |
+          set -uo pipefail
+          if [ "${WINDOWS_SIGNING:-}" != "enabled" ]; then
+            echo "::warning::Windows signing is not enabled — this release ships an UNSIGNED .exe."
+            echo "::warning::SmartScreen will warn users. The release notes and the download page say so."
+            exit 0
+          fi
+          if [ "$WINDOWS_CERT_PRESENT" != "true" ]; then
+            echo "::error::WINDOWS_SIGNING is enabled but the signing credential is missing."
+            echo "::error::A release cannot be published unsigned. Set the credential or unset the variable deliberately."
+            exit 1
+          fi
+          echo "windows signing enabled and credential present"
+
       - name: Package and publish
         run: npm run dist -- --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Same rule as the dmg: verify the artefact, not the step that made it.
+      # Guarded on the VARIABLE, never on the secret — see above.
+      - name: The exe must carry a valid signature
+        if: vars.WINDOWS_SIGNING == 'enabled'
+        shell: pwsh
+        run: |
+          $exes = Get-ChildItem -Path release -Filter *.exe -ErrorAction SilentlyContinue
+          if (-not $exes) { Write-Error "::error::no .exe in release/ to verify"; exit 1 }
+          $failed = $false
+          foreach ($exe in $exes) {
+            $sig = Get-AuthenticodeSignature $exe.FullName
+            Write-Host "$($exe.Name): $($sig.Status)"
+            Write-Host "  signer: $($sig.SignerCertificate.Subject)"
+            if ($sig.Status -ne 'Valid') {
+              Write-Host "::error::$($exe.Name) signature is $($sig.Status), expected Valid"
+              $failed = $true
+            }
+          }
+          if ($failed) { exit 1 }
 
   verify-download:
     name: verify · the asset a user gets

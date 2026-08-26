@@ -189,6 +189,36 @@ since nobody deletes five secrets but somebody rotates one and mistypes the name
 and all five present, which must pass, because a gate that cannot pass sends the
 next person to rip out working code to satisfy it.
 
+## WHEN THE SITE MAY SAY "SIGNED" — a binding sequencing rule
+
+The site and README currently say the published macOS build is unsigned. **That
+stays until CI has proven otherwise end to end**, which means all of:
+
+1. a real `notarytool` submission that returns **Accepted**,
+2. the ticket **stapled**,
+3. `xcrun stapler validate` passing on the asset **re-downloaded from the
+   published release**.
+
+**Not when the workflow is wired. Not when it runs green locally. Not when the
+secrets exist.** A local signed build proves the pipeline can sign; it does not
+prove that what a user downloads is signed, and the claim on the site is about
+what a user downloads. **The evidence has to be the file a user gets.**
+
+A sibling artefact that exercises the same code path is exactly convincing
+enough to stop you checking the real one — which is the failure this repo has hit
+repeatedly: an injector verified on a build directory while the deploy served a
+hand-copied snapshot, a favicon verified at 512px while the tab drew 16.
+
+**When it does pass, change the copy in the SAME commit that records the proof**,
+so the claim and its evidence cannot drift apart, and write what a reader can
+check themselves rather than an assertion:
+
+> Signed with Developer ID, Team `6UV93L24YL`, and notarized by Apple. Verify it
+> yourself: `spctl -a -t install -vv GetVect-<version>-arm64.dmg` should say
+> `accepted`, and `codesign -dvvv` should show that team identifier.
+
+A claim a reader can run beats a claim a reader must believe.
+
 ## Checking a build by hand
 
 ```bash
