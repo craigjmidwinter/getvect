@@ -37,9 +37,8 @@ const S = engine.DEFAULT_SETTINGS;
 /**
  * Defaults with every optional cleanup off.
  *
- * `DEFAULT_SETTINGS` ships Smart anti-aliasing on (the reference product does too —
- * fixtures/reference/ARTWORK.md — and it is what keeps the default output
- * economical). Its index-image majority pass is also a very effective impulse
+ * `DEFAULT_SETTINGS` ships Smart anti-aliasing on — it is what keeps the default
+ * output economical; fixtures/reference/ARTWORK.md has the measurement. Its index-image majority pass is also a very effective impulse
  * remover, so on the speckled fixture the noise-removal controls have nothing
  * left to remove and cannot be observed at all. Checks that ask "does THIS
  * control do something" isolate it here; checks about the shipped configuration
@@ -295,33 +294,29 @@ test('[B3] the sort order reorders layers without changing the colour set', asyn
 test('[B3] the colour budget is spent on colours the user can tell apart', async () => {
   /**
    * `colorCount` is the headline control of the product, so a shortfall has to
-   * be *earned*. The bar this check enforces is the one the reference product's own
-   * output can be held to, because it is read off that output:
+   * be *earned*. The floor is a property of the ARTWORK, not of any particular
+   * tracer: at an 8-colour budget `fox-sticker.png` contains five regions a
+   * person would name as separate colours — white, pink, orange, brown, black —
+   * plus the cyan eyes, which are small enough that losing them is a known
+   * defect class rather than a palette shortfall (issue #2). Five is therefore
+   * the floor a trace has to clear to be describable as an 8-colour trace at
+   * all, and it is a floor rather than a target: today we deliver SIX distinct
+   * `<g fill>` layers on this image, closest pair 121.3 apart in Euclidean RGB,
+   * which is well clear of the 32-unit halo window `nearDuplicateFillPairs`
+   * calls a duplicate.
    *
-   *   - `fixtures/reference/fox-sticker-clipart-8colors-smartAA.svg` — real,
-   *     captured at an 8-colour palette: SEVEN `<g fill>` groups, closest pair
-   *     8.0 apart (Euclidean RGB).
-   *
-   * Seven is not the bar, because two of those seven are inside the 32-unit
-   * halo window `nearDuplicateFillPairs` calls a duplicate — rgb(125,64,29)
-   * beside rgb(116,58,28) (10.9) and rgb(8,0,0) beside rgb(0,0,0) (8.0), two
-   * browns and a doubled black. Fold those the way `maxNearDuplicateFills: 0`
-   * makes us fold them and the reference product's own capture is FIVE
-   * distinguishable colours: white, pink, orange, brown, black. That is the
-   * floor, and it is the number we deliver.
-   *
-   * An earlier revision of this check demanded `min(requested, found) - 1` at
-   * every budget. That bar is not reachable together with the repo's own
+   * An earlier revision demanded `min(requested, found) - 1` at every budget.
+   * That bar is not reachable together with the repo's own
    * `maxNearDuplicateFills: 0` gate: the clusters this image yields at a large
    * budget contain pairs inside the halo window, so a palette of all-but-one of
-   * them ships duplicates. The reference product resolves the tension by shipping
-   * the duplicates; we resolve it by folding them, which is what every other
-   * check in this repo asks for. Only one of the two bars can stand, and this
-   * is the one with an exemplar behind it.
+   * them ships duplicates. Shipping the duplicates and folding them are the two
+   * available resolutions; we fold, which is what every other check in this
+   * repo asks for. Only one of the two bars can stand, and this is the one that
+   * survives the folding gate.
    */
   const euclid = (a, b) => Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
   const HALO = 32;
-  // Reference-product group count at the captured budget, deduped at HALO — see above.
+  // Colours the artwork itself carries at this budget, deduped at HALO — see above.
   const floors = { [EXEMPLAR_COLORS]: 5 };
   /**
    * What the quantizer itself finds before any fold, measured on this artwork.
@@ -528,8 +523,8 @@ test('[B4] an explicit anti-aliasing choice survives the Enhance bundle', async 
    * *ignoring* `settings.antiAliasing`: with Enhance ticked, `off` and `smart`
    * produced byte-identical documents and only `mid` differed. The UI still shows whatever the user chose, so "Anti-aliasing:
    * Off" with Enhance on tells the reader the opposite of what the engine did —
-   * and `fixtures/reference/ARTWORK.md` step ③ records the reference product
-   * exposing Enhance and Anti-aliasing as independent controls.
+   * and the two are separate controls in the UI, so silently coupling them
+   * makes the panel lie about the document it produced.
    *
    * Either the explicit value wins, or the renderer must stop offering it while
    * Enhance is on. The engine half of that choice is this contract.
@@ -793,7 +788,7 @@ test('[B6] the stroked result style outlines every layer instead of filling it',
 
 // --- D1: document structure -------------------------------------------------
 
-test('[D1] colour layers use the rgb(r,g,b) notation the reference product emits', async () => {
+test('[D1] colour layers use rgb(r,g,b) notation, which every editor parses', async () => {
   const r = await run(flat, {});
   const groups = [...r.svg.matchAll(/<g[^>]*\bfill="([^"]+)"/g)].map((m) => m[1]);
   assert.ok(groups.length > 1, 'expected several colour layers');

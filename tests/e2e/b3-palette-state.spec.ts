@@ -75,9 +75,9 @@ test('[B3] the colour-count hint names the real reason the palette is short', as
   await waitForReady(page);
 
   // Every cleanup off first — Smart anti-aliasing is on by default (it is what
-  // the reference product does, and what keeps the default output economical), and
-  // its near-duplicate colour fold is itself a settings-shortfall. The baseline
-  // this check needs is the one with nothing folding.
+  // keeps the default output economical), and its near-duplicate colour fold is
+  // itself a settings-shortfall. The baseline this check needs is the one with
+  // nothing folding.
   await setSelect(page, TESTIDS.settingAntiAliasing, 'off');
   await waitForReady(page);
   await pickSize(page, 16);

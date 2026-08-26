@@ -77,8 +77,9 @@ test('[quality-bar] a transparent PNG does not export with an invented backgroun
   await waitForReady(page);
   const svg = await fs.readFile(await exportAs(page, 'svg', exportDir), 'utf8');
 
-  // A full-bleed rect in a colour the artwork does not contain is the signature:
-  // the reference product's output for this file has a white/transparent background.
+  // A full-bleed rect in a colour the artwork does not contain is the
+  // signature of the defect: this file's background is transparent, so any
+  // opaque backdrop covering the whole canvas was invented by the decode.
   const backdrop = /<g[^>]*\bfill="([^"]+)"[^>]*>\s*<rect\b[^>]*width="1024"[^>]*height="1024"/.exec(
     svg,
   );

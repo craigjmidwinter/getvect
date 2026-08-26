@@ -124,8 +124,9 @@ test('[D4] the saved-file confirmation is cleared when every image is removed', 
 });
 
 test('[D4] the export row reports the size of the document it will write', async ({ page }) => {
-  // The reference product shows a live file-size label next to Download
-  // (ARTWORK.md, "File size label (e.g. 223KB)").
+  // A live file-size label next to Download: the number is the reason someone
+  // changes a setting before exporting, so it has to describe the document the
+  // button will actually write.
   await loadViaPicker(page, FIXTURE.flat512);
   await waitForReady(page);
 

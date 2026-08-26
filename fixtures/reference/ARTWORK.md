@@ -39,17 +39,26 @@ trace that paints the alpha-0 background opaque scores ~255 on
 Its cyan eyes, `rgb(72,182,210)`, are dropped by our engine in every configuration — the
 same class of finding as Frankie's, and also in issue #2.
 
-## The anti-aliasing finding
+## The anti-aliasing result
 
-The single measurement that shaped the engine most, replicated across three subjects at
-otherwise identical settings:
+The single measurement that shaped the engine most. Our engine, Clipart at 8 colours,
+counted with `countPaths` / `countSubPaths` from `instruments/lib/metrics.mjs`:
 
-| subject | AA off | Smart AA | path reduction |
+| subject | AA off | Smart AA | sub-paths |
 | --- | --- | --- | --- |
-| the fox | 637 paths / 189 KB | 63 paths / 35.5 KB | −90 % |
-| Frankie | 758 paths / 132.7 KB | 41 paths / 22.3 KB | −94.6 % |
-| an earlier pale-coat variant of Frankie (not checked in) | 354 paths | 67 paths | −81 % |
+| the fox | 8 paths / 90 sub-paths / 23.6 KB | 6 paths / 29 sub-paths / 16.5 KB | −68 % |
+| Frankie | 8 paths / 159 sub-paths / 32.2 KB | 7 paths / 42 sub-paths / 17.4 KB | −74 % |
+
+Sub-paths are the unit that matters here, not `<path>` elements: our SVG emits one path per
+colour layer, so the element count barely moves while the slivers inside it collapse. Those
+slivers are what a stair-stepped edge generates, and shedding them is most of the difference
+between a file an illustrator can edit and one they delete.
 
 This is why Smart is the default (`src/engine/index.ts DEFAULT_SETTINGS.antiAliasing`) and
 why shipping it off meant the configuration a user actually gets was the one nothing had
 been tuned for.
+
+An earlier version of this table carried larger numbers against a different unit and a
+different engine, and they were not all measured here. These are, and the two lines above
+say exactly what to run to get them again — a number in a doc that nobody can reproduce is
+a claim, not a measurement.

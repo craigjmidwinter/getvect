@@ -6,10 +6,9 @@
  *
  *  - B2: with the Drawing preset selected the output is two-tone, but the
  *    COLORS slider still reads 4 and all eleven input-palette sizes stay live.
- *    `fixtures/reference/ARTWORK.md` records that the reference product swaps
- *    those controls out for Black/White checkboxes plus the luminance
- *    histogram when Drawing is active. Whatever the replacement, a control
- *    that cannot affect the result must not stay enabled.
+ *    Swapping them for Black/White checkboxes plus the luminance histogram
+ *    is one way to fix it. Whatever the replacement, a control that cannot
+ *    affect the result must not stay enabled.
  *  - B3: at the app's *default* window size the last two output controls
  *    (merge threshold, sort order) sit below the viewport — the panel scrolls,
  *    so they are reachable, but the thing that stays in view is a checkbox
@@ -467,10 +466,10 @@ test('[B3] every output colour group is visible at the default palette size', as
   /**
    * The check above this one only requires the FIRST toggle to be on screen,
    * and that is how an 8-colour output shipped with its last group (#7C6F63)
-   * half-hidden behind a scrollbar at the app's own default window size. The
-   * reference product shows the output colour groups as a row of circles you
-   * can see at a glance and drag between; a list you have to scroll to learn
-   * the length of is not the same control.
+   * half-hidden behind a scrollbar at the app's own default window size. A
+   * list you have to scroll to learn the length of is a different control from
+   * one you can take in at a glance — the user cannot act on groups they do
+   * not know are there.
    *
    * Default settings on real artwork — i.e. what a user gets by opening the app
    * and dropping a file — and every group has to be reachable where it is

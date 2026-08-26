@@ -4,8 +4,8 @@ import { test, expect, tid, TESTIDS, FIXTURE, loadViaPicker, waitForReady } from
  * REFERENCE B1 — "auto-vectorizes on load; visible progress state; UI stays
  * responsive".
  *
- * Responsive also means *stable*: the reference product keeps its control surface in
- * place while it works. Ours unmounts the palette editor whenever the selected
+ * Responsive also means *stable*: the control surface has to stay put while
+ * the app works. Ours unmounts the palette editor whenever the selected
  * image has no result yet, so the settings row and the preview pane jump by
  * ~100px twice in under 100ms on every image switch. That is measurable, so it
  * is measured.

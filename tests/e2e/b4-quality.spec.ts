@@ -19,8 +19,8 @@ import {
  * (Off/Low/High) and Anti-aliasing (Off/Smart/Mid).
  *
  * The enhance toggle is covered in b-engine.spec.ts; what is checked here is
- * the rest of the group and the two behaviours ARTWORK.md recorded from the
- * reference product: a busy patterned background collapses toward one colour, and
+ * the rest of the group and the two behaviours that make the difference
+ * visible: a busy patterned background collapses toward one colour, and
  * antialiased edges do not spawn their own near-duplicate colour layers.
  */
 

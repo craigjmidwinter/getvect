@@ -16,9 +16,9 @@ import {
 /**
  * REFERENCE B6 — result styles: Filled Layers vs Stroked Layers.
  *
- * The reference product's right pane leads with this pair ("color-filled vector
- * elements" vs "color-bordered vector elements"). It has to reach the exported
- * document, not just the preview CSS.
+ * Filled vs bordered elements is the first choice a user makes about what the
+ * output IS, so it has to reach the exported document, not just the preview
+ * CSS — a style that only exists on screen is a lie about the file.
  */
 
 test('[B6] both result styles are offered and filled is the default', async ({ page }) => {

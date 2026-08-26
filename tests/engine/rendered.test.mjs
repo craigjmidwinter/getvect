@@ -60,9 +60,8 @@ const S = engine.DEFAULT_SETTINGS;
 /**
  * Defaults with every optional cleanup off.
  *
- * `DEFAULT_SETTINGS` ships Smart anti-aliasing on (the reference product does too —
- * fixtures/reference/ARTWORK.md — and it is what keeps the default output
- * economical). Its index-image majority pass is also a very effective impulse
+ * `DEFAULT_SETTINGS` ships Smart anti-aliasing on — it is what keeps the default
+ * output economical; fixtures/reference/ARTWORK.md has the measurement. Its index-image majority pass is also a very effective impulse
  * remover, so on the speckled fixture the noise-removal controls have nothing
  * left to remove and cannot be observed at all. Checks that ask "does THIS
  * control move the picture" isolate it here; checks about the shipped
@@ -158,11 +157,11 @@ test('[B2] smoothing changes the shape of a curved boundary', async () => {
 test('[quality] outlines are curve-fitted, not a pixel staircase', async () => {
   const r = await engine.vectorize(foxIn, { ...S, ...EXEMPLAR_SETTINGS });
   const ratio = curveCommandRatio(r.svg);
-  // The reference product output for this artwork scores 0.671; ours is 1.000.
+  // Ours scores 1.000 on this artwork: every boundary segment is a curve command.
   assert.ok(
     ratio >= 0.65,
-    `curve command ratio ${ratio.toFixed(3)} — the exemplar scores 0.671; ` +
-      'runs of h/v/l are a staircase however few <path> elements they hide in',
+    `curve command ratio ${ratio.toFixed(3)} — runs of h/v/l are a staircase ` +
+      'however few <path> elements they hide in',
   );
   assert.ok(countCubics(r.svg) > 0, 'no cubic Bézier segments at all');
 });
@@ -270,13 +269,13 @@ function meanColor(image) {
 
 test('[B1] the face survives the Enhance bundle, not just the frame average', async () => {
   /**
-   * A blind A/B against the reference product is won or lost here, and every
+   * Whether the trace looks right to a person is won or lost here, and every
    * whole-frame number in this file is area-weighted: the face is 7 % of the
    * canvas and three quarters of the rest is transparent, so an output that
    * loses both eye arcs and the mouth curve still scores a whole-frame MAE
-   * under 2 and an ink recall of 0.967. Measured inside the crop, the same
-   * output scores 0.962 against the reference product's 0.999 — which is the number
-   * that moves when a cleanup pass starts eating thin dark line art.
+   * under 2 and an ink recall of 0.967. Measured inside the crop it scores
+   * 0.962 — and that is the number that moves when a cleanup pass starts
+   * eating thin dark line art. A whole-frame average cannot see the face.
    */
   const r = await engine.vectorize(foxIn, { ...S, ...EXEMPLAR_SETTINGS });
   const rendered = render(r.svg, r.width, r.height);
@@ -414,10 +413,10 @@ test('[quality] the linework is one silhouette, not a network of thin ribbons', 
    *
    * What this pins is that the bottom layer is the ink and that it really is
    * one shape: the alternative (bottom layer = dominant colour) costs ~2x the
-   * bytes on the gold standard and is what the layer-compactness gate above was
-   * failing on. On this artwork the bottom layer comes back rgb(2,2,2) as a
-   * single contour, while the reference product's own capture puts a near-white
-   * sticker border underneath everything and pays for it in perimeter.
+   * bytes on this artwork and is what the layer-compactness gate above was
+   * failing on. Here the bottom layer comes back rgb(2,2,2) as a single
+   * contour. Laying a near-white sticker border underneath everything is the
+   * other plausible choice, and it pays for itself in perimeter.
    */
   const r = await engine.vectorize(foxIn, { ...S, ...EXEMPLAR_SETTINGS });
   const first = /<g fill="rgb\((\d+),\s*(\d+),\s*(\d+)\)">([\s\S]*?)(?=<g fill=|<\/svg>)/.exec(r.svg);
@@ -465,9 +464,11 @@ test('[B3] every colour the palette promises appears in the drawing', async () =
 });
 
 test('[quality] the black outline survives a small colour budget', async () => {
-  // At 6 colours the reference product keeps the drawing's black outline; a plain
-  // coverage-ranked palette loses it into the nearest dark mid-tone and the
-  // drawing falls apart. Ours keeps rgb(2,2,2).
+  // At 6 colours a plain coverage-ranked palette loses the drawing's black
+  // outline into the nearest dark mid-tone and the drawing falls apart. Ink is
+  // a small fraction of the pixels and carries most of the legibility, so it
+  // has to survive a small budget on merit rather than on area. Ours keeps
+  // rgb(2,2,2).
   const r = await engine.vectorize(foxIn, { ...S, colorCount: 6, enhance: true });
   const darkest = r.palette
     .map((c) => 0.299 * c.r + 0.587 * c.g + 0.114 * c.b)
@@ -482,9 +483,8 @@ test('[quality] a smooth source arc comes back smooth, not as the pixel grid', a
   /**
    * The one geometry contract in this file measured against a KNOWN shape.
    *
-   * Everything else here compares the trace with a smoothed copy of itself or
-   * with the reference product, and neither knows what the boundary was meant
-   * to be: a curve fitter that spends its whole error budget on a long arc
+   * Everything else here compares the trace with a smoothed copy of itself,
+   * which does not know what the boundary was meant to be: a curve fitter that spends its whole error budget on a long arc
    * emits a boundary that leaves the arc in the middle of every segment and
    * rejoins it at the ends, and that scores *better* on turning-per-unit-length
    * than the truth it is approximating. `fixtures/arcs-560x256.png` is drawn

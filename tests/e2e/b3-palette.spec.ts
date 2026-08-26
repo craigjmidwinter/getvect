@@ -17,7 +17,7 @@ import {
  * REFERENCE B3 — input palette + output colour groups.
  *
  * The palette *editor* already exists (see b-engine.spec.ts). What is checked
- * here is the other half of B3, which the reference product leads with:
+ * here is the other half of B3:
  *   - auto-generated candidate palettes at eleven fixed sizes, as radio rows,
  *   - an output colour-groups panel with a per-colour disable checkbox,
  *     a merge threshold and a sort order,
@@ -25,7 +25,7 @@ import {
  *     yields a genuinely transparent background.
  */
 
-/** ARTWORK.md step ②: the exact sizes the reference product offers. */
+/** The eleven candidate sizes the panel offers — see REFERENCE B3. */
 const PALETTE_SIZES = [1, 2, 3, 4, 5, 6, 8, 12, 15, 16, 18];
 
 test('[B3] the eleven documented candidate palette sizes are offered', async ({ page }) => {

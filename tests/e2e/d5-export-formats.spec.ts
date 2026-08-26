@@ -87,10 +87,10 @@ test('[D1] the exported SVG groups paths into per-colour layers', async ({ page,
 });
 
 test('[D1] colour layers use the documented rgb(r,g,b) notation', async ({ page, exportDir }) => {
-  // REFERENCE D1: "per-color `<g fill="rgb(...)">` layers". The exemplar
-  // fixtures/reference/fox-sticker-clipart-8colors-smartAA.svg spells them that
-  // way; we should match, so that a diff against reference product output is about
-  // geometry, not syntax.
+  // REFERENCE D1: "per-color `<g fill="rgb(...)">` layers". The notation is
+  // part of the contract, not an implementation detail: it is what makes the
+  // export land in Illustrator or Inkscape as editable colour groups, and it
+  // keeps a diff between two traces about geometry rather than syntax.
   await loadViaPicker(page, FIXTURE.flat512);
   await waitForReady(page);
   const svg = await fs.readFile(await exportAs(page, 'svg', exportDir), 'utf8');

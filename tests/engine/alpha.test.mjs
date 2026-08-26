@@ -83,10 +83,11 @@ test('[quality-bar] transparent pixels do not win a palette slot', async () => {
 });
 
 test('[quality-bar] the gold-standard source keeps its transparent background', async () => {
-  // REFERENCE lines 73-83: fixtures/reference/fox-sticker.png is 76.5%
-  // transparent and the reference product's output for it has no background-covering
-  // path at all (its first path starts mid-canvas at M4460 8480), so this is a
-  // stronger alpha guard than any other fixture in the suite.
+  // fixtures/reference/fox-sticker.png is 76.5% transparent — three quarters of
+  // the canvas is alpha 0 — which makes it a stronger alpha guard than any
+  // other fixture in the suite: a trace that paints the background opaque
+  // scores ~255 on maxTransparentAreaColorError instead of the ~0.1 it should,
+  // and no whole-frame average can hide an error that large.
   const { ingested, onWhite, decoded } = await loadPair('reference/fox-sticker.png');
   const r = await engine.vectorize(ingested, {
     ...S,

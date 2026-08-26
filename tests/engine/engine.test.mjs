@@ -32,9 +32,8 @@ const S = engine.DEFAULT_SETTINGS;
 /**
  * Defaults with every optional cleanup off.
  *
- * `DEFAULT_SETTINGS` ships Smart anti-aliasing on (the reference product does too —
- * fixtures/reference/ARTWORK.md — and it is what keeps the default output
- * economical). Its index-image majority pass is also a very effective impulse
+ * `DEFAULT_SETTINGS` ships Smart anti-aliasing on — it is what keeps the default
+ * output economical; fixtures/reference/ARTWORK.md has the measurement. Its index-image majority pass is also a very effective impulse
  * remover, so on the speckled fixture the noise-removal controls have nothing
  * left to remove and cannot be observed at all. Checks that ask "does THIS
  * control do something" isolate it here; checks about the shipped configuration
@@ -265,9 +264,8 @@ test('EPS export is structurally valid PostScript', async () => {
 });
 
 test('DXF export is a well-formed drawing in both curve variants', async () => {
-  // The reference product offers "DXF (splines)" and "DXF (lines)" as separate
-  // downloads (fixtures/reference/ARTWORK.md), and they are different
-  // dialects: SPLINE is an R13+ entity, so the spline variant declares R2000
+  // "DXF (splines)" and "DXF (lines)" are separate exports because they are
+  // different dialects: SPLINE is an R13+ entity, so the spline variant declares R2000
   // (AC1015) and carries handles, while the lines variant stays pure R12
   // (AC1009) for readers — old CAD, cutters — that only implement POLYLINE.
   const r = await engine.vectorize(flat, S);

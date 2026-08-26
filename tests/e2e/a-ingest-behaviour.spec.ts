@@ -14,9 +14,9 @@ import {
  * REFERENCE A1/A2 — ingest behaviour, as opposed to ingest capability.
  *
  * a-ingest.spec.ts proves the app *accepts* the documented formats. These
- * cover what the reference product does with them: it switches you to the image
- * you just uploaded, it tells you a drop will be accepted before you let go,
- * and its rejection message neither sticks forever nor vanishes unacknowledged.
+ * cover what it then does with them: it switches you to the image you just
+ * added, it tells you a drop will be accepted before you let go, and its
+ * rejection message neither sticks forever nor vanishes unacknowledged.
  */
 
 test('[A1] dropping a second image selects and vectorizes the new one', async ({ page }) => {
