@@ -522,19 +522,26 @@ async function writeStore(store: StoredKeys): Promise<void> {
  * out one switch — a UI readiness question with an OS side effect, and nothing
  * in its name says so.
  *
- * WHETHER THAT SURFACES A DIALOG DEPENDS ON KEYCHAIN ACL STATE, which is the
- * part worth being precise about. On a genuinely fresh machine the signed app
- * creates the keychain item itself and is therefore on its own ACL, so macOS has
- * no reason to ask. A prompt appears when something else is already on that
- * item — most plausibly a dev build identifying as `Electron` alongside the
- * packaged signed app, which is the case that produced the report.
+ * SETTLED BY EXPERIMENT, AFTER TWO WRONG ANSWERS. The keychain item was deleted
+ * and the packaged, signed, notarized build launched from a genuinely clean
+ * state: **no dialog at all**, and the item was silently recreated.
  *
- * So the defect is not "this always prompts". It is that the answer DEPENDS on a
- * user's keychain history, which we cannot see and cannot test cleanly. For a
- * tool whose pitch is no account and nothing leaving your machine, a keychain
- * dialog before the user has touched anything is the one prompt not worth
- * gambling on. Deferring the question removes the gamble instead of betting on
- * ACL behaviour.
+ * THE MECHANISM IS CODE SIGNATURE IDENTITY, NOT CALL TIMING. A signed app that
+ * CREATES a keychain item is on that item's access control list, so macOS never
+ * challenges it — a user who downloads the dmg sees nothing, whenever this is
+ * called. A prompt appears when a DIFFERENT signature reaches for an item it
+ * does not own. That is what happened in development: `npm start` runs a binary
+ * signed as `Electron`, which is not `Developer ID Application: Craig
+ * Midwinter`, so reaching for the packaged app's item got challenged.
+ *
+ * The consequence is worth more than the incident: **a dev build and a packaged
+ * build will always disagree about keychain behaviour on the same machine.**
+ * Anyone debugging safeStorage from `npm start` is observing a different system
+ * from the one users have, and neither result transfers to the other.
+ *
+ * So deferring this call is NOT a fix for a user-facing defect — there was none.
+ * It is hygiene, and defensible as hygiene: an app has no business reaching into
+ * a keychain until the feature that needs one is actually used.
  *
  * It is now reached only from `setKey` and from an explicit
  * `aiEnhance:checkStorage` the renderer sends when someone actually engages with

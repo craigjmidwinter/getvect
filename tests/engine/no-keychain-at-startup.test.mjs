@@ -8,31 +8,36 @@
  *
  * It was called from a mount effect, to decide whether to grey out one switch.
  *
- * BE PRECISE ABOUT THE SEVERITY, because the first version of this file was not.
- * It claimed every user gets a prompt on first launch. That is wrong. Whether a
- * dialog appears depends on keychain ACL state: on a fresh machine the signed
- * app creates the item itself and is on its own ACL, so macOS has no reason to
- * ask. A prompt appears when something ELSE is already on that item — most
- * plausibly a dev build identifying as `Electron` beside the packaged app,
- * which is what produced the original report.
+ * WHAT THIS IS AND IS NOT, settled by experiment after two wrong answers. The
+ * first read was "every user gets a prompt on first launch" — wrong. The second
+ * was "it depends on the user's keychain history, which we cannot test" — also
+ * wrong, and it was wrong because the test had not been run properly yet.
  *
- * The defect is that the answer DEPENDS on a user's keychain history, which is
- * invisible to us and untestable from here. Deferring the question removes the
- * dependence rather than betting on ACL behaviour, and for a tool whose pitch is
- * no account and nothing leaving your machine, that is the one prompt not worth
- * gambling on.
+ * Run properly, by deleting the keychain item and launching the packaged signed
+ * build clean: **no prompt at all**, item silently recreated. A signed app that
+ * CREATES an item is on its access control list and is never challenged.
  *
- * WHY THESE ARE SOURCE ASSERTIONS AND NOT A BEHAVIOURAL TEST. The obvious test —
- * launch it and assert no prompt appears — PASSES ON ANY MACHINE WHERE ACCESS
- * WAS ALREADY GRANTED, which is every machine that has run this app. It would be
- * a green control that cannot fail, of exactly the kind this repo keeps finding,
- * and it fooled a careful reviewer once already. Verifying the behaviour for
- * real needs a clean keychain state, which cannot be arranged here without
- * destroying a keychain item that may hold someone's API key. So the boundary is
- * asserted in the source, where it can actually fail, and the untested part is
- * named rather than faked. What they pin: the expensive call has exactly one
- * home, the cheap answer must not reach it, and the renderer's mount path must
- * not ask the expensive question.
+ * SO THERE WAS NO USER-FACING DEFECT. These guards protect HYGIENE: an app has
+ * no business reaching into a keychain before the feature needing one is used.
+ * That is worth keeping and worth a guard, and it is not worth calling a fix.
+ *
+ * THE FINDING THAT OUTLASTS THE INCIDENT: safeStorage prompts are a function of
+ * CODE SIGNATURE IDENTITY, not of when the call is made. `npm start` runs a
+ * binary signed as `Electron`, a different identity from the packaged app, so
+ * the two will ALWAYS disagree about keychain behaviour on the same machine.
+ * Debugging safeStorage from a dev build observes a different system than users
+ * have, in both directions.
+ *
+ * WHY THESE ARE SOURCE ASSERTIONS AND NOT A BEHAVIOURAL TEST. "Launch it and
+ * assert no prompt appears" passes on any machine where access was already
+ * granted — which is every machine that has run this app. It cannot distinguish
+ * "does not prompt" from "already allowed", so it is a control that is already
+ * satisfied before it runs. It produced both wrong answers above. It became a
+ * real test only when the keychain item was deleted and the control restored.
+ * These assertions live in the source, where they can go red on any machine.
+ * What they pin: the expensive call has exactly one home, the cheap answer must
+ * not reach it, and the renderer's mount path must not ask the expensive
+ * question.
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
