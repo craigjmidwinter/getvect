@@ -472,6 +472,12 @@ export function App() {
     void bridge.aiEnhance.hasKey(aiProvider).then((value) => {
       if (live) setAiHasKey(value);
     });
+    // `available()` is the CHEAP one and never opens the keychain — see
+    // aiEnhance.ts `encryptionLikelyAvailable`. The real check lives behind
+    // `checkStorage()` and is sent only from `engageStorage`, because on macOS
+    // asking the real question makes the OS demand the user's password, and
+    // doing that at mount meant every user was asked for it on first launch,
+    // before touching anything, by an app that promises the opposite.
     void bridge.aiEnhance.available().then((value) => {
       if (live) setAiStorageAvailable(value);
     });
@@ -479,6 +485,22 @@ export function App() {
       live = false;
     };
   }, [aiProvider]);
+
+  /**
+   * Ask the OS whether it can actually encrypt — the question that may prompt.
+   *
+   * Called only from a deliberate move toward Enhance: focusing the key field,
+   * or switching the mode to `ai`. Once per session; the answer cannot change
+   * while the app runs, and a second prompt would be as unwelcome as the first.
+   */
+  const storageChecked = useRef(false);
+  const engageStorage = useCallback(() => {
+    if (storageChecked.current) return;
+    storageChecked.current = true;
+    const bridge = api();
+    if (!bridge?.aiEnhance.checkStorage) return;
+    void bridge.aiEnhance.checkStorage().then(setAiStorageAvailable);
+  }, []);
 
   // Losing the key turns the feature off rather than leaving a live switch that
   // silently does nothing.
@@ -1054,6 +1076,9 @@ export function App() {
     (mode: EnhanceMode) => {
       setAiEnabled(mode === 'ai');
       if (mode === 'ai') {
+        // Choosing AI is engagement: now it is worth knowing whether this
+        // machine can store a key, and now a prompt is explicable.
+        engageStorage();
         setImages((prev) =>
           prev.map((image) =>
             image.aiRaster || image.aiState !== 'failed' ? image : { ...image, aiState: 'idle', aiError: null },
@@ -1680,6 +1705,7 @@ export function App() {
                   aria-label={`${providerInfo.label} API key`}
                   placeholder={aiHasKey ? 'Saved — type to replace' : `${providerInfo.label} API key`}
                   value={aiKeyDraft}
+                  onFocus={engageStorage}
                   onChange={(event) => setAiKeyDraft(event.target.value)}
                 />
 

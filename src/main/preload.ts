@@ -49,7 +49,13 @@ const api = {
     hasKey: (provider: EnhanceProviderId): Promise<boolean> =>
       ipcRenderer.invoke('aiEnhance:hasKey', provider),
     /** True when this machine can encrypt a key at rest (Electron safeStorage). */
+    /** Cheap and keychain-free — safe to call at mount. */
     available: (): Promise<boolean> => ipcRenderer.invoke('aiEnhance:available'),
+    /**
+     * The real capability check. MAY PROMPT for the OS keychain password on
+     * macOS, so it is only ever sent from a deliberate user action.
+     */
+    checkStorage: (): Promise<boolean> => ipcRenderer.invoke('aiEnhance:checkStorage'),
     /** Re-illustrate PNG bytes. Always resolves — failures are typed results. */
     run: (request: EnhanceRunRequest): Promise<EnhanceRunResult> =>
       ipcRenderer.invoke('aiEnhance:run', request),

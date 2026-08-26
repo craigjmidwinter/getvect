@@ -507,14 +507,69 @@ async function writeStore(store: StoredKeys): Promise<void> {
   await fs.writeFile(keyStorePath(), JSON.stringify(store), { mode: 0o600 });
 }
 
-/** True when this machine can encrypt at rest (see `setKey`'s refusal). */
+/**
+ * True when this machine can encrypt at rest (see `setKey`'s refusal).
+ *
+ * **THIS OPENS THE OS KEYCHAIN. Never call it at startup.**
+ *
+ * `safeStorage.isEncryptionAvailable()` reads nothing and stores nothing, but on
+ * macOS it makes Electron reach into the login keychain, and the OS answers that
+ * with a password prompt. So a function whose name says "is this feature
+ * possible" has, on one platform, the side effect of demanding the user's
+ * password.
+ *
+ * The renderer used to call this from a mount effect, to decide whether to grey
+ * out one switch. The result: every user, on first launch, before touching
+ * anything, was asked for their keychain password by an app whose entire pitch
+ * is that nothing leaves their machine and no account is needed. Correct copy
+ * does not survive that.
+ *
+ * It is now reached only from `setKey` and from an explicit
+ * `aiEnhance:checkStorage` the renderer sends when someone actually engages with
+ * Enhance. The answer is cached because the capability cannot change while the
+ * app runs, and because a second prompt is as bad as the first.
+ */
+let encryptionCache: boolean | null = null;
+
 function encryptionAvailable(): boolean {
   if (isE2E) return true;
+  if (encryptionCache !== null) return encryptionCache;
   try {
-    return safeStorage.isEncryptionAvailable();
+    encryptionCache = safeStorage.isEncryptionAvailable();
   } catch {
-    return false;
+    encryptionCache = false;
   }
+  return encryptionCache;
+}
+
+/**
+ * What the UI may ask at startup: an answer that costs nothing.
+ *
+ * Never touches `safeStorage`. Three cases, in order of how much they know:
+ *
+ *  - a real check already ran this session — reuse it, it cannot have changed;
+ *  - a ciphertext is already stored — encryption demonstrably worked on this
+ *    machine, because `setKey` refuses to write one otherwise. Evidence beats a
+ *    capability query;
+ *  - otherwise assume yes.
+ *
+ * The optimistic default is the honest one. The flag only drives a warning that
+ * this machine cannot store a key; showing it preemptively would be guessing,
+ * and the refusal that matters already happens at the point of action, in
+ * `setKey`, with a reason. Being wrong here costs a warning appearing a moment
+ * later than it could have. Being wrong the other way costs every user a
+ * password prompt they did not ask for.
+ */
+async function encryptionLikelyAvailable(): Promise<boolean> {
+  if (isE2E) return true;
+  if (encryptionCache !== null) return encryptionCache;
+  try {
+    const store = await readStore();
+    if (Object.values(store.keys ?? {}).some((entry) => entry?.data)) return true;
+  } catch {
+    /* no store yet, or unreadable: fall through to the assumption */
+  }
+  return true;
 }
 
 export async function setKey(id: EnhanceProviderId, key: string): Promise<EnhanceKeyResult> {
@@ -563,8 +618,37 @@ export async function clearKey(id: EnhanceProviderId): Promise<EnhanceKeyResult>
  * throwing away a user's bytes on a heuristic is worse than ignoring them. The
  * next `setKey` overwrites it.
  */
+/**
+ * Is a key stored for this provider? **Decrypts, so it opens the keychain.**
+ * Internal use only — see `hasStoredKey` for the question the UI actually asks.
+ */
 export async function hasKey(id: EnhanceProviderId): Promise<boolean> {
   return (await loadKey(id)).kind === 'ok';
+}
+
+/**
+ * Is there a stored key? Answered from the file, without decrypting anything.
+ *
+ * This is the second half of the same bug as `encryptionLikelyAvailable`, and
+ * the half that was nearly missed. On a machine with no key, `loadKey` returns
+ * early and touches nothing — so a clean test machine shows no prompt and the
+ * problem looks solved. On a machine that HAS a key, the mount-time lookup
+ * decrypts to answer "is a key saved", and decrypting is exactly what makes
+ * macOS ask for the password. Every existing Enhance user would have kept being
+ * prompted at launch by a fix verified on a machine that had never used the
+ * feature.
+ *
+ * The label it feeds says "Key saved", which the presence of a ciphertext
+ * answers honestly. Whether that ciphertext still decrypts is a different
+ * question, it needs the keychain, and it is asked when the key is used — where
+ * a failure has somewhere to be reported.
+ */
+export async function hasStoredKey(id: EnhanceProviderId): Promise<boolean> {
+  try {
+    return Boolean((await readStore()).keys[id]?.data);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -737,7 +821,13 @@ export function registerAiEnhanceIpc(): void {
     setKey(provider, typeof key === 'string' ? key : ''),
   );
   ipcMain.handle('aiEnhance:clearKey', (_e, provider: EnhanceProviderId) => clearKey(provider));
-  ipcMain.handle('aiEnhance:hasKey', (_e, provider: EnhanceProviderId) => hasKey(provider));
+  // hasStoredKey, not hasKey: the UI asks this at mount, and hasKey decrypts.
+  ipcMain.handle('aiEnhance:hasKey', (_e, provider: EnhanceProviderId) => hasStoredKey(provider));
   ipcMain.handle('aiEnhance:run', (_e, request: EnhanceRunRequest) => runEnhance(request));
-  ipcMain.handle('aiEnhance:available', () => encryptionAvailable());
+  // Cheap, keychain-free: what the renderer may ask before the user has done
+  // anything. See encryptionLikelyAvailable.
+  ipcMain.handle('aiEnhance:available', () => encryptionLikelyAvailable());
+  // The real question, and it may prompt. Only sent on a deliberate user action
+  // — opening the key field, or switching Enhance on.
+  ipcMain.handle('aiEnhance:checkStorage', () => encryptionAvailable());
 }

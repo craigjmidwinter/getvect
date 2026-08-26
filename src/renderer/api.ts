@@ -32,7 +32,14 @@ export interface GetVectApi {
     setKey(provider: EnhanceProviderId, key: string): Promise<EnhanceKeyResult>;
     clearKey(provider: EnhanceProviderId): Promise<EnhanceKeyResult>;
     hasKey(provider: EnhanceProviderId): Promise<boolean>;
+    /** Cheap and keychain-free; safe at mount. */
     available(): Promise<boolean>;
+    /**
+     * The real capability check. On macOS this makes the OS ask for the
+     * keychain password, so it must only be called from a deliberate user
+     * action — never from an effect that runs on render.
+     */
+    checkStorage(): Promise<boolean>;
     run(request: EnhanceRunRequest): Promise<EnhanceRunResult>;
   };
   /**
