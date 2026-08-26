@@ -167,14 +167,12 @@ PC" — choose **More info**, then **Run anyway**.
 
 ### Code signing policy
 
-Free code signing for **Windows** builds is being arranged through the
-[SignPath Foundation](https://signpath.org/), which issues certificates free of charge to
-open-source projects. It is not in place yet: today's `.exe` is unsigned and SmartScreen
-keeps warning.
+**Windows** — unsigned. There is no Authenticode certificate, and SmartScreen will warn.
 
-**macOS is a separate certificate and is not covered by SignPath.** Its release pipeline is
-built and gated — an unsigned artefact cannot be published, by construction — see
-[SIGNING.md](./SIGNING.md).
+**macOS** — the published build is unsigned. A Developer ID signing and notarization
+pipeline exists and is enforced: an artefact that is not signed, Gatekeeper-accepted and
+stapled cannot be published, by construction ([SIGNING.md](./SIGNING.md)). No release has
+been through it yet.
 
 **Roles.** Committers and reviewers: Craig Midwinter. Approvers: Craig Midwinter. GetVect is
 a single-maintainer project; releases are cut from tags by

@@ -340,13 +340,10 @@
           <strong>More info</strong>, then <strong>Run anyway</strong>. The installer is
           per-user and never asks for administrator rights — an unsigned installer demanding
           admin is exactly the shape of the thing you are told not to run.</p>
-        <p><strong>Where the signing is going.</strong> Windows code signing is being arranged
-          through the <a href="https://signpath.org/">SignPath Foundation</a>, which issues
-          certificates free of charge to open-source projects; until that is in place the
-          <code>.exe</code> is unsigned and SmartScreen will keep warning. macOS is a separate
-          certificate and a separate problem — <em>SignPath does not cover it</em>, and the
-          macOS build is not signed either. Neither is done yet, and this page will say so
-          plainly until it is.</p>
+        <p><strong>Neither platform is signed today.</strong> Windows has no Authenticode
+          certificate, so SmartScreen will keep warning. macOS is a separate certificate and a
+          separate problem, and the published build is not signed either. This page will say so
+          plainly until that changes — no dates, because a promised date is a claim too.</p>
         <p>The same missing certificate is why GetVect <em>tells</em> you about a new version
           instead of installing one: macOS refuses to let an unsigned app update itself in
           place, and an updater that downloaded 150 MB and then failed would be worse than no
@@ -364,18 +361,20 @@
       </div>
 
       <!--
-        SignPath Foundation requires a section using the exact term "Code signing
-        policy" on the home and download pages, carrying the roles and a privacy
-        policy. The prescribed attribution string is deliberately absent until
-        signing is actually live — it is present tense about a service not yet
-        rendered, and they will download the unsigned exe and see that.
+        Kept because a project that ships binaries should say how it signs them,
+        not because anything external requires it. Every sentence describes the
+        state today; there are deliberately no plans, providers or dates in here,
+        because a forward promise on a download page is a claim that goes stale
+        without anyone editing it.
       -->
       <div class="callout callout--flat" id="code-signing-policy">
         <span class="tag">Code signing policy</span>
-        <p>Free code signing for Windows builds is being arranged through the
-          <a href="https://signpath.org/">SignPath Foundation</a>. It is not in place yet:
-          today's <code>.exe</code> is unsigned and SmartScreen will warn. macOS is a separate
-          certificate and is not covered by SignPath.</p>
+        <p><strong>Windows:</strong> unsigned. There is no Authenticode certificate, and
+          SmartScreen will warn.</p>
+        <p><strong>macOS:</strong> the published build is unsigned. A Developer ID signing and
+          notarization pipeline exists and is enforced — an artefact that is not signed,
+          Gatekeeper-accepted and stapled cannot be published, by construction — but no
+          release has been through it yet.</p>
         <p><strong>Roles.</strong> Committers and reviewers: Craig Midwinter. Approvers:
           Craig Midwinter. GetVect is a single-maintainer project; releases are cut from
           tags by <a href="https://github.com/craigjmidwinter/getvect/blob/main/.github/workflows/release.yml">a

@@ -480,10 +480,11 @@ npm run screenshots   <span class="c"># a labelled contact sheet of the whole fl
         this is a hook rather than a note.</p>
 
       <h3>Code signing policy</h3>
-      <p>Free code signing for <strong>Windows</strong> builds is being arranged through the
-        <a href="https://signpath.org/">SignPath Foundation</a>. It is not in place yet: today's
-        <code>.exe</code> is unsigned and SmartScreen will warn. <strong>macOS is a separate
-        certificate and is not covered by SignPath</strong> — see below.</p>
+      <p><strong>Windows:</strong> unsigned. There is no Authenticode certificate, and SmartScreen
+        will warn. <strong>macOS:</strong> the published build is unsigned too. A Developer ID
+        signing and notarization pipeline exists and is enforced — an artefact that is not signed,
+        Gatekeeper-accepted and stapled cannot be published — but no release has been through it
+        yet. See below.</p>
       <p><strong>Roles.</strong> Committers and reviewers: Craig Midwinter. Approvers: Craig
         Midwinter. Releases are cut from tags by a workflow that refuses to publish an artefact
         it cannot verify.</p>
