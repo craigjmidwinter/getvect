@@ -75,7 +75,7 @@ reissued under a different name.
 
 ---
 
-## Two traps, both of which produce a misleading error
+## Three traps, all of which produce a misleading error
 
 Both were hit for real during setup. Both cost time because the message points
 somewhere other than the cause.
@@ -120,6 +120,29 @@ identity count rather than the import's exit status** — because both traps loo
 identical from the outside: an import that succeeded and produced nothing usable.
 Failing there with a named cause is the difference between a two-minute fix and
 twenty minutes of opaque electron-builder output.
+
+### 3. electron-builder wants the identity *without* its prefix
+
+Every Apple tool — `security find-identity`, `codesign -dvvv` — names the identity
+in full:
+
+```
+Developer ID Application: Craig Midwinter (6UV93L24YL)
+```
+
+Passing that to electron-builder fails:
+
+```
+⨯ Please remove prefix "Developer ID Application:" from the specified name —
+  appropriate certificate will be chosen automatically
+```
+
+So `mac.identity` must be **`Craig Midwinter (6UV93L24YL)`**, and the string you
+copy out of every diagnostic command is the wrong one. Found by running the real
+signed build rather than by reading: in CI this would have failed on the first
+release tag, *after* packaging, with the certificate correctly imported, the
+notary credentials correct and nothing wrong except this string — the most
+expensive possible place to learn it.
 
 ---
 

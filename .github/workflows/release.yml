@@ -313,10 +313,18 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
           NOTARY_KEY_P8_BASE64: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
           CSC_KEYCHAIN: ${{ runner.temp }}/signing.keychain-db
-          # Quoted: the identity contains a colon, which an unquoted YAML scalar
-          # reads as a mapping. Caught by parsing this file locally rather than
-          # by a tag push failing to even start.
-          SIGN_IDENTITY: "${{ vars.MACOS_SIGN_IDENTITY || 'Developer ID Application: Craig Midwinter (6UV93L24YL)' }}"
+          # NO "Developer ID Application:" PREFIX. electron-builder rejects the
+          # full certificate common name with:
+          #
+          #   ⨯ Please remove prefix "Developer ID Application:" from the
+          #     specified name — appropriate certificate will be chosen automatically
+          #
+          # which is the string every other Apple tool wants and the one you get
+          # from `security find-identity`. Found by running the real signed build
+          # locally; in CI it would have failed on the first release tag, after
+          # packaging, with the certificate correctly installed and nothing wrong
+          # except this string.
+          SIGN_IDENTITY: "${{ vars.MACOS_SIGN_IDENTITY || 'Craig Midwinter (6UV93L24YL)' }}"
         run: |
           set +x
           set -euo pipefail
