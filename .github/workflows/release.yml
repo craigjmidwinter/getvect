@@ -343,9 +343,19 @@ jobs:
           set +x
           set -euo pipefail
           echo "$NOTARY_KEY_P8_BASE64" | base64 --decode > "$APPLE_API_KEY"
+          # updateMode=auto is a MAC-JOB-ONLY override, and it must stay that way.
+          # It is baked into the packaged package.json, so it describes the build
+          # rather than the source; the Windows job below builds from the same
+          # commit and keeps `notify`, because the exe has no Authenticode
+          # certificate and Squirrel would refuse the install. A repo-level flip
+          # in electron-builder.yml would silently turn it on for Windows too.
+          #
+          # `npm run dist` on a laptop is also unaffected: it never passes this,
+          # so an unsigned local build still cannot try to update itself.
           npm run dist -- --mac --publish never \
             -c.mac.identity="$SIGN_IDENTITY" \
-            -c.mac.notarize=true
+            -c.mac.notarize=true \
+            -c.extraMetadata.updateMode=auto
 
       - name: Sign, notarize and staple the dmg, then re-index the feed
         env:
@@ -377,6 +387,31 @@ jobs:
           fi
           for dmg in "${dmgs[@]}"; do
             bash scripts/verify-signed-dmg.sh "$dmg"
+          done
+
+      # THE ARTEFACT THE SOFTWARE GETS, not the one a person gets.
+      #
+      # latest-mac.yml's top-level path/sha512 point at the ZIP, and
+      # electron-updater installs from it — never from the dmg. So verifying only
+      # the dmg checked the download a human makes and left the download the app
+      # makes unchecked, and only one of those two runs unattended on someone
+      # else's machine.
+      #
+      # With updateMode=auto this is load-bearing: Squirrel validates the new
+      # bundle's signature against the running app's and refuses a mismatch AFTER
+      # the ~120 MB download, on every launch, silently. A build log cannot see
+      # that; this file can.
+      - name: The update zip must contain a signed, stapled app
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          zips=(release/*-mac.zip)
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "::error::no mac zip in release/ — the update feed would point at nothing"
+            exit 1
+          fi
+          for zip in "${zips[@]}"; do
+            bash scripts/verify-signed-zip.sh "$zip"
           done
 
       # Upload only after the artefact has passed. Nothing reaches the release
@@ -557,7 +592,7 @@ jobs:
       #
       # It runs while the release is still a draft, so a failure here means
       # nothing was ever public.
-      - name: Download the dmg from the release and verify it
+      - name: Download the dmg and the update zip from the release and verify both
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -567,6 +602,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/downloaded"
           cd "$RUNNER_TEMP/downloaded"
           gh release download "$TAG" --pattern '*.dmg' --clobber
+          gh release download "$TAG" --pattern '*-mac.zip' --clobber
           shopt -s nullglob
           dmgs=(*.dmg)
           if [ ${#dmgs[@]} -eq 0 ]; then
@@ -575,6 +611,15 @@ jobs:
           fi
           for dmg in "${dmgs[@]}"; do
             bash "$GITHUB_WORKSPACE/scripts/verify-signed-dmg.sh" "$PWD/$dmg"
+          done
+          # Same file the shipped app's updater will fetch, fetched the same way.
+          zips=(*-mac.zip)
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "::error::the release carries no mac zip — in-app updates would 404"
+            exit 1
+          fi
+          for zip in "${zips[@]}"; do
+            bash "$GITHUB_WORKSPACE/scripts/verify-signed-zip.sh" "$PWD/$zip"
           done
 
   publish:

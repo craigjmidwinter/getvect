@@ -250,6 +250,50 @@ than trusting that a fresh URL returns fresh bytes.
 The site, docs, README and the release-notes template were updated to the signed
 copy in the same commit as this section, per the rule above.
 
+## In-app updates: what signing unlocked, and what it did not
+
+Signing removed the reason the updater was dormant. Squirrel.Mac refuses an
+update whose signature it cannot validate against the running app's, so on an
+unsigned build a silent in-place update was not discouraged but impossible. That
+is no longer the case, and the mac job now packages with
+`-c.extraMetadata.updateMode=auto`.
+
+**The zip is the artefact that matters here, and it was ungated.**
+`latest-mac.yml`'s top-level `path`/`sha512` point at `*-mac.zip`, and
+electron-updater installs from it — never from the dmg. The release gate verified
+the dmg only, so the download a *person* makes was checked and the download the
+*app* makes was not. It was correct by luck: `notarize-dmg.mjs` says in a comment
+that electron-builder staples the .app before building any target, which is true
+today and is an assumption about another tool's ordering, written in prose, never
+checked. The identical assumption about the dmg is what shipped v0.1.2 unsigned
+with a green build log. `scripts/verify-signed-zip.sh` now runs before upload and
+again against the re-downloaded asset.
+
+Three things are enforced by `tests/engine/update-mode.test.mjs`, because each
+fails silently on a user's machine rather than loudly in CI:
+
+1. The repo-level default stays `notify`, so `npm run dist` and every unsigned
+   build inherit the mode that downloads nothing.
+2. `auto` appears only on the `--mac` invocation. Windows has no Authenticode
+   certificate; an `auto` exe would pull ~100 MB and fail at the install step on
+   every launch.
+3. The zip gate runs at least twice while `auto` is on.
+
+**What is NOT yet proven.** The end-to-end path — real download, Squirrel
+validating the signature, install on restart — has never run against a real
+release. `tests/e2e/u-update-banner.spec.ts` covers the banner through a stub and
+deliberately does not click install, because a spec that quits the app under test
+is testing the harness. So this is the pipeline being ready, not the feature being
+observed working, and the distinction is the one this file exists to keep:
+
+- v0.1.3 was built `notify`. Those users get a banner, as before, and flipping the
+  flag now does nothing for them retroactively.
+- The first build with `auto` in it is v0.1.4. Its users get in-place updates from
+  v0.1.5 onward.
+- **Say nothing on the site about automatic updates until a real update has been
+  observed installing itself.** Same rule as the signing claim: the evidence has
+  to be the thing a user gets.
+
 ## Checking a build by hand
 
 ```bash
