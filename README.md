@@ -297,10 +297,16 @@ node bin/getvect.mjs logo.png - > logo.svg    # stdout, for a pipe
 node bin/getvect.mjs logo.png out.svg --stats # SVG to the file, JSON to stdout
 ```
 
-`npm link` puts it on your `PATH` as `getvect`. `node bin/getvect.mjs --help`
-lists every setting the app exposes — palette size, model preset, detail,
-smoothing, despeckle, anti-aliasing, noise reduction, minimum area, roundness,
-the black/white threshold, and DXF splines-vs-lines.
+`node bin/getvect.mjs --help` lists every setting the app exposes — palette
+size, model preset, detail, smoothing, despeckle, anti-aliasing, noise
+reduction, minimum area, roundness, the black/white threshold, and DXF
+splines-vs-lines.
+
+> **Run it by path, not by name.** The Homebrew formula already installs a
+> `getvect` command, and that one launches the GUI — so `npm link` would put a
+> second, different `getvect` on your `PATH` and whichever wins is an accident of
+> ordering. The packaged app has no CLI inside it either. Until the app itself
+> can trace headlessly, `node bin/getvect.mjs` from a clone is the CLI.
 
 **The contract it holds, because a subprocess has no way to ask:**
 
