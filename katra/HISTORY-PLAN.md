@@ -95,6 +95,47 @@ Both HEAD files flagged as worth reading are **clean**:
 - `fixtures/reference/ARTWORK.md` — about our own artwork, its licence, and why
   in-house fixtures gate nothing. Nothing about anyone else's product.
 
+## Tier 3, revised — what the devlog cleanup actually found
+
+Written before the sweep; the sweep changed the arithmetic. `OBSERVED-UI.md` is
+no longer the only competitor artefact in history, and it is no longer the worst
+one. **Two committed PNGs were that product's own rendered output** —
+`katra/media/ab-full.png` (a three-way A/B including their render) and
+`katra/media/mouth-real.png` (their mouth at 100% zoom) — plus two charts built
+from measuring it. All four are deleted at HEAD as of the devlog cleanup, and all
+four remain reachable in history, alongside an entry describing how their web app
+was driven for exemplars.
+
+This does not change the recommendation, but it does change what a rewrite would
+be *for*. Before: removing a text file that describes observed behaviour. Now:
+removing another party's rendered artwork from a public repo. That is a stronger
+reason, and it is the one to weigh — not the wording.
+
+The cost is unchanged and still severe: the blobs enter around 200 commits deep,
+so a purge rewrites effectively the whole repository and moves every tag, which
+detaches every published release including the v0.1.3 assets that were just
+signed and notarized.
+
+**Still not authorised. Craig's call, and it is now a licensing question rather
+than a tidiness one.**
+
+## Adjacent, not history: REFERENCE.md
+
+Out of scope for a rewrite but found on the same sweep and worth a decision.
+`REFERENCE.md` is the spec the project is graded against — README calls it
+that — and it is framed end to end as *"feature parity with the reference
+product"*, 12 mentions across 120 lines, plus 30 more across 16 test files.
+
+Its "Gold-standard exemplar" section is also **stale**: it describes
+`fixtures/reference/fox-sticker-clipart-8colors-smartAA.svg` as the committed
+artefact to A/B against, and that file was purged. The doc still quotes its
+measured properties — 63 paths, 114 sub-paths, 35.5 KB, curve ratio 0.671 —
+which is quoting competitor output in numbers, about a file nobody can open.
+
+Rewriting the grading spec is a bigger call than a copy edit, so it is flagged
+rather than done: the harness decides what ships, and REFERENCE.md is upstream of
+the harness.
+
 ## Recommendation
 
 Take **Tier 1 option 1 or 3** and stop. Do the cleanup at HEAD by deleting
