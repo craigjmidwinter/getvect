@@ -84,3 +84,43 @@ to the intent afterwards.
 
 So the scepticism has one correct address rather than being spread evenly:
 **the moment a re-measurement clears something that was previously flagged.**
+
+## Postscript, four hours later: the hypothetical was not one
+
+The section above describes a failure that had not happened — rebuild the devlog,
+copy it across without the injector, lose all four insertions from a page that
+still renders. Written as a risk worth gating.
+
+Publishing this entry is what exercised it. The steward decided to ship today's
+three entries, which meant the first real `katra build` since any of this was
+wired, and the injector reported what it had to put back:
+
+```
+devlog-analytics: added social card + icon links + tag + disclosure
+```
+
+**A fresh build emits `index.html` with none of the four.** Not a degraded
+version — none. So the original plan, hand-editing the snapshot, would have had
+this publish silently delete the analytics tag, the disclosure, the social card
+and the icon links from the devlog, on the day a Reddit thread points at it. The
+pages would have rendered perfectly and the numbers would simply have stopped.
+
+Two things worth keeping, neither of which was predictable this afternoon.
+
+**The interval was four hours.** A "hypothetical" failure in generated output is
+usually one that has not been rebuilt yet. The rebuild is the event, and its
+timing has nothing to do with when the risk was introduced — so the gap between
+writing a risk down and meeting it is not a measure of how unlikely it was.
+
+**The person who would have hit it is not the person who could have recognised
+it.** Four hours is long enough for whoever wrote the injector to have moved on,
+and short enough that nobody would think to suspect a routine publish. It would
+have surfaced as a flat chart on launch day and been read as *nobody clicked
+through* — a wrong answer to a question nobody knew they were asking.
+
+The belt-and-braces that made the publish safe, since a publish replaces a whole
+tree: diff the build's file list against the snapshot so nothing is dropped or
+orphaned, confirm each insertion in the build output, and check that **a fresh
+build plus the injector reproduces the committed file**. The last one is the one
+worth copying — it proves the step is deterministic rather than that it worked
+once, and an injector that succeeds unpredictably passes every other check.
