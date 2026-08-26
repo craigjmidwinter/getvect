@@ -279,9 +279,29 @@ fails silently on a user's machine rather than loudly in CI:
    every launch.
 3. The zip gate runs at least twice while `auto` is on.
 
-**What is NOT yet proven.** The end-to-end path — real download, Squirrel
-validating the signature, install on restart — has never run against a real
-release. `tests/e2e/u-update-banner.spec.ts` covers the banner through a stub and
+**Proven against the published release, 26 August 2026.**
+`scripts/verify-update-feed.mjs` imports electron-updater's own `GitHubProvider`
+and asks *it* what the shipped app would fetch, rather than re-implementing the
+lookup — because a re-implementation answers "does a zip exist at a URL" while
+quietly assuming the thing that is actually at risk, which is whether the code
+running on a user's machine agrees the release is installable:
+
+    provider resolves        0.1.3
+    it would download        GetVect-0.1.3-arm64-mac.zip   (the zip, not the dmg)
+    bytes                    120,008,599  (feed agrees)
+    sha512 vs latest-mac.yml MATCH  — the updater would accept these bytes
+    codesign --deep --strict PASS
+    designated requirement   PASS
+    spctl -a -t exec         PASS
+    stapler validate         PASS
+    TeamIdentifier           6UV93L24YL
+
+**What is still NOT proven.** The in-place swap itself. Squirrel validates the
+new bundle against the *running* app's designated requirement and exchanges it on
+quit, which needs a signed build actually running — a released version on a real
+machine, not a harness. What the run above proves is resolution and integrity end
+to end, plus the precondition that makes the swap possible. The remaining unknown
+is Squirrel, not our artefacts. `tests/e2e/u-update-banner.spec.ts` covers the banner through a stub and
 deliberately does not click install, because a spec that quits the app under test
 is testing the harness. So this is the pipeline being ready, not the feature being
 observed working, and the distinction is the one this file exists to keep:

@@ -322,9 +322,13 @@
         <p>Prefer to build it yourself? <code>brew install craigjmidwinter/tap/getvect</code>
           is a formula rather than a cask: it compiles from source on your machine, so nothing
           arrives as a downloaded bundle at all. Budget a few minutes for the build.</p>
-        <p>GetVect still <em>tells</em> you about a new version rather than installing one.
-          The in-app updater is written and switches on once it has been exercised against a
-          signed release end to end; until then a banner with a link is the honest option.</p>
+        <p><strong>Updates follow the signature.</strong> Because macOS builds are signed,
+          the app can verify a new version itself, so from v0.1.4 it downloads in the
+          background and installs on quit. Windows has no certificate, so it keeps doing the
+          honest half: a banner with a link, no install. v0.1.3 notifies on both platforms —
+          the change arrives with the build after it, not retroactively.</p>
+        <p>It stays one check per launch either way, it sends no identifier, and
+          <code>GETVECT_NO_UPDATE_CHECK=1</code> turns it off before any request is made.</p>
       </div>
 
       <div class="callout callout--flat" id="privacy">

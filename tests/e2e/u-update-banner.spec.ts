@@ -97,6 +97,40 @@ test.describe('the update-check opt-out', () => {
   });
 });
 
+test.describe('the update-check opt-out, on a build that CAN install', () => {
+  test.use({
+    extraEnv: {
+      GETVECT_UPDATE_STUB: STUB_VERSION,
+      GETVECT_UPDATE_MODE: 'auto',
+      GETVECT_NO_UPDATE_CHECK: '1',
+    },
+  });
+
+  test('downloads nothing and shows nothing, even in auto mode', async ({ page }) => {
+    // The opt-out matters MORE once a build can install in place. In `notify`
+    // mode ignoring it would cost one HTTPS request; in `auto` mode it would
+    // start a ~120 MB background download on a machine whose owner asked for no
+    // update check at all, and then install it on quit.
+    //
+    // `skipReason()` is consulted before `check()` is ever scheduled, so no
+    // updater is constructed and `autoInstallOnAppQuit` is never set. That
+    // ordering is the whole promise, and ordering is exactly what a refactor
+    // moves without noticing.
+    await expect(page.locator(tid(TESTIDS.appRoot))).toBeVisible();
+    await page.waitForTimeout(1_000);
+    await expect(page.locator(tid(TESTIDS.updateBanner))).toHaveCount(0);
+    const status = await page.evaluate(() => window.getvect?.update?.status?.());
+    // Assert the shape FIRST. `expect(undefined).not.toBe('downloading')` passes
+    // for a bridge that does not exist, which would make the two checks below
+    // agree with anything — the same vacuous-green shape as a claim regex that
+    // matches nothing.
+    expect(status, 'the update bridge should be reachable').toBeTruthy();
+    expect(status?.mode).toBe('auto');
+    expect(status?.state).not.toBe('downloading');
+    expect(status?.state).not.toBe('downloaded');
+  });
+});
+
 test.describe('a launch with nothing new', () => {
   test('shows no banner at all', async ({ page }) => {
     // No stub, not packaged: the check never runs and the status stays idle.

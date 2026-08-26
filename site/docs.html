@@ -421,11 +421,20 @@ npm run dist    <span class="c"># package -&gt; release/mac-arm64/GetVect.app (+
         is, a small dismissible banner appears in the corner with a Download link; dismiss it and
         that version never asks again. Nothing is downloaded in the background and nothing is
         installed behind your back.</p>
-      <p>The other half is written and dormant. Now that macOS builds are signed, an in-app
-        updater <em>can</em> work — Squirrel, the machinery Electron apps update through, checks
-        the replacement's signature against the running app's, and that check can now pass. It
-        stays off until it has been exercised end to end against a signed release, because an
-        updater that pulls 117 MB and fails at the last step is worse than no updater at all.</p>
+      <p><strong>On macOS that changes from v0.1.4.</strong> Squirrel — the machinery Electron
+        apps update through — checks the replacement's signature against the running app's, and
+        on a signed build that check passes, so the app downloads in the background and installs
+        on quit. What it downloads is the <code>-mac.zip</code> named in
+        <code>latest-mac.yml</code>, and it refuses to install anything whose sha512 does not
+        match the digest in that file; both the digest and the signature on the app inside are
+        checked by the release pipeline before publishing, and again against the asset
+        re-downloaded afterwards.</p>
+      <p><strong>Windows keeps notifying</strong> until there is an Authenticode certificate.
+        An updater that pulls 117 MB and then fails at a verification step it cannot pass is
+        worse than no updater at all.</p>
+      <p>v0.1.3 notifies on both platforms; installing itself starts with the build after it.
+        On either platform <code>GETVECT_NO_UPDATE_CHECK=1</code> stops the whole thing before
+        any request is made — not just the banner, the check.</p>
       <p>The check sends no identifier, asks one question, and fails silently when you are offline.
         To turn it off:</p>
 <pre><code>GETVECT_NO_UPDATE_CHECK=1 open -a GetVect

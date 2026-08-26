@@ -112,8 +112,17 @@ jobs:
           "Windows protected your PC" — choose **More info**, then **Run anyway**. The installer
           is per-user and never asks for administrator rights.
 
-          GetVect still *tells* you about a new version rather than installing one; the in-app
-          updater switches on once it has been exercised end to end against a signed release.
+          ### Updates
+
+          **macOS installs updates in place.** Because the build is signed, the app can verify
+          and apply a new version itself: it downloads in the background and installs on quit.
+
+          **Windows tells you and does not install.** Without an Authenticode certificate the
+          install step cannot be verified, so it links you to the release instead.
+
+          Either way it is one check per launch, no identifier is sent, and
+          \`GETVECT_NO_UPDATE_CHECK=1\` turns it off entirely — before any request, on both
+          platforms.
 
           ### Network
 
