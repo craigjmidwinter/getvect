@@ -31,3 +31,15 @@ correctly, every page still renders, nothing errors in CI, and the only symptom
 is a chart that stops growing on a date nobody connects to this commit. Test the
 allowance against a real page load before shipping the meta tag, the same way
 the two existing allowances (api.github.com, Google Fonts) have to be.
+
+**A meta tag is the only mechanism available, which is why this task is named
+that way.** GitHub Pages has no custom-response-headers feature, `public/_headers`
+is a Netlify/Cloudflare file that Pages ignores silently, and Next's `headers()`
+is irrelevant here (this site is hand-written HTML). Recorded because a sibling
+site's rollout note said "allowlist the collector in script-src and connect-src",
+which reads as an instruction to edit a headers config that does not exist —
+**and a task whose instruction cannot be followed gets closed as satisfied.**
+
+Reduced urgency, stated so nobody treats this as burning: nobody adds a CSP to a
+static Pages site by accident. It has to be a deliberate meta tag, so this is a
+decision someone makes rather than a default that surprises them.

@@ -121,6 +121,36 @@ const FAVICON_SIZE = 32;
 const SITE_FAVICON_SIZE = 96;
 
 /**
+ * THE .ICO, AND WHY 16px GETS A DIFFERENT PICTURE.
+ *
+ * `/favicon.ico` returned 404 — the pages link a PNG, so browsers that parse the
+ * HTML were fine, but the bare-convention request every crawler and link
+ * previewer makes was not. That is the easy half.
+ *
+ * The half worth the code: **Frankie does not survive being scaled to 16px.**
+ * Rendered and looked at rather than assumed — at 32px he is unmistakably a cat,
+ * ears and eyes and muzzle and the loaf pose. At 16px the whole body is squeezed
+ * into sixteen pixels, the face gets about six of them, and the result is an
+ * orange smear with one white blob. 16px is the browser tab, so that smear was
+ * what every visitor actually saw.
+ *
+ * An .ico can carry a DIFFERENT image per size, which is what the format is for.
+ * So 16px gets the head alone — the crop below, chosen by rendering three
+ * candidates and comparing them at true size — and the face then owns all
+ * sixteen pixels: two ears, two eyes, a nose, a white muzzle. 32 and 48 keep the
+ * full loaf, which reads perfectly at those sizes.
+ *
+ * Re-frame by moving `faceCrop`; it is in 1024-space, square so nothing squashes.
+ */
+const FAVICON_ICO = {
+  /** Full-icon sizes. Anything at or above 32 reads as a cat unaided. */
+  sizes: [32, 48],
+  /** The size that needs help, and the head box that gives it. */
+  smallSize: 16,
+  faceCrop: { left: 90, top: 150, width: 480, height: 480 },
+};
+
+/**
  * Site copies are re-encoded to a palette PNG: the pages are static and
  * unbundled, so a megabyte of screenshots is a megabyte on the wire.
  */
@@ -153,6 +183,7 @@ const MANIFEST = [
   { path: 'docs/assets/icon-512.png', from: 'build/icon-1024.png', note: '512px' },
   { path: 'src/renderer/favicon.png', from: 'build/icon-1024.png', note: `${FAVICON_SIZE}px` },
   { path: 'site/assets/*', from: 'the above', note: 'every asset site/*.html references' },
+  { path: 'site/favicon.ico', from: 'build/icon-1024.png', note: '16 (face crop) + 32 + 48' },
   { path: 'scripts/derived-assets.stamp.json', from: 'sources', note: 'the --check stamp' },
 ];
 
@@ -274,6 +305,59 @@ async function buildIcon(mascotFile) {
     ])
     .png({ compressionLevel: 9 })
     .toBuffer();
+}
+
+/**
+ * Pack PNGs into an .ico. Hand-rolled because the alternative is a dependency
+ * for ~30 bytes of header per entry, and because CI would then need it too.
+ *
+ * PNG payloads rather than BMP: officially supported since Vista and accepted by
+ * every browser this site will meet. BMP would mean a DIB header plus an AND
+ * mask per entry for compatibility nobody here needs.
+ */
+function packIco(images) {
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0); // reserved
+  header.writeUInt16LE(1, 2); // 1 = icon
+  header.writeUInt16LE(images.length, 4);
+
+  const entries = [];
+  let offset = 6 + images.length * 16;
+  for (const { size, data } of images) {
+    const e = Buffer.alloc(16);
+    e.writeUInt8(size >= 256 ? 0 : size, 0); // 0 means 256
+    e.writeUInt8(size >= 256 ? 0 : size, 1);
+    e.writeUInt8(0, 2); // palette count
+    e.writeUInt8(0, 3); // reserved
+    e.writeUInt16LE(1, 4); // colour planes
+    e.writeUInt16LE(32, 6); // bits per pixel
+    e.writeUInt32LE(data.length, 8);
+    e.writeUInt32LE(offset, 12);
+    entries.push(e);
+    offset += data.length;
+  }
+
+  return Buffer.concat([header, ...entries, ...images.map((i) => i.data)]);
+}
+
+/** The site's /favicon.ico — see FAVICON_ICO for why 16px is a different crop. */
+async function buildFaviconIco(icon1024) {
+  const { sizes, smallSize, faceCrop } = FAVICON_ICO;
+
+  const face = await sharp(icon1024)
+    .extract(faceCrop)
+    .resize(smallSize, smallSize, { fit: 'fill' })
+    .png({ compressionLevel: 9 })
+    .toBuffer();
+
+  const rest = await Promise.all(
+    sizes.map(async (size) => ({
+      size,
+      data: await sharp(icon1024).resize(size, size).png({ compressionLevel: 9 }).toBuffer(),
+    })),
+  );
+
+  return packIco([{ size: smallSize, data: face }, ...rest]);
 }
 
 /** The side-by-side card: pixels on the left, curves on the right. */
@@ -472,6 +556,10 @@ async function main() {
     await sharp(icon1024).resize(FAVICON_SIZE, FAVICON_SIZE).png({ compressionLevel: 9 }).toBuffer(),
   );
   await writeIcns(icon1024, write);
+  // Site root, not site/assets/, because the whole point is the bare
+  // /favicon.ico request that crawlers and link previewers make without reading
+  // the HTML first.
+  await write('site/favicon.ico', await buildFaviconIco(icon1024));
 
   // 5. The site's copies — driven by what the pages actually reference, so a
   //    new <img> in site/ either gets a source here or fails loudly.

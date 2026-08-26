@@ -78,6 +78,20 @@ const CARD = [
   `<meta name="twitter:image" content="${SITE}/assets/frankie-before-after.png">`,
 ].join('\n');
 
+/**
+ * THE ICON LINKS. katra emits none, so this page had no favicon by either route:
+ * no link tag, and `/favicon.ico` was a 404 until the asset script started
+ * generating one. Absolute paths, because this page is served from `/devlog/`.
+ *
+ * Guarded separately from the card above rather than folded into it — the likely
+ * accident is losing one insertion, not all of them, and a guard that only fires
+ * when everything is missing would skip this on a page that still had og:title.
+ */
+const ICONS = [
+  '<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">',
+  `<link rel="apple-touch-icon" href="${SITE}/assets/favicon.png">`,
+].join('\n');
+
 async function inject(siteDir) {
   const index = join(siteDir, 'index.html');
 
@@ -102,6 +116,15 @@ async function inject(siteDir) {
     }
     out = out.replace('</head>', `${CARD}\n</head>`);
     changed.push('social card');
+  }
+
+  if (!out.includes('favicon.ico')) {
+    if (!out.includes('</head>')) {
+      console.error('devlog-analytics: no </head> in the built index.html');
+      process.exit(1);
+    }
+    out = out.replace('</head>', `${ICONS}\n</head>`);
+    changed.push('icon links');
   }
 
   if (!out.includes(WEBSITE_ID)) {
@@ -157,6 +180,7 @@ async function check(siteDir) {
     ['analytics tag', WEBSITE_ID],
     ['disclosure', MARKER],
     ['social card', 'og:title'],
+    ['icon links', 'favicon.ico'],
   ].filter(([, needle]) => !html.includes(needle));
 
   if (missing.length) {
@@ -169,7 +193,7 @@ async function check(siteDir) {
     );
     process.exit(1);
   }
-  console.log(`devlog-analytics --check: tag, disclosure and social card all present in ${index}`);
+  console.log(`devlog-analytics --check: tag, disclosure, social card and icon links all present in ${index}`);
 }
 
 const args = process.argv.slice(2);
