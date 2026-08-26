@@ -296,12 +296,45 @@ running on a user's machine agrees the release is installable:
     stapler validate         PASS
     TeamIdentifier           6UV93L24YL
 
-**What is still NOT proven.** The in-place swap itself. Squirrel validates the
-new bundle against the *running* app's designated requirement and exchanges it on
-quit, which needs a signed build actually running — a released version on a real
-machine, not a harness. What the run above proves is resolution and integrity end
-to end, plus the precondition that makes the swap possible. The remaining unknown
-is Squirrel, not our artefacts. `tests/e2e/u-update-banner.spec.ts` covers the banner through a stub and
+**The swap is now proven too — v0.1.3 -> v0.1.4, 26 August 2026.** A signed
+v0.1.3 installed from the published dmg, run against the real feed, downloaded
+v0.1.4 and exchanged itself in place. ShipIt logged
+`Installation completed successfully`, and the bundle that had gone in as 0.1.3:
+
+    CFBundleShortVersionString   0.1.4
+    codesign --deep --strict     PASS
+    spctl -a -t exec             accepted, source=Notarized Developer ID
+    stapler validate             PASS
+    TeamIdentifier               6UV93L24YL
+    relaunched, and the RUNNING app reports currentVersion 0.1.4, mode auto
+
+A corrupted or unsigned swap would look like success until the next launch, so
+the checks are run on the bundle *after* the exchange, not on what was
+downloaded.
+
+**AND IT CORRECTED THE COPY.** `autoInstallOnAppQuit` does not mean what its name
+suggests on macOS. Reading `MacUpdater.js`: it only makes Squirrel PRE-FETCH the
+update; the install happens in `handleUpdateDownloaded()`, reachable only from
+`quitAndInstall()`, which GetVect calls from one place — the IPC `install`
+handler behind the banner's **Restart** button. So the real behaviour is
+download in the background, then offer Restart. Nothing installs on quit, and
+nothing installs unasked. The site, docs, changelog and release-notes template
+all said "installs on quit" until this run; they were written from the flag's
+name rather than from its behaviour.
+
+**Three test runs failed before one succeeded, and none of the three was a
+product defect** — worth recording, because each looked like one:
+
+1. The app was SIGTERM'd (`osascript` failed, its error swallowed by
+   `2>/dev/null`, `|| kill` fired). A kill skips `will-quit`.
+2. Clean quit — but nothing installs on quit, per above.
+3. `dirname $0` resolved after a `cd`, so the CDP helper was never found; node's
+   error went to `/dev/null` and the caller read the empty string as "the app
+   never finished downloading".
+
+All three were swallowed error messages. A test that hides stderr can only
+report the absence of a result, never its cause — and the absence of a result
+looks exactly like a failure of the thing under test. `tests/e2e/u-update-banner.spec.ts` covers the banner through a stub and
 deliberately does not click install, because a spec that quits the app under test
 is testing the harness. So this is the pipeline being ready, not the feature being
 observed working, and the distinction is the one this file exists to keep:

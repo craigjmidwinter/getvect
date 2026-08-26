@@ -423,8 +423,10 @@ npm run dist    <span class="c"># package -&gt; release/mac-arm64/GetVect.app (+
         installed behind your back.</p>
       <p><strong>On macOS that changes from v0.1.4.</strong> Squirrel — the machinery Electron
         apps update through — checks the replacement's signature against the running app's, and
-        on a signed build that check passes, so the app downloads in the background and installs
-        on quit. What it downloads is the <code>-mac.zip</code> named in
+        on a signed build that check passes. So the app downloads in the background and then
+        offers <strong>Restart</strong>; choosing it exchanges the bundle and reopens on the new
+        version. It is never installed without you asking. What it downloads is the
+        <code>-mac.zip</code> named in
         <code>latest-mac.yml</code>, and it refuses to install anything whose sha512 does not
         match the digest in that file; both the digest and the signature on the app inside are
         checked by the release pipeline before publishing, and again against the asset

@@ -17,8 +17,10 @@ Nothing yet.
 ## [0.1.4] — 2026-08-26
 
 **GetVect can now update itself on macOS.** Because the build is signed, the app
-can verify a new version before applying it, so it downloads in the background
-and installs when you quit. Windows still shows a banner with a link and does
+can verify a new version before applying it. It downloads in the background and
+then offers **Restart** — choosing it swaps the app and reopens on the new
+version. Nothing is installed behind your back. Windows still shows a banner
+with a link and does
 not install, because without a code-signing certificate the install step cannot
 be verified — an updater that pulls 117 MB and then fails is worse than none.
 

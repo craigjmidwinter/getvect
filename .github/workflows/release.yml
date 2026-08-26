@@ -115,7 +115,8 @@ jobs:
           ### Updates
 
           **macOS installs updates in place.** Because the build is signed, the app can verify
-          and apply a new version itself: it downloads in the background and installs on quit.
+          and apply a new version itself: it downloads in the background, then offers
+          **Restart**. Choosing it swaps the app and reopens on the new version.
 
           **Windows tells you and does not install.** Without an Authenticode certificate the
           install step cannot be verified, so it links you to the release instead.
