@@ -29,6 +29,9 @@
     "node": ">=20"
   },
   "main": "dist/main/main.js",
+  "bin": {
+    "getvect": "bin/getvect.mjs"
+  },
   "type": "commonjs",
   "scripts": {
     "postinstall": "node node_modules/electron/install.js && node -e \"if (process.platform === 'darwin') require('child_process').execFileSync('xattr', ['-cr', 'node_modules/electron/dist/Electron.app'])\" || exit 0",

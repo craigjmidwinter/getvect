@@ -275,6 +275,52 @@ for the signing and notarization notes; the packaging config itself is
 > detects this, strips the quarantine xattrs and applies an ad-hoc signature. If you ever
 > see that ENOENT, run `npm run postinstall`.
 
+## Command line
+
+The same engine, without the window. Built for a caller that is not a person —
+an agent that just produced a raster and wants a path back:
+
+```bash
+git clone https://github.com/craigjmidwinter/getvect.git
+cd getvect && npm install && npm run build:node
+
+node bin/getvect.mjs logo.png                 # -> logo.svg
+```
+
+That is the whole common case. Format follows the output extension, everything
+else has a default:
+
+```bash
+node bin/getvect.mjs logo.png logo.dxf        # svg | eps | dxf | pdf | png
+node bin/getvect.mjs shot.jpg -f svg -c 16 -p photo
+node bin/getvect.mjs logo.png - > logo.svg    # stdout, for a pipe
+node bin/getvect.mjs logo.png out.svg --stats # SVG to the file, JSON to stdout
+```
+
+`npm link` puts it on your `PATH` as `getvect`. `node bin/getvect.mjs --help`
+lists every setting the app exposes — palette size, model preset, detail,
+smoothing, despeckle, anti-aliasing, noise reduction, minimum area, roundness,
+the black/white threshold, and DXF splines-vs-lines.
+
+**The contract it holds, because a subprocess has no way to ask:**
+
+- **stdout stays empty** unless you pass `--stats`, which prints one JSON object
+  on one line. Nothing to parse around.
+- **every failure exits non-zero** with one line on stderr — missing file `66`,
+  unsupported input `65`, bad arguments `64`, trace failure `70`, write failure
+  `73`, engine not built `69`.
+- **it never asks anything.** No prompt, no window, no renderer, no keychain, no
+  network. It imports the engine directly, the way the instruments do.
+- **it is the same trace the app shows** — byte-identical output for the same
+  input and settings, which is a test (`tests/engine/cli.test.mjs`), not a
+  claim.
+
+```bash
+$ node bin/getvect.mjs frankie.png out.svg --stats
+{"input":"frankie.png","output":"/abs/path/out.svg","format":"svg","width":1195,
+ "height":896,"colors":7,"layers":7,"bytes":17844,"ms":595}
+```
+
 ## Testing & instruments
 
 ```bash
