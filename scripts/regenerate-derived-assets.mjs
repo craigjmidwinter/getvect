@@ -202,9 +202,9 @@ const CLAIMS = [
   ['site/index.html', 'colour layers (readout)', /<span>shapes, (\d+) layers<\/span>/, 'layers'],
   ['site/index.html', 'colours (readout)', /<b>(\d+)<\/b><span>colours, Smart AA/, 'colorCount'],
   ['site/index.html', 'SVG KB (demo alt)', /as a (\d+) KB SVG/, 'svgKB'],
-  ['site/index.html', 'source KB (prose)', /(?:its|his|her) (\d+) KB raster becomes/, 'sourceKB'],
-  ['site/index.html', 'SVG KB (prose)', /becomes a (\d+) KB SVG/, 'svgKB'],
-  ['site/index.html', 'colour layers (prose)', /KB SVG in (\d+) colour layers/, 'layers'],
+  ['site/index.html', 'source KB (prose)', /a (\d+) KB raster in/, 'sourceKB'],
+  ['site/index.html', 'SVG KB (prose)', /a (\d+) KB SVG\s+out/, 'svgKB'],
+  ['site/index.html', 'colour layers (prose)', /in (\d+) editable colour layers/, 'layers'],
   ['site/index.html', 'shapes (prose)', /colour layers and (\d+) shapes/, 'shapes'],
   ['site/index.html', 'og:image width', /og:image:width" content="(\d+)"/, 'ogWidth'],
   ['site/index.html', 'og:image height', /og:image:height" content="(\d+)"/, 'ogHeight'],
@@ -712,6 +712,19 @@ async function runCheck(trace, measured, sources) {
     problems.push(
       `${r.file} declares ${r.label} ${r.claimed}, but the card is ${r.measured} — ` +
         'the meta tag and the generated image must agree',
+    );
+  }
+
+  // MISSING is not soft drift, it is a DEAD DETECTOR. A claim whose pattern no
+  // longer matches anything reports `(not found)` forever and can never go red
+  // again — so rewording the copy silently disarms the check that was watching
+  // it. Rewording is fine; leaving the pattern aimed at wording that no longer
+  // exists is not. Re-point the regex in CLAIMS, or delete the entry on purpose
+  // if the claim is genuinely gone from the page.
+  for (const r of rows.filter((r) => r.drift === 'MISSING')) {
+    problems.push(
+      `${r.file}: the pattern for "${r.label}" matches nothing any more, so that claim ` +
+        'is unwatched — re-point it in CLAIMS or remove the entry deliberately',
     );
   }
 

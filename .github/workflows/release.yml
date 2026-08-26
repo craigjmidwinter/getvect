@@ -97,22 +97,23 @@ jobs:
           **macOS, Apple Silicon** — download \`GetVect-$VERSION-arm64.dmg\`.
           **Windows, x64** — download \`GetVect-$VERSION-x64.exe\`.
 
-          ### These builds are not signed
+          ### Signing
 
-          There is no Developer ID certificate and no Authenticode certificate behind them yet.
-
-          On macOS the app is quarantined on first launch. Either right-click it in Applications
-          and choose **Open**, or:
+          **macOS is signed and notarized.** The dmg carries an Apple Developer ID signature and
+          a stapled notarization ticket, so it opens with no Gatekeeper warning. Check it
+          yourself rather than taking our word for it:
 
           \`\`\`
-          xattr -dr com.apple.quarantine /Applications/GetVect.app
+          spctl -a -t install -vv GetVect-$VERSION-arm64.dmg   # accepted / source=Notarized Developer ID
+          codesign -dvvv /Applications/GetVect.app             # TeamIdentifier=6UV93L24YL
           \`\`\`
 
-          On Windows, SmartScreen shows "Windows protected your PC". Choose **More info**, then
-          **Run anyway**. The installer is per-user and never asks for administrator rights.
+          **Windows is not signed.** There is no Authenticode certificate, so SmartScreen shows
+          "Windows protected your PC" — choose **More info**, then **Run anyway**. The installer
+          is per-user and never asks for administrator rights.
 
-          The same fact is why GetVect will *tell* you about a new version rather than install
-          one: an unsigned app cannot reliably update itself in place.
+          GetVect still *tells* you about a new version rather than installing one; the in-app
+          updater switches on once it has been exercised end to end against a signed release.
 
           ### Network
 

@@ -312,25 +312,28 @@ gh browse craigjmidwinter/getvect
   in three places (README, `site/index.html`, and the release-notes template in
   `release.yml`) before it changes the code.
 
-- **Signing and notarization — still to do.** `npm run dist` produces
-  `release/mac-arm64/GetVect.app` plus a dmg and a zip, and it is **unsigned on purpose**:
-  `mac.identity: null` in `electron-builder.yml`. That is fine locally (the build machine
-  runs its own output) and wrong for distribution — a downloaded unsigned app is
-  quarantined, and on Apple Silicon Gatekeeper will refuse it outright rather than offering
-  the right-click-Open escape hatch. For a real release:
+- **Signing and notarization — done for macOS, since v0.1.3.** `npm run dist` still builds
+  **unsigned on purpose** (`mac.identity: null` in `electron-builder.yml`): that is right
+  locally, where the build machine runs its own output, and wrong for distribution. Release
+  signing happens in the `mac` job of `release.yml`, and it is a gate, not a step — a build
+  whose signing secrets are absent **fails**, it does not skip. The full chain, the five
+  secrets and the three traps are in [SIGNING.md](./SIGNING.md); the two things worth
+  repeating here:
 
-  1. A **Developer ID Application** certificate in the login keychain. Then drop
-     `identity: null` (electron-builder finds the cert on its own, or set `CSC_NAME`).
-  2. `hardenedRuntime: true` and an entitlements plist — the hardened runtime is a
-     prerequisite for notarization.
-  3. Notarization: `mac.notarize: true` plus `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` /
-     `APPLE_TEAM_ID` (or an App Store Connect API key) in the environment. electron-builder
-     staples the ticket for you.
-  4. Verify the result — `codesign --verify --deep --strict --verbose=2 GetVect.app` and
-     `spctl -a -vv -t install GetVect.app` — and check on a machine that has never built it.
+  1. **electron-builder does not sign or staple the dmg.** It signs and staples the `.app`
+     and then wraps it in an unsigned disk image — so the file a user downloads carries no
+     signature while every build log says notarization succeeded. `scripts/notarize-dmg.mjs`
+     signs, notarizes and staples the dmg after packaging.
+  2. **Stapling changes the bytes, so the digest must be computed after it.** The sha512
+     electron-builder wrote into `latest-mac.yml` is a pre-staple digest and would be a lie
+     the moment the ticket is attached. That script re-hashes and re-indexes the feed last.
 
-  Until that is done, say plainly in the release notes that the download is unsigned and
-  give the `xattr -dr com.apple.quarantine /Applications/GetVect.app` incantation.
+  Verification runs against the asset **re-downloaded from the published release**
+  (`scripts/verify-signed-dmg.sh`), because a sibling artefact that exercises the same code
+  path is exactly convincing enough to stop you checking the real one.
+
+  **Windows is still unsigned.** There is no Authenticode certificate; the release notes and
+  the download page say so, and must keep saying so until there is one.
 
 - **Dependency licence hygiene.** All direct dependencies are MIT-compatible:
 
@@ -362,8 +365,8 @@ gh browse craigjmidwinter/getvect
   dependency edits were off-limits while the loop was running.)
 
 - **Release. Done for 0.1.0** — see "Cutting a release" above. The release notes the
-  workflow writes say plainly that the build is unsigned and give the `xattr` incantation.
-  When notarization lands, delete that section from the template in `release.yml` rather
+  workflow writes name the signing state of each platform: macOS signed and notarized with
+  the commands a reader can run themselves, Windows not. Keep that honest per-platform rather
   than leaving a warning that is no longer true.
 
 - **Second exemplar subject.** The katra devlog's own open question: every fidelity number

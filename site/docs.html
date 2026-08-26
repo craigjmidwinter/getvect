@@ -49,7 +49,7 @@
       <h1>Running GetVect</h1>
       <p class="lede">
         Install it from the <a href="https://github.com/craigjmidwinter/getvect/releases/latest">latest
-        release</a> (a dmg for macOS, an exe for Windows — both unsigned, see the download page for
+        release</a> (a signed, notarized dmg for macOS; an unsigned exe for Windows — see the download page for
         the first-launch step), or run it from source. Everything below is what the app does today.
       </p>
       <ul class="toc">
@@ -74,7 +74,7 @@
       <h2>Clone, install, start</h2>
       <p>Not building from source? Take the dmg from the
         <a href="https://github.com/craigjmidwinter/getvect/releases/latest">latest release</a> —
-        macOS on Apple Silicon, unsigned, with the first-launch instructions on the
+        macOS on Apple Silicon, signed and notarized, with platform notes on the
         <a href="index.html#download">download section</a> of the front page.</p>
       <p>To build it yourself you need <strong>Node 20+</strong> and, for now,
         <strong>macOS</strong>. Linux needs <code>xvfb-run -a</code> for the Electron tests;
@@ -421,12 +421,11 @@ npm run dist    <span class="c"># package -&gt; release/mac-arm64/GetVect.app (+
         is, a small dismissible banner appears in the corner with a Download link; dismiss it and
         that version never asks again. Nothing is downloaded in the background and nothing is
         installed behind your back.</p>
-      <p>That is not caution, it is arithmetic. macOS will not let an <strong>unsigned</strong> app
-        replace itself in place — Squirrel, the machinery Electron apps update through, refuses an
-        update whose signature it cannot check against the running app's. An in-app updater on this
-        build would pull 117 MB and then fail at the last step, every launch, forever. So it does
-        the honest half of the job. The other half is already written and switches on with the
-        certificate, not with a rewrite.</p>
+      <p>The other half is written and dormant. Now that macOS builds are signed, an in-app
+        updater <em>can</em> work — Squirrel, the machinery Electron apps update through, checks
+        the replacement's signature against the running app's, and that check can now pass. It
+        stays off until it has been exercised end to end against a signed release, because an
+        updater that pulls 117 MB and fails at the last step is worse than no updater at all.</p>
       <p>The check sends no identifier, asks one question, and fails silently when you are offline.
         To turn it off:</p>
 <pre><code>GETVECT_NO_UPDATE_CHECK=1 open -a GetVect
@@ -478,29 +477,31 @@ npm run screenshots   <span class="c"># a labelled contact sheet of the whole fl
         this is a hook rather than a note.</p>
 
       <h3>Is it signed?</h3>
-      <p>Not yet, on either platform — so macOS shows a Gatekeeper warning and Windows shows
-        SmartScreen on first launch. Both are one-time and the steps below clear them in a few
-        seconds.</p>
+      <p><strong>macOS: yes, since v0.1.3.</strong> The dmg is signed with an Apple Developer ID
+        and notarized by Apple, with the ticket stapled, so it opens with no Gatekeeper warning
+        and the check works offline. Verify it yourself with
+        <code>spctl -a -t install -vv GetVect-0.1.3-arm64.dmg</code> — it answers
+        <code>accepted</code> / <code>source=Notarized Developer ID</code> — and
+        <code>codesign -dvvv</code> shows Team ID <code>6UV93L24YL</code>.</p>
+      <p><strong>Windows: not yet.</strong> There is no Authenticode certificate, so SmartScreen
+        warns on first launch. It is one-time and the steps below clear it.</p>
       <p><strong>What it sends:</strong> a once-per-launch check for a newer version (opt out with
         <code>GETVECT_NO_UPDATE_CHECK=1</code>), and, only if you turn it on,
         <a href="#ai-enhance">AI Enhance</a> under your own API key. Nothing else leaves your
         machine.</p>
 
       <h3>"GetVect is damaged and can't be opened"</h3>
-      <p>Every GetVect build — the published dmg and anything from <code>npm run dist</code> — is
-        <strong>unsigned and not notarized</strong>. A downloaded unsigned app is quarantined, and
-        on Apple Silicon Gatekeeper refuses it outright rather than offering the right-click →
-        Open escape hatch.</p>
-      <p>The cleanest way past this is not to download a bundle at all:</p>
-<pre><code>brew install craigjmidwinter/tap/getvect</code></pre>
-      <p>That formula builds from source on your machine, so there is no downloaded application
-        bundle to quarantine and no attribute to remove. It does <em>not</em> sign or notarize
-        anything — the build is still unsigned, and the dmg still behaves as described above.</p>
-      <p>Otherwise, remove the quarantine attribute yourself:</p>
+      <p>The published dmg should not produce this any more — since v0.1.3 it is signed and
+        notarized, and <code>spctl -a -t install -vv</code> on it answers <code>accepted</code>.
+        If you see it, check which build you have first:</p>
+<pre><code>spctl -a -vv /Applications/GetVect.app</code></pre>
+      <p>A <strong>v0.1.2 or earlier</strong> download is genuinely unsigned; the fix is to get the
+        current release rather than to work around it. A build from <code>npm run dist</code> is
+        unsigned on purpose and will always do this — that one is yours, so removing the quarantine
+        attribute is reasonable:</p>
 <pre><code>xattr -dr com.apple.quarantine /Applications/GetVect.app</code></pre>
-      <p>Only do that for a bundle you built yourself, or one whose provenance you trust. The
-        release page carries the same instruction, and the checksum of every published artefact is
-        in <code>latest-mac.yml</code> beside it.</p>
+      <p>Only ever do that for a bundle you built yourself. For a downloaded one, the point of a
+        signature is that you should not have to.</p>
 
       <h3>The Photo preset ignores my colour count</h3>
       <p>It has a colour floor of 16. Ask for 4 and you will get 10–16; the panel will not display

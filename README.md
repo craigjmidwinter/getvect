@@ -154,25 +154,28 @@ administrator rights. Both come off the same tag and carry the same 80 engine co
 run on each platform before packaging. Intel Macs and Linux build from source (below) but
 are not tested and not published, so they are not offered as if they were.
 
-**The build is unsigned**, so macOS quarantines it on download and says it "cannot be
-opened". Nothing is wrong with the file — nobody has paid Apple to vouch for it. Either
-right-click GetVect in Applications and choose **Open**, or:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/GetVect.app
-```
-
-On Windows the same missing certificate means SmartScreen says "Windows protected your
-PC" — choose **More info**, then **Run anyway**.
+**On macOS it just opens.** Since v0.1.3 the dmg is signed with an Apple Developer ID and
+notarized by Apple, with the ticket stapled, so there is no quarantine warning and no
+right-click dance — see [Code signing policy](#code-signing-policy) for how to check that
+yourself. **On Windows** there is still no certificate, so SmartScreen says "Windows
+protected your PC" — choose **More info**, then **Run anyway**.
 
 ### Code signing policy
 
-**Windows** — unsigned. There is no Authenticode certificate, and SmartScreen will warn.
+**macOS** — signed with an Apple Developer ID and notarized by Apple since **v0.1.3**, with
+the ticket stapled so the check works offline. Nothing you have to take on trust:
 
-**macOS** — the published build is unsigned. A Developer ID signing and notarization
-pipeline exists and is enforced: an artefact that is not signed, Gatekeeper-accepted and
-stapled cannot be published, by construction ([SIGNING.md](./SIGNING.md)). No release has
-been through it yet.
+```bash
+spctl -a -t install -vv GetVect-0.1.3-arm64.dmg   # accepted / source=Notarized Developer ID
+codesign -dvvv /Applications/GetVect.app          # TeamIdentifier=6UV93L24YL
+```
+
+The release pipeline enforces it: an artefact that is not signed, Gatekeeper-accepted and
+stapled cannot be published, and the last check runs against the asset re-downloaded from
+the published release ([SIGNING.md](./SIGNING.md)).
+
+**Windows** — still unsigned. There is no Authenticode certificate, and SmartScreen will
+warn on first launch.
 
 **Roles.** Committers and reviewers: Craig Midwinter. Approvers: Craig Midwinter. GetVect is
 a single-maintainer project; releases are cut from tags by
@@ -184,25 +187,18 @@ touchpoints, both disclosed — a once-per-launch update check against GitHub Re
 (opt-out via `GETVECT_NO_UPDATE_CHECK=1`) and opt-in AI Enhance under your own API key.
 Nothing else leaves the machine.
 
-### Homebrew — macOS, and no Gatekeeper prompt
+### Homebrew — macOS, built on your own machine
 
 ```bash
 brew install craigjmidwinter/tap/getvect
 getvect
 ```
 
-This is a **formula, not a cask**, and that is the whole reason it exists. A cask fetches
-the `.dmg` through the same path a browser uses, so macOS stamps `com.apple.quarantine` on
-it and you are back in the paragraph above. A formula builds from source on your machine:
-nothing arrives as a downloaded application bundle, so there is nothing to quarantine, no
-Gatekeeper prompt, and no attribute to strip.
-
-**What this does not do is sign anything.** GetVect is still unsigned and un-notarized, and
-the `.dmg` above still behaves exactly as described. Homebrew changes how you install, not
-whether the app has a certificate — it sidesteps quarantine because nothing is downloaded
-as an application bundle, which is a different fact from being trusted by Apple. The
-signing story is tracked in [PUBLISH-CHECKLIST.md](./PUBLISH-CHECKLIST.md) and is not
-solved here.
+This is a **formula, not a cask**: it builds from source on your machine, so nothing
+arrives as a downloaded application bundle at all. That is a different guarantee from the
+signed `.dmg` — not a stronger or weaker one. The dmg is something Apple has checked and
+vouched for; the formula is something you compiled yourself and never had to trust anyone
+about. Pick whichever of those you find more convincing.
 
 The trade is time and a toolchain — Homebrew pulls in Node, then runs an `npm install` and
 a full build, so budget a few minutes rather than the seconds a `.dmg` takes. It also
@@ -242,10 +238,10 @@ difference between "uninstalled" and "gone".
 
 GetVect asks GitHub Releases once per launch whether there is a newer version, and if
 there is, shows a dismissible banner with a link. It does not download or install
-anything: macOS refuses to let an unsigned app update itself in place, and an updater that
-pulled 150 MB and then failed at the last step would be worse than none. The silent
-in-app updater is written and dormant — it switches on with the certificate, not with a
-rewrite ([`src/shared/update.ts`](src/shared/update.ts) explains the whole reasoning).
+anything. The silent in-app updater is written and dormant; it switches on once it has been
+exercised end to end against a signed release, because an updater that pulled 150 MB and
+then failed at the last step would be worse than none
+([`src/shared/update.ts`](src/shared/update.ts) explains the whole reasoning).
 
 The check sends no identifier, happens once, and fails silently when you are offline. To
 turn it off entirely:

@@ -76,7 +76,7 @@
                href="https://github.com/craigjmidwinter/getvect/releases/latest">Download — macOS &amp; Windows</a>
             <a class="btn" href="docs.html">Read the docs</a>
             <a class="btn" href="https://github.com/craigjmidwinter/getvect">Source on GitHub</a>
-            <span class="meta">MIT · macOS &amp; Windows · unsigned</span>
+            <span class="meta">MIT · macOS signed &amp; notarized · Windows unsigned</span>
           </div>
         </div>
         <div class="hero-art">
@@ -306,35 +306,25 @@
       </div>
 
       <div class="callout">
-        <span class="tag">It is not signed, and the first launch says so</span>
-        <p>There is no Apple Developer ID certificate behind this build yet, so macOS
-          quarantines it on download and will tell you it "cannot be opened". Nothing is wrong
-          with the file — an unsigned app is simply one nobody has paid Apple to vouch for.</p>
-        <p><strong>On macOS, Homebrew avoids the whole conversation:</strong></p>
-        <p><code>brew install craigjmidwinter/tap/getvect</code></p>
-        <p>That is a formula rather than a cask: it builds from source on your machine, so
-          nothing arrives as a downloaded application bundle, nothing gets quarantined and
-          Gatekeeper never prompts. Budget a few minutes for the build. <em>It does not sign
-          the app</em> — GetVect is still unsigned and un-notarized, and the download below
-          still hits the wall above. It sidesteps quarantine; it does not replace a
-          certificate.</p>
-        <p>If you would rather not use Homebrew, take the download and get past it either by
-          <strong>right-clicking</strong> GetVect in Applications and choosing
-          <strong>Open</strong>, then <strong>Open</strong> again in the dialog — or in
-          Terminal:</p>
-        <p><code>xattr -dr com.apple.quarantine /Applications/GetVect.app</code></p>
-        <p>Windows has its own version of the same conversation: SmartScreen says "Windows
-          protected your PC" because there is no Authenticode certificate either. Choose
-          <strong>More info</strong>, then <strong>Run anyway</strong>. The installer is
-          per-user and never asks for administrator rights — an unsigned installer demanding
-          admin is exactly the shape of the thing you are told not to run.</p>
-        <p>Neither platform is signed yet, so you will see one warning on first launch and
-          none after that. Everything above gets you past it in a few seconds.</p>
-        <p>The same missing certificate is why GetVect <em>tells</em> you about a new version
-          instead of installing one: macOS refuses to let an unsigned app update itself in
-          place, and an updater that downloaded 150 MB and then failed would be worse than no
-          updater at all. When the certificate lands, the in-app updater is already written and
-          switches on.</p>
+        <span class="tag">macOS is signed and notarized. Windows is not, yet.</span>
+        <p><strong>macOS:</strong> since v0.1.3 the dmg is signed with an Apple Developer ID
+          and notarized by Apple, so it opens with no Gatekeeper warning and no
+          right-click dance. You do not have to take that on trust — check it yourself:</p>
+        <p><code>spctl -a -t install -vv GetVect-0.1.3-arm64.dmg</code></p>
+        <p>It answers <code>accepted</code> / <code>source=Notarized Developer ID</code>, and
+          <code>codesign -dvvv</code> on the app shows Team ID
+          <code>6UV93L24YL</code>. The ticket is stapled, so the check works offline.</p>
+        <p><strong>Windows:</strong> still unsigned. There is no Authenticode certificate, so
+          SmartScreen says "Windows protected your PC" — choose <strong>More info</strong>,
+          then <strong>Run anyway</strong>. The installer is per-user and never asks for
+          administrator rights; an unsigned installer demanding admin is exactly the shape of
+          the thing you are told not to run.</p>
+        <p>Prefer to build it yourself? <code>brew install craigjmidwinter/tap/getvect</code>
+          is a formula rather than a cask: it compiles from source on your machine, so nothing
+          arrives as a downloaded bundle at all. Budget a few minutes for the build.</p>
+        <p>GetVect still <em>tells</em> you about a new version rather than installing one.
+          The in-app updater is written and switches on once it has been exercised against a
+          signed release end to end; until then a banner with a link is the honest option.</p>
       </div>
 
       <div class="callout callout--flat" id="privacy">

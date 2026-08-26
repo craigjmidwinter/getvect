@@ -219,10 +219,41 @@ check themselves rather than an assertion:
 
 A claim a reader can run beats a claim a reader must believe.
 
+## The proof, recorded — v0.1.3, 26 August 2026
+
+The three conditions above are met, so this section exists rather than the claim
+sitting on its own. Everything here was measured against
+`GetVect-0.1.3-arm64.dmg` **re-downloaded from the published release** with a
+cache-buster, not against a build directory:
+
+    sha256   ae25f7185dd514615a230af41fa988a37b4723c0766d9f73cb19f0f56ddcac8f
+    bytes    121,635,204   (post-staple)
+    feed     sha512 in latest-mac.yml MATCHES the downloaded bytes
+
+    notarytool   status Accepted   log status Accepted   issues 0
+    codesign --verify --deep --strict   dmg PASS   app PASS
+    spctl -a -t install / -t exec       accepted, source=Notarized Developer ID
+    xcrun stapler validate              dmg PASS   app PASS
+
+    Authority=Developer ID Application: Craig Midwinter (6UV93L24YL)
+    Authority=Developer ID Certification Authority
+    Authority=Apple Root CA
+    TeamIdentifier=6UV93L24YL
+
+Two details worth keeping. Apple accepted the hardened runtime **first
+submission, zero issues** — the sharp and resvg native binaries needed no
+entitlement exceptions beyond what is already in `build/entitlements.mac.plist`.
+And the CDN served the download as `x-cache: HIT`; that is fine *because the
+digest was checked*, which is the whole reason the check compares bytes rather
+than trusting that a fresh URL returns fresh bytes.
+
+The site, docs, README and the release-notes template were updated to the signed
+copy in the same commit as this section, per the rule above.
+
 ## Checking a build by hand
 
 ```bash
-scripts/verify-signed-dmg.sh release/GetVect-0.1.1-arm64.dmg
+scripts/verify-signed-dmg.sh release/GetVect-0.1.3-arm64.dmg
 ```
 
 Against an unsigned build this fails with six distinct reasons and exits 1.
