@@ -14,6 +14,36 @@ detailed record of *why* things changed; this file is the short answer to
 
 Nothing yet.
 
+## [0.1.4] — 2026-08-26
+
+**GetVect can now update itself on macOS.** Because the build is signed, the app
+can verify a new version before applying it, so it downloads in the background
+and installs when you quit. Windows still shows a banner with a link and does
+not install, because without a code-signing certificate the install step cannot
+be verified — an updater that pulls 117 MB and then fails is worse than none.
+
+Either way it stays one check per launch, sends no identifier, and
+`GETVECT_NO_UPDATE_CHECK=1` switches it off before any request is made.
+
+Nothing else changed. This version exists to be a target: an updater cannot be
+tested without something to update *to*.
+
+## [0.1.3] — 2026-08-26
+
+**The macOS build is signed and notarized.** It opens with no Gatekeeper
+warning, no right-click dance and no `xattr` incantation. The notarization
+ticket is stapled, so the check works offline. You do not have to take that on
+trust:
+
+```bash
+spctl -a -t install -vv GetVect-0.1.3-arm64.dmg   # accepted / source=Notarized Developer ID
+codesign -dvvv /Applications/GetVect.app          # TeamIdentifier=6UV93L24YL
+```
+
+**Windows is still unsigned** and SmartScreen still warns: choose **More info**,
+then **Run anyway**. The installer is per-user and never asks for administrator
+rights.
+
 ## [0.1.1] — 2026-08-20
 
 First release with a Windows build.
