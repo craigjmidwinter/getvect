@@ -42,12 +42,11 @@ point the drawing was the asset and the colour was a parameter.
 
 The find of the day came from the new eyes-box instrument. Our engine drops
 Frankie's green eyes with Enhance on (0.6% survival) and keeps them with it off
-(99.2%) — one settings tick costs a palette slot. But measuring the reference
-against the same box turned up something better: its "preserved" green eye layer
-is 69 RGB units from the source's actual olive. It didn't preserve his eyes; its
-generative Enhance repainted them a nicer green. And the fox's cyan eyes are
-dropped by BOTH products. The instrument that was built to catch our failure
-caught the reference doing the thing we assumed only we did.
+(99.2%) — one settings tick costs a palette slot, which is a real defect and now
+has a number. The instrument was built to catch exactly that, and the useful
+lesson is that "the eyes are still there" is not a measurement: a layer can
+survive and still sit 69 RGB units from the source's actual olive. Survival and
+fidelity are separate questions, and the box now asks both.
 
 ```note
 The copy got honest today too, on Craig's call: "entirely on your machine" and
@@ -58,6 +57,7 @@ at all, still the sharper claim.
 ```
 
 Also fixed on the way through: exemplar registration is now chosen by measuring
-candidate alignments instead of trusting declared sizes, because the reference
-quietly trims transparent margins from its canvas — a bug that would have scored
-every future die-cut exemplar as garbage.
+candidate alignments instead of trusting declared sizes. Declared dimensions are
+not a promise — anything that trims transparent margins silently shifts the
+canvas — and trusting them would have scored every future die-cut exemplar as
+garbage.

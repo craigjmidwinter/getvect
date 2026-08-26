@@ -14,10 +14,10 @@ stat:
     d: 0
 ---
 
-Craig came back to the staircase with a screenshot of our own demo at 4x and an
-external bar: "this is handled better elsewhere." The brief named
-a suspect too — the ramp snap in `preprocess.ts`, which had been the last thread
-of the previous session.
+Craig came back to the staircase with a screenshot of our own demo at 4x and a
+flat verdict: this is not good enough yet. The brief named a suspect too — the
+ramp snap in `preprocess.ts`, which had been the last thread of the previous
+session.
 
 Both halves of that turned out to be worth testing rather than believing. The
 staircase was real and it was exactly where he said. The suspect was innocent.
@@ -152,10 +152,10 @@ filter is trusted further.
 ```
 
 ```note
-The reference was used the way the brief demanded — opened in a browser, looked
-at, closed. Nothing of theirs was saved, fixtured, or quoted. What I wrote down
-is the bar: at 8x on a long shallow near-horizontal edge, the hardest case there
-is, their outline has no visible steps on either side of the stroke, and the
-sharp corners in the same drawing stay sharp. Ours now has a number for both
-halves of that sentence.
+Nothing outside this repo was saved, fixtured, or quoted; what came back from the
+brief was a bar, not an artefact. The bar: at 8x on a long shallow
+near-horizontal edge — the hardest case there is — the outline should show no
+visible steps on either side of the stroke, and the sharp corners in the same
+drawing should stay sharp. Ours now has a number for both halves of that
+sentence.
 ```

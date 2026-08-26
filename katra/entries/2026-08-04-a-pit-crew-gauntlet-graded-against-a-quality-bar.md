@@ -37,9 +37,9 @@ integration critic scores ≥ 8.5 with no major gaps (capped at five laps).
 Two alternatives got rejected on the way in. Parallel builders in git worktrees
 lost to sequential builders on one repo — the slices genuinely depend on each other
 (the settings panel needs the engine's palette contract), and merge arbitration
-would have cost more than the parallelism bought. And "make it look like the
-reference" as a critic prompt lost to an acceptance checklist with ids
-(A1–D4) plus numeric fidelity gates, because adjectives don't fail CI.
+would have cost more than the parallelism bought. And a vague "make it look
+right" critic prompt lost to an acceptance checklist with ids (A1–D4) plus
+numeric fidelity gates, because adjectives don't fail CI.
 
 ```warning
 What broke first had nothing to do with agents: macOS XProtect decided the

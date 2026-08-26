@@ -45,16 +45,16 @@ slot. The fix pins what the clustering already found: a hue-outlier reservation
 with five guards, each bounded by a fixture that broke without it.
 
 Numbers after: cheek stripes 52% → 96%. The nose has its own salmon layer. And
-the fox's cyan eyes — 0% before, and 0% in the reference output we were measuring against —
-come back at 93%. On the defect class we discovered by measuring ourselves
-against the reference, we now beat it.
+the fox's cyan eyes, 0% before, come back at 93%. The whole defect class was
+invisible until there was an instrument pointed at it — which is the argument for
+building the instrument before believing the output.
 
 ```note
 Two small honesty rituals from the round worth keeping: the demo dropped to
-19 KB, which made our old line "their export is smaller than ours" false in our
-favour — the copy now reads "fewer shapes than ours, in more bytes". And the
-nose gates were re-baselined with proof that the shift came from the art change
-(same build, pre-scrub source, numbers reproduced), not from the engine.
+19 KB, which quietly made a published size claim wrong in our favour, so the copy
+was corrected the same day. And the nose gates were re-baselined with proof that
+the shift came from the art change (same build, pre-scrub source, numbers
+reproduced), not from the engine.
 ```
 
 Craig also asked the right uncomfortable question today: are these gates
