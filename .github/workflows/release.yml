@@ -303,7 +303,20 @@ jobs:
           rm -f "$KEY"
           echo "notary credentials authenticate"
 
-      - name: Package and publish
+      # PACKAGE, THEN FINISH THE DMG, THEN UPLOAD — in that order, deliberately.
+      #
+      # This used to be `--publish always`, which packages, hashes and uploads in
+      # one move. That is exactly what could not work: electron-builder staples
+      # the .app and then wraps it in a disk image it does not sign, so the file
+      # a user downloads had no signature and no ticket while every log said
+      # notarization succeeded. Fixing the dmg afterwards changes its bytes, and
+      # the sha512 already written into latest-mac.yml — which the shipped app's
+      # updater trusts — would then describe a file that no longer exists.
+      #
+      # So packaging no longer publishes. scripts/notarize-dmg.mjs signs,
+      # notarizes and staples the dmg and re-indexes the feed against the
+      # finished file, and the upload happens last.
+      - name: Package
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # electron-builder reads these three for notarization. APPLE_API_KEY
@@ -329,9 +342,20 @@ jobs:
           set +x
           set -euo pipefail
           echo "$NOTARY_KEY_P8_BASE64" | base64 --decode > "$APPLE_API_KEY"
-          npm run dist -- --mac --publish always \
+          npm run dist -- --mac --publish never \
             -c.mac.identity="$SIGN_IDENTITY" \
             -c.mac.notarize=true
+
+      - name: Sign, notarize and staple the dmg, then re-index the feed
+        env:
+          APPLE_API_KEY: ${{ runner.temp }}/apple-api-key.p8
+          APPLE_API_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
+          CSC_KEYCHAIN: ${{ runner.temp }}/signing.keychain-db
+          SIGN_IDENTITY: "${{ vars.MACOS_SIGN_IDENTITY || 'Developer ID Application: Craig Midwinter (6UV93L24YL)' }}"
+        run: |
+          set -euo pipefail
+          node scripts/notarize-dmg.mjs release
           rm -f "$APPLE_API_KEY"
 
       # THE ARTEFACT, NOT THE BUILD.
@@ -353,6 +377,36 @@ jobs:
           for dmg in "${dmgs[@]}"; do
             bash scripts/verify-signed-dmg.sh "$dmg"
           done
+
+      # Upload only after the artefact has passed. Nothing reaches the release
+      # until the file itself is signed, Gatekeeper-accepted and stapled, and the
+      # feed has been re-indexed against it.
+      - name: Upload the verified artefacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.draft.outputs.tag }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(release/*.dmg release/*-mac.zip release/*-mac.zip.blockmap release/latest-mac.yml)
+          if [ ${#files[@]} -lt 3 ]; then
+            echo "::error::expected a dmg, a zip and latest-mac.yml in release/; found: ${files[*]:-none}"
+            exit 1
+          fi
+          printf '  %s\n' "${files[@]}"
+          gh release upload "$TAG" "${files[@]}" --clobber
+
+          # The feed must describe what was actually uploaded. Re-reading it here
+          # is cheap and catches a re-index that silently did nothing.
+          DMG=$(ls release/*.dmg | head -1)
+          WANT=$(awk '/url: .*\.dmg/{f=1} f&&/sha512:/{print $2; exit}' release/latest-mac.yml)
+          GOT=$(openssl dgst -sha512 -binary "$DMG" | base64)
+          if [ "$WANT" != "$GOT" ]; then
+            echo "::error::latest-mac.yml does not match the stapled dmg it was uploaded with"
+            exit 1
+          fi
+          echo "feed digest matches the stapled dmg"
 
   windows:
     name: build · publish · Windows
