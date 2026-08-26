@@ -313,14 +313,16 @@ Playwright-for-Electron harness, the fixture generator, the fidelity instruments
 being tested is the thesis that a loop's speed limit is measurement, not intelligence — so
 a third role that only makes things countable should pay for itself.
 
-The single biggest correction came from refusing to grade against adjectives — a bar
-written from marketing copy does not fail CI. Rebuilding the spec around *model presets and
-candidate palettes*, rather than the detail/smoothing/despeckle sliders we had guessed,
-surfaced the finding the engine now revolves around: **Smart anti-aliasing collapses path
-count by ~81–95% at otherwise identical settings**, replicated on three subjects
-(354 → 67, 637 → 63 on the fox, 758 → 41 on Frankie). That is a pre-trace edge cleanup,
-not a rendering garnish, and it is the difference between output that looks *traced* and
-output that looks *drawn*.
+The single biggest correction came from refusing to grade against adjectives: a bar
+written as prose does not fail CI. Rebuilding the spec around *model presets and candidate
+palettes*, rather than the detail/smoothing/despeckle sliders we had guessed, surfaced the
+finding the engine now revolves around: **Smart anti-aliasing collapses sub-path count by
+about two thirds at otherwise identical settings** — 90 → 29 on the fox and 159 → 42 on
+Frankie, Clipart at 8 colours, counted with `countPaths`/`countSubPaths` from
+`instruments/lib/metrics.mjs`. Sub-paths are the unit that moves: we emit one path per
+colour layer, so the element count barely changes while the slivers inside it collapse.
+That is a pre-trace edge cleanup, not a rendering garnish, and it is the difference between
+output that looks *traced* and output that looks *drawn*.
 
 The loop also caught itself cheating. For an entire lap the instruments fed the engine a
 white-flattened image that no UI could ever produce, while the renderer's canvas ingest
@@ -330,10 +332,8 @@ the whole sticker/decal use case, traced an invented opaque black background and
 product. There is now a decode-parity spec whose only job is to go red the moment the app
 and the harness disagree.
 
-The whole build is chronicled as it happened in [`katra/entries/`](katra/entries/) —
-[the loop design](katra/entries/2026-08-04-a-pit-crew-gauntlet-takes-on-a-leading-online-vectorizer.md)
-and
-[the ground-truth recon](katra/entries/2026-08-04-driving-the-real-vectorizer-for-ground-truth-smart-aa-is-the-whole-ballgame.md).
+The whole build is chronicled as it happened in [`katra/entries/`](katra/entries/),
+published at [getvect.midwinter.io/devlog](https://getvect.midwinter.io/devlog/).
 Longer-form writing on the loop itself lives at
 [midwinter.io/blog](https://midwinter.io/blog/).
 
