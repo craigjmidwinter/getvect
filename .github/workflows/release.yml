@@ -367,6 +367,45 @@ jobs:
             -c.mac.notarize=true \
             -c.extraMetadata.updateMode=auto
 
+      # THE LICENCE NOTICE HAS TO BE IN THE BUNDLE, NOT JUST IN THE REPO.
+      #
+      # MIT, BSD and Apache-2.0 require their text to ACCOMPANY the
+      # distribution. v0.1.3 and v0.1.4 both shipped with zero licence files —
+      # not even Electron's own — and nothing noticed, because the repo looked
+      # correct and only the artefact was wrong.
+      #
+      # `npm run build` regenerates build/third-party and `extraResources` ships
+      # it, but that is two assumptions about other tools' behaviour on a path
+      # that might not exist. Neither fails loudly on its own, and the result is
+      # a binary that is out of compliance while every step is green — so it is
+      # checked on the packaged bundle rather than believed.
+      - name: The app must carry its third-party licence notice
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apps=(release/mac-*/GetVect.app)
+          if [ ${#apps[@]} -eq 0 ]; then
+            echo "::error::no packaged .app to check"
+            exit 1
+          fi
+          for app in "${apps[@]}"; do
+            res="$app/Contents/Resources/third-party"
+            for f in THIRD-PARTY-LICENSES.md electron-LICENSE.txt LICENSES.chromium.html; do
+              if [ ! -s "$res/$f" ]; then
+                echo "::error::$app is missing $f — it would ship without the licence text its dependencies require"
+                exit 1
+              fi
+            done
+            # A notice can exist and still say nothing; the generator has its own
+            # floors, this one guards the copy that actually reached the bundle.
+            bytes=$(wc -c < "$res/THIRD-PARTY-LICENSES.md")
+            if [ "$bytes" -lt 20000 ]; then
+              echo "::error::the shipped notice is $bytes bytes — implausibly small"
+              exit 1
+            fi
+            echo "  $app: notice present ($bytes bytes) + Electron and Chromium licences"
+          done
+
       - name: Sign, notarize and staple the dmg, then re-index the feed
         env:
           APPLE_API_KEY: ${{ runner.temp }}/apple-api-key.p8
