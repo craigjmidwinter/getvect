@@ -1,4 +1,5 @@
 ---
+publish: true
 title: Three pages, not thirteen, and a table that could not go red
 date: "2026-08-25"
 time: "18:32:01"

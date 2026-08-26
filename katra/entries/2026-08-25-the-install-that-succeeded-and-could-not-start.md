@@ -1,4 +1,5 @@
 ---
+publish: true
 title: The install that succeeded and could not start
 date: "2026-08-25"
 time: "18:11:46"

@@ -1,4 +1,5 @@
 ---
+publish: true
 title: Gate the copy that ships
 date: "2026-08-25"
 time: "18:55:58"
