@@ -7,19 +7,30 @@
  * one platform, the side effect of demanding the user's password.
  *
  * It was called from a mount effect, to decide whether to grey out one switch.
- * The result: every user, on first launch, before touching anything, was asked
- * for their keychain password by an app whose whole pitch is that nothing leaves
- * their machine and there is no account. For this product that is worse than a
- * crash — a crash reads as a bug, and this reads as the promise being false.
  *
- * WHY A TEST AND NOT A COMMENT. It is invisible to everyone who could catch it.
- * The acceptance suite sets `isE2E`, which short-circuits the call before it
- * reaches `safeStorage`; a developer's keychain is already unlocked for the app
- * they have run fifty times; and the packaged build behaves differently from
- * `npm start`. The only person who reliably sees it is a stranger on first
- * launch, which is the one person who cannot report it before it costs you.
+ * BE PRECISE ABOUT THE SEVERITY, because the first version of this file was not.
+ * It claimed every user gets a prompt on first launch. That is wrong. Whether a
+ * dialog appears depends on keychain ACL state: on a fresh machine the signed
+ * app creates the item itself and is on its own ACL, so macOS has no reason to
+ * ask. A prompt appears when something ELSE is already on that item — most
+ * plausibly a dev build identifying as `Electron` beside the packaged app,
+ * which is what produced the original report.
  *
- * So the boundary is asserted in the source: the expensive call has exactly one
+ * The defect is that the answer DEPENDS on a user's keychain history, which is
+ * invisible to us and untestable from here. Deferring the question removes the
+ * dependence rather than betting on ACL behaviour, and for a tool whose pitch is
+ * no account and nothing leaving your machine, that is the one prompt not worth
+ * gambling on.
+ *
+ * WHY THESE ARE SOURCE ASSERTIONS AND NOT A BEHAVIOURAL TEST. The obvious test —
+ * launch it and assert no prompt appears — PASSES ON ANY MACHINE WHERE ACCESS
+ * WAS ALREADY GRANTED, which is every machine that has run this app. It would be
+ * a green control that cannot fail, of exactly the kind this repo keeps finding,
+ * and it fooled a careful reviewer once already. Verifying the behaviour for
+ * real needs a clean keychain state, which cannot be arranged here without
+ * destroying a keychain item that may hold someone's API key. So the boundary is
+ * asserted in the source, where it can actually fail, and the untested part is
+ * named rather than faked. What they pin: the expensive call has exactly one
  * home, the cheap answer must not reach it, and the renderer's mount path must
  * not ask the expensive question.
  */
@@ -48,9 +59,7 @@ const code = (p) =>
 
 /** The body of a top-level `function name(...)` declaration, brace-matched. */
 function functionBody(src, name) {
-  const start = src.indexOf(`function ${name}(`) >= 0
-    ? src.indexOf(`function ${name}(`)
-    : src.indexOf(`${name}(`);
+  const start = src.indexOf(`function ${name}(`);
   assert.notEqual(start, -1, `${name} is gone — this test is guarding something that moved`);
   const open = src.indexOf('{', start);
   let depth = 0;
@@ -92,11 +101,13 @@ test('the cheap answer never reaches the keychain', () => {
 });
 
 test('the mount-time key lookup does not decrypt', () => {
-  // The half that was nearly missed. On a machine with no key, loadKey returns
-  // before it touches safeStorage — so a clean test machine shows no prompt and
-  // the bug looks fixed. On a machine that HAS a key, answering "is a key
-  // saved" by decrypting is what makes macOS ask for the password, and every
-  // existing Enhance user would have gone on being prompted at launch.
+  // The half that was nearly missed, and the one where the asymmetry bites. On
+  // a machine with no key, loadKey returns before it touches safeStorage — so a
+  // clean machine cannot show the problem at all, and a fix verified there looks
+  // complete. On a machine that HAS a key, answering "is a key saved" by
+  // decrypting reaches the keychain, which is where an ACL mismatch can surface
+  // a dialog. Exactly the users who adopted the feature are the ones who could
+  // meet it.
   const src = code('src/main/aiEnhance.ts');
   assert.match(
     src,

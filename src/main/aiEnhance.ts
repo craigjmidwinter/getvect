@@ -519,10 +519,22 @@ async function writeStore(store: StoredKeys): Promise<void> {
  * password.
  *
  * The renderer used to call this from a mount effect, to decide whether to grey
- * out one switch. The result: every user, on first launch, before touching
- * anything, was asked for their keychain password by an app whose entire pitch
- * is that nothing leaves their machine and no account is needed. Correct copy
- * does not survive that.
+ * out one switch — a UI readiness question with an OS side effect, and nothing
+ * in its name says so.
+ *
+ * WHETHER THAT SURFACES A DIALOG DEPENDS ON KEYCHAIN ACL STATE, which is the
+ * part worth being precise about. On a genuinely fresh machine the signed app
+ * creates the keychain item itself and is therefore on its own ACL, so macOS has
+ * no reason to ask. A prompt appears when something else is already on that
+ * item — most plausibly a dev build identifying as `Electron` alongside the
+ * packaged signed app, which is the case that produced the report.
+ *
+ * So the defect is not "this always prompts". It is that the answer DEPENDS on a
+ * user's keychain history, which we cannot see and cannot test cleanly. For a
+ * tool whose pitch is no account and nothing leaving your machine, a keychain
+ * dialog before the user has touched anything is the one prompt not worth
+ * gambling on. Deferring the question removes the gamble instead of betting on
+ * ACL behaviour.
  *
  * It is now reached only from `setKey` and from an explicit
  * `aiEnhance:checkStorage` the renderer sends when someone actually engages with
@@ -557,8 +569,8 @@ function encryptionAvailable(): boolean {
  * this machine cannot store a key; showing it preemptively would be guessing,
  * and the refusal that matters already happens at the point of action, in
  * `setKey`, with a reason. Being wrong here costs a warning appearing a moment
- * later than it could have. Being wrong the other way costs every user a
- * password prompt they did not ask for.
+ * later than it could have. Being wrong the other way risks a password prompt
+ * nobody asked for, on machines we cannot identify in advance.
  */
 async function encryptionLikelyAvailable(): Promise<boolean> {
   if (isE2E) return true;

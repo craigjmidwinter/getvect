@@ -475,9 +475,11 @@ export function App() {
     // `available()` is the CHEAP one and never opens the keychain — see
     // aiEnhance.ts `encryptionLikelyAvailable`. The real check lives behind
     // `checkStorage()` and is sent only from `engageStorage`, because on macOS
-    // asking the real question makes the OS demand the user's password, and
-    // doing that at mount meant every user was asked for it on first launch,
-    // before touching anything, by an app that promises the opposite.
+    // asking the real question can make the OS demand the user's password. Not
+    // always: whether a dialog appears depends on keychain ACL state we cannot
+    // see. That dependence IS the defect — an app promising no account and
+    // nothing leaving your machine should not have its first impression decided
+    // by the user's keychain history.
     void bridge.aiEnhance.available().then((value) => {
       if (live) setAiStorageAvailable(value);
     });
