@@ -50,9 +50,7 @@
       <p class="lede">
         Install it from the <a href="https://github.com/craigjmidwinter/getvect/releases/latest">latest
         release</a> (a dmg for macOS, an exe for Windows — both unsigned, see the download page for
-        the first-launch step), or run it from source. Everything below is what the app actually
-        does today; the acceptance suite is the source of truth, and where this page and the suite
-        disagree, the suite wins.
+        the first-launch step), or run it from source. Everything below is what the app does today.
       </p>
       <ul class="toc">
         <li><a href="#start">Getting started</a></li>
@@ -126,8 +124,8 @@ npm run dist    <span class="c"># package -&gt; release/mac-arm64/GetVect.app (+
     <div class="wrap">
       <p class="eyebrow">Control surface</p>
       <h2>Every control on the panel</h2>
-      <p>The settings model follows a shipping web vectorizer's, captured live rather than guessed: model
-        presets and candidate palettes, not detail/smoothing/despeckle sliders.</p>
+      <p>Presets and candidate palettes rather than a wall of generic sliders, so the control you reach
+        for matches the kind of image you are converting.</p>
 
       <h3>Model presets</h3>
       <div class="table-scroll">
@@ -221,7 +219,7 @@ npm run dist    <span class="c"># package -&gt; release/mac-arm64/GetVect.app (+
             <tr>
               <td><strong>Anti-aliasing</strong></td>
               <td>off / <strong>smart</strong> / mid</td>
-              <td>Smart is the default, as it is in the tools we benchmark against, and it is the single highest
+              <td>Smart is the default, and it is the single highest
                 -value setting here: a pre-trace edge cleanup worth 1747 sub-paths → 551 and
                 396 KB → 140 KB on the reference artwork. It is the difference between output that
                 looks traced and output that looks drawn.</td>
@@ -479,20 +477,14 @@ npm run screenshots   <span class="c"># a labelled contact sheet of the whole fl
         signature. An environment fix that lives in one shell session is not a fix, which is why
         this is a hook rather than a note.</p>
 
-      <h3>Code signing policy</h3>
-      <p><strong>Windows:</strong> unsigned. There is no Authenticode certificate, and SmartScreen
-        will warn. <strong>macOS:</strong> the published build is unsigned too. A Developer ID
-        signing and notarization pipeline exists and is enforced — an artefact that is not signed,
-        Gatekeeper-accepted and stapled cannot be published — but no release has been through it
-        yet. See below.</p>
-      <p><strong>Roles.</strong> Committers and reviewers: Craig Midwinter. Approvers: Craig
-        Midwinter. Releases are cut from tags by a workflow that refuses to publish an artefact
-        it cannot verify.</p>
-      <p><strong>Privacy policy:</strong> two network touchpoints, both disclosed — a
-        once-per-launch update check against GitHub Releases (opt out with
-        <code>GETVECT_NO_UPDATE_CHECK=1</code>) and opt-in AI Enhance under your own API key.
-        Nothing else leaves the machine; see <a href="#ai-enhance">AI Enhance</a> and
-        <a href="./#privacy">what GetVect does on the network</a>.</p>
+      <h3>Is it signed?</h3>
+      <p>Not yet, on either platform — so macOS shows a Gatekeeper warning and Windows shows
+        SmartScreen on first launch. Both are one-time and the steps below clear them in a few
+        seconds.</p>
+      <p><strong>What it sends:</strong> a once-per-launch check for a newer version (opt out with
+        <code>GETVECT_NO_UPDATE_CHECK=1</code>), and, only if you turn it on,
+        <a href="#ai-enhance">AI Enhance</a> under your own API key. Nothing else leaves your
+        machine.</p>
 
       <h3>"GetVect is damaged and can't be opened"</h3>
       <p>Every GetVect build — the published dmg and anything from <code>npm run dist</code> — is

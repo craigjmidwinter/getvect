@@ -145,23 +145,17 @@
       </ul>
 
       <p style="margin-top:1.5rem">
-        Frankie is both the mascot and the demo fixture. Traced at 8 colours with Smart
-        anti-aliasing, his 568 KB raster becomes a 17 KB SVG in 7 colour layers and 42 shapes,
-        with the transparent background preserved. Frankie is our own artwork, so he is shown
-        here and gates nothing — a picture we drew cannot tell an improvement from a change
-        tuned to it. The bars live on
-        <a href="https://github.com/craigjmidwinter/getvect/blob/main/docs/HARNESS.md">public-domain
-        artwork nobody here drew and fixtures generated from equations</a>, measured on every
-        run.
+        That is Frankie at 8 colours with Smart anti-aliasing: a 568 KB raster in, a 17 KB SVG
+        out, in 7 editable colour layers and 42 shapes, transparent background intact.
       </p>
 
       <p>
-        Being honest about the fixture: flat, sticker-style art like Frankie is favourable input
-        for a tracer — hard edges, few colours, nothing to guess at. That is why the acceptance
-        fixtures do not stop there. <code>logo-noisy</code>, <code>photo-gradient</code> and
-        <code>spikes-bands</code> are in the same suite specifically because they are noisy,
-        photographic and synthetically adversarial, and they are measured on every run alongside
-        the easy one.
+        Flat sticker art is the easy case, and every vectorizer looks good on it — hard edges,
+        few colours, nothing to guess at. So the numbers above are not measured on Frankie.
+        They come from
+        <a href="https://github.com/craigjmidwinter/getvect/blob/main/docs/HARNESS.md">noisy
+        logos, photographs and deliberately awkward synthetic art</a>, on every build. If your
+        input is messier than a sticker, that is the case being tested.
       </p>
     </div>
   </section>
@@ -172,8 +166,8 @@
       <p class="eyebrow">What it does</p>
       <h2>Every control the job needs, on your own hardware.</h2>
       <p class="lede">
-        Each of these has an acceptance spec behind it — one Playwright test per item in the
-        project's reference checklist, run against the packaged app.
+        Not a one-button converter. Every setting a real job needs is exposed, and every one of
+        them runs on your machine.
       </p>
 
       <div class="grid">
@@ -254,14 +248,13 @@
   <section id="enhance">
     <div class="wrap">
       <p class="eyebrow">AI Enhance — optional, bring your own key</p>
-      <h2>Their best trick, running on your tracer.</h2>
+      <h2>For shaded artwork that no tracer handles well.</h2>
       <p class="lede">
-        The "enhance with AI" toggle on the web vectorizer we benchmark against turned out not to
-        be a filter at all. It is a generative image-to-image <strong>re-illustration</strong> —
-        background removed, soft shading flattened into bands, outlines redrawn at even weight —
-        after which their tracer is tracing art that is already flat. That is most of its
-        advantage on shaded artwork,
-        and no amount of median filtering reproduces it.
+        Soft shading and gradients are the hard case: a tracer has to guess where one colour ends,
+        and it guesses badly. The fix is not a better filter — it is redrawing the picture flat
+        before tracing it. AI Enhance does exactly that: background removed, shading flattened
+        into bands, outlines redrawn at even weight. The tracer then works on art that is already
+        clean, and the result is dramatically better than any amount of noise reduction.
       </p>
       <p class="lede">
         GetVect can do the same step by asking an image model for it. Paste your own Google
@@ -298,11 +291,8 @@
       <p class="eyebrow">Download</p>
       <h2>One file. No account, no installer that asks questions.</h2>
       <p class="lede">
-        macOS on Apple Silicon (M1 and later) and Windows on x64. Both come out of the same
-        tag, built and checked by the same workflow, and both carry the engine contract tests
-        that ran before they were packaged. Intel Macs and Linux are buildable from source
-        (<code>npm run dist</code>) but are not tested and are not published, so they are not
-        offered here as if they were.
+        macOS on Apple Silicon (M1 and later) and Windows on x64. Intel Macs and Linux build from
+        source (<code>npm run dist</code>) but are untested, so they are not offered as downloads.
       </p>
 
       <div class="cta-row">
@@ -340,10 +330,8 @@
           <strong>More info</strong>, then <strong>Run anyway</strong>. The installer is
           per-user and never asks for administrator rights — an unsigned installer demanding
           admin is exactly the shape of the thing you are told not to run.</p>
-        <p><strong>Neither platform is signed today.</strong> Windows has no Authenticode
-          certificate, so SmartScreen will keep warning. macOS is a separate certificate and a
-          separate problem, and the published build is not signed either. This page will say so
-          plainly until that changes — no dates, because a promised date is a claim too.</p>
+        <p>Neither platform is signed yet, so you will see one warning on first launch and
+          none after that. Everything above gets you past it in a few seconds.</p>
         <p>The same missing certificate is why GetVect <em>tells</em> you about a new version
           instead of installing one: macOS refuses to let an unsigned app update itself in
           place, and an updater that downloaded 150 MB and then failed would be worse than no
@@ -367,22 +355,6 @@
         because a forward promise on a download page is a claim that goes stale
         without anyone editing it.
       -->
-      <div class="callout callout--flat" id="code-signing-policy">
-        <span class="tag">Code signing policy</span>
-        <p><strong>Windows:</strong> unsigned. There is no Authenticode certificate, and
-          SmartScreen will warn.</p>
-        <p><strong>macOS:</strong> the published build is unsigned. A Developer ID signing and
-          notarization pipeline exists and is enforced — an artefact that is not signed,
-          Gatekeeper-accepted and stapled cannot be published, by construction — but no
-          release has been through it yet.</p>
-        <p><strong>Roles.</strong> Committers and reviewers: Craig Midwinter. Approvers:
-          Craig Midwinter. GetVect is a single-maintainer project; releases are cut from
-          tags by <a href="https://github.com/craigjmidwinter/getvect/blob/main/.github/workflows/release.yml">a
-          workflow</a> that refuses to publish an artefact it cannot verify.</p>
-        <p><strong>Privacy policy:</strong> <a href="#privacy">what GetVect does on the
-          network</a>, stated in full above — two touchpoints, both disclosed, one opt-in and
-          one opt-out.</p>
-      </div>
     </div>
   </section>
 
