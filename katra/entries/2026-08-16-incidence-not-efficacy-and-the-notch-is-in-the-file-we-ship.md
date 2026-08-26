@@ -15,7 +15,7 @@ stat:
 ---
 
 Craig: *"i don't understand we can prove that we are substantially worse
-vectorizing our logo than the reference product is in this exact way. presumably other
+vectorizing our logo than the reference is in this exact way. presumably other
 works have this issue as well? or maybe this is weirdness that only occurs on the
 marketing site?"*
 

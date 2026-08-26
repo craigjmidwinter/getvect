@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GetVect — raster to vector, on your machine</title>
-<meta name="description" content="A local desktop vectorizer for macOS and Windows. Drop in a PNG, JPEG or BMP; get SVG, EPS, DXF, PDF or PNG. No account, no credits, offline by default.">
+<title>GetVect — turn any image into a clean, editable vector</title>
+<meta name="description" content="Trace PNG, JPEG or BMP into editable SVG, EPS, DXF, PDF or PNG. A desktop vectorizer for macOS and Windows with real control over palette, detail and smoothing.">
 <meta name="theme-color" content="#12141a">
 <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="icon" href="assets/favicon.png" type="image/png" sizes="96x96">
 <link rel="apple-touch-icon" href="assets/favicon.png">
 <link rel="stylesheet" href="styles.css">
 <meta property="og:type" content="website">
-<meta property="og:title" content="GetVect — raster to vector, on your machine">
-<meta property="og:description" content="A local desktop vectorizer for macOS and Windows. No account, no credits, offline by default.">
+<meta property="og:title" content="GetVect — turn any image into a clean, editable vector">
+<meta property="og:description" content="Trace PNG, JPEG or BMP into editable SVG, EPS, DXF, PDF or PNG. Real control over palette, detail and smoothing.">
 <meta property="og:url" content="https://getvect.midwinter.io/">
 <meta property="og:image" content="https://getvect.midwinter.io/assets/frankie-before-after.png">
 <meta property="og:image:width" content="1280">
@@ -39,6 +39,7 @@
       <a class="opt" href="#enhance">AI Enhance</a>
       <a href="docs.html">Docs</a>
       <a href="devlog/">Devlog</a>
+      <a href="https://midwinter.io/blog/2026-08-my-agents-built-me-a-vectorizer/">Write-up</a>
       <a href="https://github.com/craigjmidwinter/getvect">GitHub</a>
     </nav>
   </div>
@@ -52,15 +53,12 @@
       <div class="hero-grid">
         <div>
           <img class="word" src="assets/getvect-wordmark.svg" alt="GetVect" width="360" height="123">
-          <h1>Raster&nbsp;→&nbsp;vector, on your machine.</h1>
+          <h1>Turn any image into a clean, editable vector.</h1>
           <p class="lede">
-            Drop in a PNG, JPEG or BMP. Get back SVG, EPS, DXF, PDF or PNG — traced by an
-            offline engine, with a full control surface for palette, detail, smoothing and
-            speck removal, and saved through the native dialog. Tracing, preview and export
-            make no network calls at all. There are exactly two network touchpoints, both in
-            your control: optional <a href="#enhance">AI Enhance</a>, and a once-per-launch
-            update check against GitHub Releases (disable with
-            <code>GETVECT_NO_UPDATE_CHECK=1</code>).
+            Drop in a PNG, JPEG or BMP. Get back SVG, EPS, DXF, PDF or PNG — curve-fitted
+            outlines in editable colour layers, with real control over palette, detail,
+            smoothing and speck removal. A desktop app for macOS and Windows: it runs
+            locally, so there is no upload, and no queue.
           </p>
           <ul class="wedge">
             <li>No account</li>
@@ -358,44 +356,6 @@
     </div>
   </section>
 
-  <!-- ---- how it was built ---------------------------------------------- -->
-  <section id="built">
-    <div class="wrap">
-      <p class="eyebrow">How it was built</p>
-      <h2>A pit crew gauntlet, graded against a shipping product.</h2>
-      <p class="lede">
-        GetVect was written almost entirely by a multi-agent loop where three roles take turns on
-        one repo. <strong>Builders</strong> implement a slice at a time. <strong>Critics</strong>
-        start with fresh context, read only the spec and the running app, and score it. And a
-        <strong>pit crew</strong> does nothing but build measurement. The bet under test: a
-        loop's speed limit is measurement, not intelligence.
-      </p>
-      <p class="lede">
-        The biggest correction came from refusing to grade against adjectives. "As good as the
-        web tools" doesn't fail CI — so the spec got rebuilt around what the controls actually
-        are, model presets and candidate palettes rather than the sliders we had guessed, and
-        that surfaced the finding the engine now revolves around: <strong>Smart anti-aliasing
-        collapses path count by ~81% at otherwise identical settings</strong> — 637 to 63 on
-        the fox, and 758 to 41 on Frankie, measured 2026-08-04 when the finding landed.
-      </p>
-
-      <div class="callout callout--flat">
-        <span class="tag">And it caught itself cheating</span>
-        <p>For a whole lap the instruments fed the engine a white-flattened image no UI could
-          produce, while the app's own decode handed it black for transparent pixels. Every
-          transparent-background PNG — the entire sticker and decal use case — traced an invented
-          opaque background and scored green. A number measured on pixels the product never sees
-          is not a measurement of the product. There is now a decode-parity spec whose only job
-          is to go red the moment the app and the harness disagree.</p>
-      </div>
-
-      <div class="cta-row">
-        <a class="btn" href="https://github.com/craigjmidwinter/getvect/tree/main/katra/entries">Read the build log</a>
-        <a class="btn" href="https://github.com/craigjmidwinter/getvect">Browse the repo</a>
-        <span class="meta">Longer-form writing at <a href="https://midwinter.io/blog/2026-08-my-agents-built-me-a-vectorizer/">midwinter.io</a></span>
-      </div>
-    </div>
-  </section>
 
 </main>
 

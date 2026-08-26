@@ -45,9 +45,9 @@ slot. The fix pins what the clustering already found: a hue-outlier reservation
 with five guards, each bounded by a fixture that broke without it.
 
 Numbers after: cheek stripes 52% → 96%. The nose has its own salmon layer. And
-the fox's cyan eyes — 0% before, and 0% in the *reference product's own output* —
+the fox's cyan eyes — 0% before, and 0% in the reference output we were measuring against —
 come back at 93%. On the defect class we discovered by measuring ourselves
-against the reference product, we now beat it.
+against the reference, we now beat it.
 
 ```note
 Two small honesty rituals from the round worth keeping: the demo dropped to

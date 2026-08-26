@@ -15,7 +15,7 @@ stat:
 ---
 
 Craig came back to the staircase with a screenshot of our own demo at 4x and an
-external bar: "the reference product handles this way better than we do." The brief named
+external bar: "this is handled better elsewhere." The brief named
 a suspect too — the ramp snap in `preprocess.ts`, which had been the last thread
 of the previous session.
 

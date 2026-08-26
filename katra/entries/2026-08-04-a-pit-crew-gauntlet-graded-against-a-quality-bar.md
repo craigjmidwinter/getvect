@@ -1,6 +1,6 @@
 ---
 publish: true
-title: A pit crew gauntlet takes on a leading online vectorizer
+title: A pit crew gauntlet, graded against a quality bar
 date: "2026-08-04"
 time: "20:16:37"
 tags:
@@ -16,11 +16,11 @@ stat:
 ```embed
 src: media/pitcrew-loop.html
 height: 480
-caption: The loop: builders build, fresh critics judge against the reference product, the pit crew turns complaints into instruments
+caption: The loop: builders build, fresh critics judge against the quality bar, the pit crew turns complaints into instruments
 ```
 
-The ask: a desktop Electron app with feature parity to the raster→vector workflow of
-the reference product, a leading online vectorizer. Built by the pit crew variant of
+The ask: a desktop Electron app with a full raster→vector workflow, held to the
+quality bar set for it. Built by the pit crew variant of
 the gauntlet loop we've been prototyping — Fable orchestrating, Opus subagents doing
 the work. The bet under test is the blog post's thesis: the loop's speed limit is
 measurement, not intelligence, so a third role that does nothing but build
@@ -38,7 +38,7 @@ Two alternatives got rejected on the way in. Parallel builders in git worktrees
 lost to sequential builders on one repo — the slices genuinely depend on each other
 (the settings panel needs the engine's palette contract), and merge arbitration
 would have cost more than the parallelism bought. And "make it look like the
-reference product" as a critic prompt lost to an acceptance checklist with ids
+reference" as a critic prompt lost to an acceptance checklist with ids
 (A1–D4) plus numeric fidelity gates, because adjectives don't fail CI.
 
 ```warning
