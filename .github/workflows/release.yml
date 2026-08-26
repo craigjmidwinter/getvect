@@ -160,6 +160,40 @@ jobs:
             exit 1
           fi
 
+      # THE ABSENT-CREDENTIAL BRANCH IS A FAILURE, NOT A SKIP.
+      #
+      # This step has no `if:`. That is the whole design. The standard way this
+      # gate breaks is a condition like `if: secrets.CSC_LINK != ''` guarding
+      # the signing steps — which cannot tell "this is not a release" from
+      # "someone deleted the secret", and silently publishes an unsigned build
+      # in the second case with a green check on the run.
+      #
+      # This workflow only ever runs on a release tag or a manual release
+      # dispatch, so there is no legitimate path here that does not need to
+      # sign. Absent credentials is a hard error, named, before anything is
+      # built — not after twenty minutes of packaging.
+      - name: Signing credentials must be present
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          set -uo pipefail
+          missing=""
+          for name in MACOS_CERT_P12_BASE64 MACOS_CERT_PASSWORD \
+                      APPLE_API_KEY_P8_BASE64 APPLE_API_KEY_ID APPLE_API_ISSUER_ID; do
+            eval "value=\${$name:-}"
+            [ -n "$value" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::macOS release signing is not configured. Missing repository secret(s):$missing"
+            echo "::error::A release cannot be published unsigned. See SIGNING.md for what each one is and how to set it."
+            exit 1
+          fi
+          echo "all five signing secrets are present"
+
       - name: Install dependencies
         run: npm ci
 
@@ -186,10 +220,87 @@ jobs:
       #
       # The release stays a draft (electron-builder.yml, `publish.releaseType`)
       # until the `publish` job un-drafts it.
+      # A dedicated keychain rather than the login one: it is created here,
+      # unlocked here, and destroyed when the runner is torn down, so nothing
+      # persists and nothing else on the machine can be signed with it by
+      # accident. `set +x` is belt-and-braces — the password is a secret and
+      # masked, but a traced shell is how masked values end up in logs anyway.
+      - name: Import the Developer ID certificate
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set +x
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          P12="$RUNNER_TEMP/cert.p12"
+
+          echo "$MACOS_CERT_P12_BASE64" | base64 --decode > "$P12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$P12" -k "$KEYCHAIN" -P "$MACOS_CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychain -d user -s "$KEYCHAIN" login.keychain-db
+          rm -f "$P12"
+
+          # An import that "succeeded" without producing a usable identity is
+          # the failure this catches — it is what a cert with no matching
+          # private key looks like, and it would otherwise surface much later as
+          # an opaque electron-builder error.
+          COUNT=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep -c 'Developer ID Application' || true)
+          if [ "$COUNT" -lt 1 ]; then
+            echo "::error::the certificate imported but no Developer ID Application identity is usable."
+            echo "::error::MACOS_CERT_P12_BASE64 probably holds a certificate without its private key. See SIGNING.md."
+            exit 1
+          fi
+          echo "usable Developer ID identities: $COUNT"
+
       - name: Package and publish
-        run: npm run dist -- --mac --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # electron-builder reads these three for notarization. APPLE_API_KEY
+          # is a PATH, not the key itself.
+          APPLE_API_KEY: ${{ runner.temp }}/apple-api-key.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+          CSC_KEYCHAIN: ${{ runner.temp }}/signing.keychain-db
+          # Quoted: the identity contains a colon, which an unquoted YAML scalar
+          # reads as a mapping. Caught by parsing this file locally rather than
+          # by a tag push failing to even start.
+          SIGN_IDENTITY: "${{ vars.MACOS_SIGN_IDENTITY || 'Developer ID Application: Craig Midwinter (6UV93L24YL)' }}"
+        run: |
+          set +x
+          set -euo pipefail
+          echo "$APPLE_API_KEY_P8_BASE64" | base64 --decode > "$APPLE_API_KEY"
+          npm run dist -- --mac --publish always \
+            -c.mac.identity="$SIGN_IDENTITY" \
+            -c.mac.notarize=true
+          rm -f "$APPLE_API_KEY"
+
+      # THE ARTEFACT, NOT THE BUILD.
+      #
+      # Everything above can succeed and still leave a dmg that a user cannot
+      # open: a notarization that was issued but never stapled, a signature that
+      # does not cover a nested helper, a certificate Gatekeeper will not accept.
+      # "The signing step ran" and "this file is signed" are different claims,
+      # and only the file can answer the second one.
+      - name: The dmg must be signed, accepted and stapled
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dmgs=(release/*.dmg)
+          if [ ${#dmgs[@]} -eq 0 ]; then
+            echo "::error::no dmg in release/ to verify — packaging produced nothing to ship"
+            exit 1
+          fi
+          for dmg in "${dmgs[@]}"; do
+            bash scripts/verify-signed-dmg.sh "$dmg"
+          done
 
   windows:
     name: build · publish · Windows
@@ -252,10 +363,60 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  verify-download:
+    name: verify · the asset a user gets
+    # macOS because codesign, spctl and stapler exist nowhere else. This is the
+    # reason this is a separate job rather than a step in `publish`, which runs
+    # on ubuntu.
+    runs-on: macos-latest
+    needs: [draft, mac, windows]
+    timeout-minutes: 20
+
+    steps:
+      # Only the script — no build, no packaging. Checking out the repo here is
+      # for the verifier itself, and nothing in this job may read release/.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      # THE FILE YOU VERIFIED AND THE FILE A USER GETS ARE ONLY THE SAME FILE IF
+      # YOU CHECK.
+      #
+      # The mac job verified a dmg in its own release/ directory. This downloads
+      # what is actually attached to the release and verifies that instead. The
+      # two are supposed to be identical, and the entire point is that "supposed
+      # to be" is the assumption every sibling-artefact failure is made of — an
+      # upload that truncated, a re-run that replaced one asset and not another,
+      # a name collision between two runners writing into one release.
+      #
+      # It runs while the release is still a draft, so a failure here means
+      # nothing was ever public.
+      - name: Download the dmg from the release and verify it
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.draft.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/downloaded"
+          cd "$RUNNER_TEMP/downloaded"
+          gh release download "$TAG" --pattern '*.dmg' --clobber
+          shopt -s nullglob
+          dmgs=(*.dmg)
+          if [ ${#dmgs[@]} -eq 0 ]; then
+            echo "::error::the release carries no dmg to download"
+            exit 1
+          fi
+          for dmg in "${dmgs[@]}"; do
+            bash "$GITHUB_WORKSPACE/scripts/verify-signed-dmg.sh" "$PWD/$dmg"
+          done
+
   publish:
     name: verify · un-draft
     runs-on: ubuntu-latest
-    needs: [draft, mac, windows]
+    # verify-download is in `needs` so the release cannot be un-drafted unless
+    # the asset actually attached to it passed all three checks.
+    needs: [draft, mac, windows, verify-download]
     timeout-minutes: 10
 
     steps:

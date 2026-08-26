@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened Runtime entitlements. Notarization REQUIRES the hardened runtime, and
+  the hardened runtime breaks Electron without these four — so this file is not
+  a loosening of security, it is the set of holes Chromium and native modules
+  need in order to run under it at all.
+
+  Each one is here for a reason, and none is a guess:
+
+  allow-jit / allow-unsigned-executable-memory
+    V8 compiles JavaScript to machine code at runtime. Without these the
+    renderer crashes on launch, not gracefully.
+
+  disable-library-validation
+    sharp and @resvg/resvg-js ship prebuilt native binaries signed by their
+    publishers, not by us. Library validation refuses to load a dylib signed by
+    a different team, which is exactly what those are.
+
+  allow-dyld-environment-variables
+    electron-builder's own relaunch path and the Electron helpers rely on it.
+
+  Deliberately NOT present: com.apple.security.cs.debugger, and any
+  com.apple.security.device.* or network entitlement. GetVect converts images on
+  the local machine; the only network it touches is the release-feed check and
+  opt-in AI Enhance, neither of which needs an entitlement. If a future change
+  wants one of those, it should be argued for in the diff rather than inherited
+  from a template.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+</dict>
+</plist>

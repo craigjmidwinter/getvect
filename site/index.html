@@ -340,6 +340,13 @@
           <strong>More info</strong>, then <strong>Run anyway</strong>. The installer is
           per-user and never asks for administrator rights — an unsigned installer demanding
           admin is exactly the shape of the thing you are told not to run.</p>
+        <p><strong>Where the signing is going.</strong> Windows code signing is being arranged
+          through the <a href="https://signpath.org/">SignPath Foundation</a>, which issues
+          certificates free of charge to open-source projects; until that is in place the
+          <code>.exe</code> is unsigned and SmartScreen will keep warning. macOS is a separate
+          certificate and a separate problem — <em>SignPath does not cover it</em>, and the
+          macOS build is not signed either. Neither is done yet, and this page will say so
+          plainly until it is.</p>
         <p>The same missing certificate is why GetVect <em>tells</em> you about a new version
           instead of installing one: macOS refuses to let an unsigned app update itself in
           place, and an updater that downloaded 150 MB and then failed would be worse than no

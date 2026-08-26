@@ -4,10 +4,16 @@
 # plus a dmg and a zip; on Windows, an nsis installer. Run `npm run build` first;
 # this packages dist/, it does not compile it.
 #
-# UNSIGNED ON PURPOSE. `mac.identity: null` disables code signing, so what comes
-# out is a local/ad-hoc build that Gatekeeper will quarantine on another
-# machine. Signing and notarization are a release-time step and are deliberately
-# not configured here — see PUBLISH-CHECKLIST.md, "Post-publish".
+# UNSIGNED ON PURPOSE, LOCALLY. `mac.identity: null` disables code signing, so
+# what comes out of `npm run dist` is a local/ad-hoc build that Gatekeeper will
+# quarantine on another machine.
+#
+# Release builds are signed and notarized, and the release workflow overrides
+# `mac.identity` and `mac.notarize` on the command line rather than this file
+# changing meaning depending on where it runs. The gate that decides whether a
+# release may ship is not here either: it is in .github/workflows/release.yml,
+# and it verifies the finished dmg rather than trusting that a signing step ran.
+# See SIGNING.md.
 
 appId: com.craigmidwinter.getvect
 productName: GetVect
@@ -90,8 +96,31 @@ mac:
   target:
     - dmg
     - zip
-  # Unsigned local builds. See the header note.
+
+  # Unsigned local builds, unchanged. `identity: null` disables signing, and it
+  # stays the default so `npm run dist` on a laptop behaves exactly as it always
+  # has — no keychain prompt, no accidental signing with whatever identity
+  # happens to be installed, no notarization attempt that would need an API key.
+  #
+  # THE RELEASE WORKFLOW OVERRIDES THIS ON THE COMMAND LINE, not here:
+  #   -c.mac.identity="Developer ID Application: … (TEAMID)"
+  #   -c.mac.notarize=true
+  # so the difference between a local build and a shipped one is visible in the
+  # workflow that makes the shipped one, rather than being a config default that
+  # quietly means something different depending on who runs it.
   identity: null
+  notarize: false
+
+  # Required for notarization, and inert while identity is null. The entitlements
+  # are the holes the hardened runtime has to leave open for Electron to run at
+  # all — see build/entitlements.mac.plist, which explains each one.
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # electron-builder's own Gatekeeper assessment during packaging. The release
+  # workflow runs spctl against the finished dmg instead, because the artefact
+  # is the thing that ships and the build is not.
+  gatekeeperAssess: false
 
 linux:
   icon: build/icon.png
