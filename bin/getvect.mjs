@@ -31,7 +31,7 @@ if (!existsSync(CLI) || !existsSync(ENGINE)) {
 }
 
 const cli = await import(pathToFileURL(CLI).href);
-const { EXIT, FORMATS, INPUT_EXTENSIONS, canvasIngest, decodeImage, helpText, parseArgs } = cli;
+const { EXIT, FORMATS, INPUT_EXTENSIONS, canvasIngest, decodeImage, helpText, parseArgs, refuseToClobber } = cli;
 
 const out = (s) => process.stdout.write(s);
 const err = (s) => process.stderr.write(`${NAME}: ${s}\n`);
@@ -82,6 +82,14 @@ const output = toStdout
   : resolve(rawOut ?? join(dirname(input), `${basename(input, extname(input))}.${format}`));
 if (output && output === input) {
   err('refusing to overwrite the input file');
+  done(EXIT.cannotWrite);
+}
+
+// Before the trace, not before the write: a caller about to be refused should
+// find out in milliseconds rather than after a multi-second trace it cannot use.
+const clobber = refuseToClobber(output, opts.force, existsSync);
+if (clobber) {
+  err(clobber);
   done(EXIT.cannotWrite);
 }
 

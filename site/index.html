@@ -326,7 +326,14 @@
       -->
       <div class="callout callout--flat" id="browser">
         <span class="tag">Won't install anything? Use it in your browser.</span>
-        <p><a class="btn" href="app/">Open GetVect in your browser →</a></p>
+        <!--
+          data-umami-event: this page carries the analytics tag, /app/ does not
+          and cannot — see docs/ANALYTICS.md. Counting the click here measures the
+          thing actually worth knowing (how many people tried it rather than read
+          about it) without putting a third-party script inside a page whose whole
+          claim is that it makes no requests.
+        -->
+        <p><a class="btn" href="app/" data-umami-event="open-web-app">Open GetVect in your browser →</a></p>
         <p><strong>It still runs on your machine.</strong> The tracing happens in the
           browser tab — your image is never uploaded, because there is no server to upload
           it to. Do not take our word for it: open the page, turn off your wifi, and trace

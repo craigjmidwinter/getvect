@@ -58,7 +58,8 @@
     "dist": "electron-builder",
     "devlog:audit": "node scripts/devlog-gate.mjs --audit",
     "devlog:build": "node scripts/devlog-gate.mjs --build",
-    "build:web": "vite build --config vite.web.config.mts"
+    "build:web": "vite build --config vite.web.config.mts",
+    "check:analytics": "node scripts/check-analytics-coverage.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.47.2",

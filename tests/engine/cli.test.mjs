@@ -147,3 +147,51 @@ test('it refuses to overwrite its own input', { skip: !built }, async () => {
   assert.notEqual(code, 0, 'overwriting the input destroys the source for a retry');
   assert.match(stderr, /refusing/i);
 });
+
+test('an existing output file is never overwritten without --force', { skip: !built }, async () => {
+  /**
+   * DATA LOSS, not a UX preference. This tool is invoked by things that cannot
+   * look at the filesystem first — an agent that just produced a raster and
+   * guessed at an output name. Replacing a file it did not know was there is
+   * undetectable afterwards: exit 0, and output that looks perfect.
+   *
+   * Raised by a reader within a day of the CLI shipping, which is the audience
+   * it was built for finding the bug it was most exposed to.
+   */
+  const dir = await mkdtemp(join(tmpdir(), 'getvect-cli-'));
+  const out = join(dir, 'taken.svg');
+  await writeFile(out, 'PRECIOUS');
+
+  const refused = await cli(FIXTURE, out);
+  assert.notEqual(refused.code, 0, 'overwriting an existing file exited 0');
+  assert.equal(refused.stdout, '', 'wrote to stdout while refusing');
+  assert.match(refused.stderr, /already exists/, 'refused without saying why');
+  assert.equal(await readFile(out, 'utf8'), 'PRECIOUS', 'the file was destroyed anyway');
+
+  const forced = await cli(FIXTURE, out, '--force');
+  assert.equal(forced.code, 0, '--force did not let the write through');
+  assert.notEqual(await readFile(out, 'utf8'), 'PRECIOUS', '--force did not overwrite');
+});
+
+test('the DERIVED output path is checked too', { skip: !built }, async () => {
+  // The sharper half: `getvect logo.png` writes logo.svg with no output
+  // argument at all, so the file destroyed is one the caller never named and
+  // had no reason to think was at risk.
+  const dir = await mkdtemp(join(tmpdir(), 'getvect-cli-'));
+  const input = join(dir, 'art.png');
+  await writeFile(input, await readFile(FIXTURE));
+  const derived = join(dir, 'art.svg');
+  await writeFile(derived, 'HAND WRITTEN');
+
+  const { code, stderr } = await cli(input);
+  assert.notEqual(code, 0, 'the derived default overwrote without being asked');
+  assert.match(stderr, /already exists/);
+  assert.equal(await readFile(derived, 'utf8'), 'HAND WRITTEN');
+});
+
+test('--force and the refusal are both documented in --help', { skip: !built }, async () => {
+  // A caller has no other way to find out what happens to an existing file.
+  const { stdout } = await cli('--help');
+  assert.match(stdout, /--force/, '--help does not mention --force');
+  assert.match(stdout, /NOT OVERWRITTEN|already exists/i, '--help does not state the behaviour');
+});

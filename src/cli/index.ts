@@ -43,6 +43,7 @@ export interface CliOptions {
   format: string | null;
   stats: boolean;
   dxfLines: boolean;
+  force: boolean;
   help: boolean;
   version: boolean;
 }
@@ -79,6 +80,7 @@ OPTIONS
       --roundness <0-2>    curve-fitting level (default 1)
       --threshold <0-255>  luminance cut for --preset drawing (default 128)
       --dxf-lines          emit R12 POLYLINE instead of splines
+      --force              overwrite the output file if it already exists
       --stats              print one JSON object of metrics to stdout
   -h, --help               this
   -v, --version            print the version
@@ -90,8 +92,40 @@ EXAMPLES
   ${name} logo.png - > logo.svg          # stdout, for a pipe
   ${name} logo.png out.svg --stats       # SVG to the file, JSON to stdout
 
+EXISTING FILES ARE NOT OVERWRITTEN. If the output path already exists this exits
+${EXIT.cannotWrite}, writes nothing, and says so; pass --force to replace it. That
+includes the default output name, so \`${name} logo.png\` refuses when logo.svg
+is already there.
+
 Runs entirely on this machine. No account, no upload, no network.
 `;
+}
+
+/**
+ * May we write here?
+ *
+ * WHY REFUSING IS THE DEFAULT. This tool exists to be invoked by something that
+ * cannot look at the filesystem first — an agent that just produced a raster and
+ * guessed at an output name. Silently replacing a file it did not know was there
+ * is data loss, not a UX preference, and it is undetectable afterwards: the exit
+ * code is 0 and the output looks perfect.
+ *
+ * The DEFAULT output name makes it sharper. `getvect logo.png` writes `logo.svg`
+ * with no output argument given at all, so the destroyed file is one the caller
+ * never named and had no reason to think was at risk.
+ *
+ * Writing to stdout is unaffected: a pipe has nothing to clobber.
+ *
+ * Returns the error to print, or null when it is safe to proceed.
+ */
+export function refuseToClobber(
+  output: string | null,
+  force: boolean,
+  exists: (path: string) => boolean,
+): string | null {
+  if (output === null || force) return null;
+  if (!exists(output)) return null;
+  return `${output} already exists — pass --force to overwrite it`;
 }
 
 /**
@@ -103,7 +137,7 @@ Runs entirely on this machine. No account, no upload, no network.
 export function parseArgs(argv: string[]): ParseResult {
   const opts: CliOptions = {
     positional: [], settings: {}, format: null,
-    stats: false, dxfLines: false, help: false, version: false,
+    stats: false, dxfLines: false, force: false, help: false, version: false,
   };
   const fail = (error: string): ParseResult => ({ ok: false, error, code: EXIT.usage });
 
@@ -140,6 +174,7 @@ export function parseArgs(argv: string[]): ParseResult {
       case '-h': case '--help': opts.help = true; break;
       case '-v': case '--version': opts.version = true; break;
       case '--stats': opts.stats = true; break;
+      case '--force': opts.force = true; break;
       case '--dxf-lines': opts.dxfLines = true; break;
       case '-f': case '--format': {
         const raw = value();

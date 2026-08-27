@@ -327,6 +327,22 @@ getvect logo.png                       # same thing, no clone
 > on your `PATH`, and which one wins is an accident of ordering. Run it by path
 > or install it, not both.
 
+**It will not overwrite an existing file.** Writing to a path that is already
+there exits `73` and writes nothing; pass `--force` to replace it. That includes
+the default output name, so `getvect logo.png` refuses when `logo.svg` exists —
+and the file at risk there is one you never named.
+
+```
+$ node bin/getvect.mjs logo.png
+getvect: /path/logo.svg already exists — pass --force to overwrite it
+$ echo $?
+73
+```
+
+That is the default because this tool is built to be called by something that
+cannot check the filesystem first. A silent overwrite is undetectable to such a
+caller: the exit code is 0 and the output looks perfect.
+
 **The contract it holds, because a subprocess has no way to ask:**
 
 - **stdout stays empty** unless you pass `--stats`, which prints one JSON object

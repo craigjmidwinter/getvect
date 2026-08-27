@@ -74,6 +74,12 @@ jobs:
           }
           echo "  site/app: $(wc -c < site/app/index.html) B html, $bytes B js, CSP enforced"
 
+      # Every published surface is measured or exempt on purpose. /app/ launched
+      # unmeasured because a fourth surface appeared and nothing re-enumerated;
+      # this runs after the web build so it sees what is actually about to ship.
+      - name: Analytics coverage must be declared
+        run: npm run check:analytics
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
