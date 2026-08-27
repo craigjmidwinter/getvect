@@ -7,6 +7,16 @@ on:
     branches: [main]
     paths:
       - 'site/**'
+      # The browser build is compiled from these at deploy time, so a change to
+      # the app has to redeploy the page. Without them /app/ would quietly serve
+      # an older GetVect than the one the repo describes — the same rot as a
+      # hand-maintained licence notice, one directory over.
+      - 'src/renderer/**'
+      - 'src/web/**'
+      - 'src/engine/**'
+      - 'src/shared/**'
+      - 'vite.web.config.mts'
+      - 'package.json'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -30,6 +40,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `site/app/` is generated, and gitignored on purpose: build output does
+      # not belong in the tree. It is therefore NOT in the checkout, which is
+      # why /app/ used to 404 — the workflow uploaded `site/` exactly as
+      # committed. Building it here means the deployed page is compiled from the
+      # same source as the desktop app on every deploy, and cannot be a stale
+      # copy someone forgot to regenerate.
+      - name: Build the browser version
+        run: npm run build:web
+
+      # A silent failure here would publish a site whose /app/ is missing or
+      # empty, and the deploy would still go green. Checked, not assumed.
+      - name: The browser build must be present and non-trivial
+        run: |
+          set -euo pipefail
+          test -s site/app/index.html || { echo "::error::site/app/index.html is missing or empty"; exit 1; }
+          js=$(ls site/app/assets/*.js 2>/dev/null | head -1)
+          test -n "$js" || { echo "::error::site/app has no JS bundle — the build produced nothing"; exit 1; }
+          bytes=$(wc -c < "$js")
+          test "$bytes" -gt 100000 || { echo "::error::the bundle is $bytes bytes, implausibly small"; exit 1; }
+          grep -q "connect-src 'none'" site/app/index.html || {
+            echo "::error::the served page lost its connect-src policy — the offline claim would be unenforced"
+            exit 1
+          }
+          echo "  site/app: $(wc -c < site/app/index.html) B html, $bytes B js, CSP enforced"
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

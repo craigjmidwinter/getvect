@@ -304,6 +304,43 @@
         <span class="meta" id="download-meta">Latest release · .dmg for macOS, .exe for Windows</span>
       </div>
 
+      <!--
+        The browser version, as an ALTERNATIVE rather than the main path. The
+        desktop app stays primary; this is the answer to someone who will not
+        install a binary, which is the objection that prompted it.
+
+        Two things this has to say, and they are the reason it does not undercut
+        the pitch. That it still runs on your machine — a reader who is told
+        "web version" and nothing else will reasonably assume upload. And that
+        AI Enhance is missing, stated as a deliberate difference rather than
+        buried, because the reasoning is evidence of the same care the rest of
+        the product claims.
+
+        It invites the reader to falsify the claim rather than believe it. "Turn
+        off your wifi and trace anyway" is a stronger sentence than any promise,
+        and it is the same check tests/e2e/w-web-offline.spec.ts runs.
+
+        NOTHING HERE MENTIONS PHONES OR "ANY DEVICE". That has never been
+        measured: the only engine this has run on is desktop Chromium, and a
+        laptop timing says nothing about a phone's memory ceiling mid-trace.
+      -->
+      <div class="callout callout--flat" id="browser">
+        <span class="tag">Won't install anything? Use it in your browser.</span>
+        <p><a class="btn" href="app/">Open GetVect in your browser →</a></p>
+        <p><strong>It still runs on your machine.</strong> The tracing happens in the
+          browser tab — your image is never uploaded, because there is no server to upload
+          it to. Do not take our word for it: open the page, turn off your wifi, and trace
+          an image anyway. It is served with <code>connect-src 'none'</code>, so the browser
+          <em>refuses</em> to make a network request even if the page asked.</p>
+        <p><strong>One difference:</strong> AI Enhance is not available in the browser
+          version. A browser has no OS keystore, and keeping your API key in
+          <code>localStorage</code> would be a worse trade than leaving the feature out.
+          Everything else — every preset, every setting, every export format except PNG —
+          is the same engine the desktop app runs.</p>
+        <p class="hint">Desktop browsers. Best on a real screen, since tracing is
+          CPU-heavy and the output is meant to be zoomed into.</p>
+      </div>
+
       <div class="callout">
         <span class="tag">macOS is signed and notarized. Windows is not, yet.</span>
         <p><strong>macOS:</strong> since v0.1.3 the dmg is signed with an Apple Developer ID
