@@ -59,6 +59,15 @@ type Fixtures = {
    * main-process state and not localStorage.
    */
   updateDir: string;
+  /**
+   * Directory the one-time prompt store uses while GETVECT_E2E=1.
+   *
+   * Per test, and that matters more here than for the other stores: the prompt
+   * is once-per-install by design, so a shared directory would let the first
+   * test that exports consume it for all the others — the feature working
+   * exactly as intended, looking like a bug.
+   */
+  promptsDir: string;
 };
 
 type Options = {
@@ -79,6 +88,12 @@ export const test = base.extend<Fixtures & Options>({
     await fs.rm(dir, { recursive: true, force: true });
   },
 
+  promptsDir: async ({}, use) => {
+    const dir = mkdtempSync(join(tmpdir(), 'getvect-prompts-'));
+    await use(dir);
+    await fs.rm(dir, { recursive: true, force: true });
+  },
+
   aiDir: async ({}, use) => {
     const dir = mkdtempSync(join(tmpdir(), 'getvect-ai-'));
     await use(dir);
@@ -91,7 +106,7 @@ export const test = base.extend<Fixtures & Options>({
     await fs.rm(dir, { recursive: true, force: true });
   },
 
-  app: async ({ exportDir, aiDir, updateDir, extraEnv }, use) => {
+  app: async ({ exportDir, aiDir, updateDir, promptsDir, extraEnv }, use) => {
     const app = await electron.launch({
       args: [REPO_ROOT],
       cwd: REPO_ROOT,
@@ -101,6 +116,7 @@ export const test = base.extend<Fixtures & Options>({
         GETVECT_EXPORT_DIR: exportDir,
         GETVECT_AI_DIR: aiDir,
         GETVECT_UPDATE_DIR: updateDir,
+        GETVECT_PROMPTS_DIR: promptsDir,
         NODE_ENV: 'test',
         ...extraEnv,
       },

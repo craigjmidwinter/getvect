@@ -62,6 +62,15 @@ const api = {
   },
 
   /**
+   * Prompts this install has already shown once. See src/main/prompts.ts for
+   * why `shouldAsk` answers NO when it cannot tell.
+   */
+  prompts: {
+    shouldAsk: (id: string): Promise<boolean> => ipcRenderer.invoke('prompts:shouldAsk', id),
+    markAsked: (id: string): Promise<void> => ipcRenderer.invoke('prompts:markAsked', id),
+  },
+
+  /**
    * Update check (src/main/updater.ts).
    *
    * Read-only from the renderer's side but for three verbs, none of which can

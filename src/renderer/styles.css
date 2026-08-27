@@ -1130,3 +1130,41 @@ button.toggle.is-on,
   font-size: 15px;
   line-height: 1;
 }
+
+/*
+  The source line. Deliberately the dimmest text in the app — the same weight as
+  the drop-zone hint, not a call to action.
+*/
+.source-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+
+.source-line a {
+  color: var(--ink-dim);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.source-line a:hover {
+  color: var(--ink);
+}
+
+.source-dismiss {
+  margin-left: auto;
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  color: var(--ink-dim);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.source-dismiss:hover {
+  color: var(--ink);
+}

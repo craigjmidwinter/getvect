@@ -56,6 +56,17 @@ export interface GetVectApi {
    * process checks once per launch on its own schedule, and this side can only
    * read the answer, act on it, or say "not this version".
    */
+  /**
+   * Prompts this install has already shown once.
+   *
+   * `shouldAsk` answers false when it has been shown AND when the answer cannot
+   * be determined — an unreadable flag must not produce a repeated ask.
+   */
+  prompts?: {
+    shouldAsk(id: string): Promise<boolean>;
+    markAsked(id: string): Promise<void>;
+  };
+
   /** OPTIONAL: a web page is always current, so there is nothing to check. */
   update?: {
     status(): Promise<UpdateStatus>;

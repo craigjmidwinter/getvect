@@ -254,6 +254,29 @@ export function App() {
    */
   const [wordmarkFailed, setWordmarkFailed] = useState(false);
 
+  /**
+   * The source line, shown once per install after a successful export.
+   *
+   * ONCE, AND NEVER AGAIN — not once a session, not again after thirty days.
+   * The failure modes are asymmetric and that is the whole argument: a star we
+   * did not get costs nothing measurable, while a user who feels nagged tells
+   * people the tool nags, which is the one impression this product cannot
+   * afford. Someone inclined to star does it the first time; someone who is not
+   * will not change their mind on a second ask, so a repeat only spends goodwill
+   * to learn what we already knew.
+   *
+   * It is also on brand in a way worth more than the marginal stars. No account,
+   * no upload, no telemetry — and it does not pester you either is a consistent
+   * story, and a second prompt is the first thing that contradicts it.
+   *
+   * If you are here to add a second ask: that is the argument to beat.
+   *
+   * AFTER EXPORT, not after a trace. Export is the moment someone actually got
+   * the thing they came for; asking before that is asking someone who has not
+   * yet been helped.
+   */
+  const [showSource, setShowSource] = useState(false);
+
   const [aiKeyDraft, setAiKeyDraft] = useState('');
   const [aiEnabled, setAiEnabled] = useState(false);
   /** False when the OS cannot encrypt at rest, in which case we refuse to store. */
@@ -1138,6 +1161,28 @@ export function App() {
           encoding: binary ? 'base64' : 'utf8',
         });
         if (!outcome.canceled && outcome.filePath) setLastExportPath(outcome.filePath);
+
+        /*
+          `!outcome.canceled` rather than a filePath: the browser build cannot
+          know where a download landed and reports `filePath: null`, so gating on
+          a path would mean the line never appeared on the web — the one shell
+          where the reader is already a click from the repo.
+
+          Marked asked at the moment it is SHOWN, not when dismissed. "Once,
+          ever" is the stricter reading, and if the choice is between someone
+          missing it and someone seeing it twice, the first is the error this
+          design prefers.
+        */
+        if (!outcome.canceled) {
+          const prompts = bridge.prompts;
+          if (prompts) {
+            void prompts.shouldAsk('source-link').then((ask) => {
+              if (!ask) return;
+              void prompts.markAsked('source-link');
+              setShowSource(true);
+            });
+          }
+        }
       } catch (error) {
         setToast(`Export failed: ${error instanceof Error ? error.message : String(error)}`);
       } finally {
@@ -1433,6 +1478,42 @@ export function App() {
               {selected ? `${Math.round(pan.x)}, ${Math.round(pan.y)}` : ''}
             </span>
           </div>
+
+          {/*
+            One line, under the export row, out of the working flow. Dry on
+            purpose: it states two facts already on the marketing page and asks
+            for nothing. A nag, a modal or a badge would cost more trust than a
+            star is worth, and this product's credibility rests on not
+            overselling.
+
+            A PLAIN ANCHOR. No ghbtns.com iframe, no star count, no script,
+            nothing that makes a network request — the official widget is an
+            embed from a third party, and a page whose pitch is that nothing
+            leaves your machine cannot phone one to render a button. The web
+            build is served with `connect-src 'none'`, so an embed would not
+            merely contradict the copy, it would be refused by the browser.
+          */}
+          {showSource ? (
+            <p className="source-line" data-testid="source-line">
+              <span>MIT licensed. Source on </span>
+              <a
+                href="https://github.com/craigjmidwinter/getvect"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                GitHub
+              </a>
+              <span>.</span>
+              <button
+                type="button"
+                className="source-dismiss"
+                aria-label="Dismiss"
+                onClick={() => setShowSource(false)}
+              >
+                ×
+              </button>
+            </p>
+          ) : null}
 
           <div className="button-group export-group">
             <span className="group-label">Export</span>

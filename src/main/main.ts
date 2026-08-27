@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
 import { existsSync, promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { registerAiEnhanceIpc } from './aiEnhance';
+import { registerPromptsIpc } from './prompts';
 import { registerUpdaterIpc } from './updater';
 import { installWindowGuard } from './windowGuard';
 import { looksLikeCliInvocation } from '../cli';
@@ -383,6 +384,9 @@ function withExtension(name: string, format: string): string {
  * gets booleans and never the key.
  */
 registerAiEnhanceIpc();
+
+/** One-time prompts: a local record of what has already been said once. */
+registerPromptsIpc();
 
 ipcMain.handle('app:info', () => ({
   version: app.getVersion(),

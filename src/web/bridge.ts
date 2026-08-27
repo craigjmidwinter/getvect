@@ -135,6 +135,36 @@ export function createWebBridge(version: string): GetVectApi {
     async appInfo() {
       return { version, electron: '', e2e: false };
     },
+
+    /**
+     * One-time prompts, in localStorage.
+     *
+     * A flag saying "we already said this to you" is not tracking: it records
+     * nothing about the reader, is scoped to this browser, and never leaves it.
+     * It does not touch the claim on the page, and this comment is here so
+     * nobody later reads a storage write as something that needs disclosing.
+     *
+     * FAILS CLOSED. Private browsing, disabled storage and quota errors all
+     * throw, and every one of them answers NO. The prompt exists to happen once;
+     * an unreadable flag that let it through would produce exactly the repeated
+     * ask the design rules out.
+     */
+    prompts: {
+      async shouldAsk(id: string): Promise<boolean> {
+        try {
+          return window.localStorage.getItem(`getvect:asked:${id}`) === null;
+        } catch {
+          return false;
+        }
+      },
+      async markAsked(id: string): Promise<void> {
+        try {
+          window.localStorage.setItem(`getvect:asked:${id}`, new Date().toISOString());
+        } catch {
+          /* a flag we cannot write means it may be asked once more; still bounded */
+        }
+      },
+    },
   } as GetVectApi;
 }
 
