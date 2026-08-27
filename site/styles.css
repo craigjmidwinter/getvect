@@ -289,6 +289,12 @@ section > .wrap > p:last-child { margin-bottom: 0; }
   font-weight: 650;
 }
 .btn-primary:hover { background: var(--accent-hi); border-color: var(--accent-hi); color: #12141a; }
+.cta-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.9rem;
+}
 .meta {
   font-family: var(--mono);
   font-size: 0.75rem;

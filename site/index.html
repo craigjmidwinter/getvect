@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GetVect — turn any image into a clean, editable vector</title>
-<meta name="description" content="Trace PNG, JPEG or BMP into editable SVG, EPS, DXF, PDF or PNG. A desktop vectorizer for macOS and Windows with real control over palette, detail and smoothing.">
+<meta name="description" content="Trace PNG, JPEG or BMP into editable SVG, EPS, DXF, PDF or PNG. Runs in your browser or as an app for macOS and Windows, with real control over palette, detail and smoothing.">
 <meta name="theme-color" content="#12141a">
 <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="icon" href="assets/favicon.png" type="image/png" sizes="96x96">
@@ -35,6 +35,7 @@
     <nav aria-label="Primary">
       <a class="opt" href="#download">Download</a>
       <a class="opt" href="#demo">Demo</a>
+      <a class="opt" href="#cli">CLI</a>
       <a class="opt" href="#features">Features</a>
       <a class="opt" href="#enhance">AI Enhance</a>
       <a href="docs.html">Docs</a>
@@ -56,8 +57,8 @@
           <p class="lede">
             Drop in a PNG, JPEG or BMP. Get back SVG, EPS, DXF, PDF or PNG — curve-fitted
             outlines in editable colour layers, with real control over palette, detail,
-            smoothing and speck removal. A desktop app for macOS and Windows: it runs
-            locally, so there is no upload, and no queue.
+            smoothing and speck removal. It runs on your machine — in a browser tab, or as
+            an app for macOS and Windows — so there is no upload, and no queue.
           </p>
           <ul class="wedge">
             <li>No account</li>
@@ -65,7 +66,25 @@
             <li>No subscription</li>
             <li>Offline by default</li>
           </ul>
+          <!--
+            TWO PEERS, NOT A PRIMARY AND A FOOTNOTE. These are two destinations,
+            not two stages of one journey: someone might want it on their machine,
+            and someone else might just want to run it in a tab. The browser build
+            is not a try-before-you-download, so it is not framed as one and
+            neither is the lesser path. Both carry the same weight.
+
+            "Read the docs" and "Source on GitHub" came out of this row rather
+            than making a fourth and fifth button — four peers is no hierarchy at
+            all. Both are still one click away in the nav above.
+
+            The differences travel WITH the link, here and everywhere else it
+            appears. There are exactly two, the command-line tracer and AI Enhance,
+            and the list must not grow past what is true. It still runs on your
+            machine either way: a reader told "browser version" and nothing else
+            reasonably assumes upload.
+          -->
           <div class="cta-row">
+            <a class="btn btn-primary" href="app/" data-umami-event="open-web-app">Try it in your browser</a>
             <!-- href is the releases page, which always works; download.js
                  swaps in the direct .dmg or .exe link once it has resolved the
                  one for the visitor's OS. The label names both platforms
@@ -73,8 +92,14 @@
                  claim to know. -->
             <a class="btn btn-primary" id="hero-download"
                href="https://github.com/craigjmidwinter/getvect/releases/latest">Download — macOS &amp; Windows</a>
-            <a class="btn" href="docs.html">Read the docs</a>
-            <a class="btn" href="https://github.com/craigjmidwinter/getvect">Source on GitHub</a>
+          </div>
+          <!--
+            The two facts are stacked, not trailed after the buttons. Both use ·
+            internally, so side by side in the flex row they ran together into one
+            seven-item line with no visible seam between "desktop only" and "MIT".
+          -->
+          <div class="cta-notes">
+            <span class="meta">Both run entirely on your machine · the command-line tracer and AI Enhance are desktop only</span>
             <span class="meta">MIT · macOS signed &amp; notarized · Windows unsigned</span>
           </div>
         </div>
@@ -154,6 +179,45 @@
         logos, photographs and deliberately awkward synthetic art</a>, on every build. If your
         input is messier than a sticker, that is the case being tested.
       </p>
+    </div>
+  </section>
+
+  <!-- ---- the command line ---------------------------------------------- -->
+  <!--
+    High on purpose, directly after the demo. This is what the audience arriving
+    from a thread about calling it from an agent actually came for, and it was
+    previously reachable only by hunting. It sits below the hero rather than in
+    it, so the first screen still says what the thing IS — putting a third
+    call-to-action up there would be the old H1 defect wearing a different shape.
+  -->
+  <section id="cli">
+    <div class="wrap">
+      <p class="eyebrow">From a script, or an agent</p>
+      <h2>It is a command, not just a window.</h2>
+      <p class="lede">
+        The same engine, without the UI. Point it at a file and it writes the vector
+        beside it.
+      </p>
+
+<pre><code>getvect logo.png                 <span class="c"># -&gt; logo.svg</span>
+getvect shot.jpg -f dxf -c 16 -p photo
+getvect logo.png out.svg --stats <span class="c"># JSON on stdout</span></code></pre>
+
+      <p>Every setting the app exposes is a flag. It writes nothing to stdout unless you
+        ask, exits non-zero with one line on stderr when something is wrong, and never
+        prompts — because the thing calling it usually cannot answer a question.</p>
+
+      <p><strong>It will not overwrite an existing file.</strong> Writing to a path that is
+        already there exits <code>73</code> and writes nothing, so a caller that guessed at a
+        filename cannot destroy one it never saw. Pass <code>--force</code> when replacing is
+        what you meant.</p>
+
+      <p><a href="https://github.com/craigjmidwinter/getvect/blob/main/SKILL.md">SKILL.md</a>
+        is that contract written for an agent rather than a person: when to reach for it,
+        when not to, how to pick settings for a logo versus a photo versus line art, and what
+        to do on each exit code. The
+        <a href="https://github.com/craigjmidwinter/getvect/blob/main/docs/CLI.md">full CLI
+        reference</a> has every flag, range, default and failure mode.</p>
     </div>
   </section>
 
@@ -294,7 +358,7 @@
 
       <div class="cta-row">
         <a class="btn btn-primary" id="download-button"
-           href="https://github.com/craigjmidwinter/getvect/releases/latest">Download — macOS &amp; Windows</a>
+           href="https://github.com/craigjmidwinter/getvect/releases/latest">Download for macOS &amp; Windows</a>
         <!-- download.js renames this to the OS it did *not* just resolve, once
              it has resolved one. Until then it is a truthful catch-all rather
              than a guess about which machine you are on. -->
@@ -305,9 +369,12 @@
       </div>
 
       <!--
-        The browser version, as an ALTERNATIVE rather than the main path. The
-        desktop app stays primary; this is the answer to someone who will not
-        install a binary, which is the objection that prompted it.
+        The browser version as a PEER of the download, which is the hero's framing
+        and now this section's too. It was written the other way — an alternative
+        for someone who would not install a binary — and that made it an objection
+        being handled rather than a way in. Neither is the lesser path, so this
+        does not apologise for itself; it is here rather than in the hero only
+        because the proof below needs more room than a hero has.
 
         Two things this has to say, and they are the reason it does not undercut
         the pitch. That it still runs on your machine — a reader who is told
@@ -325,7 +392,7 @@
         laptop timing says nothing about a phone's memory ceiling mid-trace.
       -->
       <div class="callout callout--flat" id="browser">
-        <span class="tag">Won't install anything? Use it in your browser.</span>
+        <span class="tag">Or run it in a browser tab, with nothing installed.</span>
         <!--
           data-umami-event: this page carries the analytics tag, /app/ does not
           and cannot — see docs/ANALYTICS.md. Counting the click here measures the
@@ -342,8 +409,9 @@
         <p><strong>One difference:</strong> AI Enhance is not available in the browser
           version. A browser has no OS keystore, and keeping your API key in
           <code>localStorage</code> would be a worse trade than leaving the feature out.
-          Everything else — every preset, every setting, every export format except PNG —
-          is the same engine the desktop app runs.</p>
+          Everything else — every preset, every setting, every export format, PNG
+          included — is the same engine the desktop app runs, because it is the same
+          renderer rather than a port of it.</p>
         <p class="hint">Desktop browsers. Best on a real screen, since tracing is
           CPU-heavy and the output is meant to be zoomed into.</p>
       </div>

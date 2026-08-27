@@ -18,7 +18,14 @@ No account, no credits, no subscription. Offline by default.
 **[Try it in your browser](https://getvect.midwinter.io/app/)** — no install, no
 account, and after the page loads it runs entirely on your machine.
 **[Download the app](https://github.com/craigjmidwinter/getvect/releases/latest)** for
-the command-line tracer, AI Enhance and in-place updates.
+macOS or Windows, which adds the command-line tracer and AI Enhance.
+
+**Two destinations, not two stages.** You might want it on your machine, or you might
+just want to run it in a tab; neither is a trial for the other. It is the same engine
+either way, and neither uploads your image. The desktop build differs in exactly two
+ways — the command-line tracer and AI Enhance — and Enhance is desktop-only for a
+reason worth stating: a browser has no `safeStorage`, and an API key sitting in
+`localStorage` would be a defect we chose rather than a feature we shipped.
 
 </div>
 
