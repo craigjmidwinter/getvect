@@ -15,7 +15,7 @@ No account, no credits, no subscription. Offline by default.
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 ![Platform: macOS | Windows | Browser](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Browser-lightgrey)
 
-**[Try it in your browser](https://getvect.midwinter.io/app/)** — no install, no
+**[Use it in your browser](https://getvect.midwinter.io/app/)** — no install, no
 account, and after the page loads it runs entirely on your machine.
 **[Download the app](https://github.com/craigjmidwinter/getvect/releases/latest)** for
 macOS or Windows, which adds the command-line tracer and AI Enhance.
