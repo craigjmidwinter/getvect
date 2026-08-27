@@ -14,6 +14,30 @@ detailed record of *why* things changed; this file is the short answer to
 
 Nothing yet.
 
+## [0.1.7] — 2026-08-27
+
+**The command line will not overwrite an existing file.** Writing to a path that
+is already there now exits `73` and writes nothing; pass `--force` to replace it.
+That includes the default output name, so `getvect logo.png` refuses when
+`logo.svg` exists — and the file at risk there is one you never named.
+
+Before this, it replaced the file silently and exited `0`, which a caller had no
+way to detect.
+
+`--stats` can no longer be combined with `-`. Both write to stdout, and the JSON
+was being appended to the document, producing a corrupt file from
+`getvect logo.png - --stats > logo.svg`. The combination now exits `64`.
+
+**Two new documents.** [`docs/CLI.md`](docs/CLI.md) is the full contract — every
+flag with its range and default, every exit code, what goes to stdout versus
+stderr, and the failure modes a caller must handle. [`SKILL.md`](SKILL.md) is the
+same contract written for an agent.
+
+Also in this release: **GetVect runs in a browser** at
+[getvect.midwinter.io/app](https://getvect.midwinter.io/app/), the packaged app
+answers command-line arguments without opening a window, and the app header
+carries the real wordmark.
+
 ## [0.1.6] — 2026-08-26
 
 **GetVect has a command line.** The same engine, without the window — for a
