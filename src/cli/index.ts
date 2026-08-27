@@ -26,7 +26,26 @@ export const AA = ['off', 'smart', 'mid'] as const;
 export const NOISE = ['off', 'low', 'high'] as const;
 export const INPUT_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.bmp'] as const;
 
-/** sysexits, so a shell can branch on the reason. */
+/**
+ * sysexits, so a shell can branch on the reason.
+ *
+ * THESE NUMBERS ARE A PUBLISHED INTERFACE, not an internal enum. They are
+ * documented in SKILL.md and docs/CLI.md as a contract for automated callers,
+ * which means an integration can be written against them without asking us
+ * first. That is the whole point of publishing a contract, and it only works if
+ * the contract holds.
+ *
+ * No outside caller is known to depend on these today. The reason to freeze
+ * them is not that someone would break: it is that nobody can build against a
+ * table that moves, so treating it as stable is what makes the integration
+ * possible in the first place.
+ *
+ * So: adding a code is free. Renumbering or removing one breaks a caller
+ * silently, because their branch simply stops matching and there is no error to
+ * see. `tests/engine/skill-doc.test.mjs` pins the table by name and will fail if
+ * one moves, including when the docs are updated in the same commit. Change it
+ * deliberately, with a note, or not at all.
+ */
 export const EXIT = {
   ok: 0,
   usage: 64,

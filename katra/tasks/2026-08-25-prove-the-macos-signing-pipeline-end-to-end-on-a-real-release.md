@@ -2,9 +2,9 @@
 title: Prove the macOS signing pipeline end to end on a real release
 date: "2026-08-25"
 time: "21:56:52"
-summary: 'Signing, notarization and the three artefact checks are built, credentialed and enforced; the gate is proven red and the preflight proven in both directions. Two properties remain unprovable without a v* tag, which needs Craig''s word: a notarized artefact passing the gate green in CI, and the re-download check against a published asset.'
+summary: 'Done at v0.1.3. The dmg is signed, notarized and stapled and the feed re-indexed against it; the gate passes green in CI on a real release, and the re-download check now runs against the published asset with a cache-buster and a sha512 cross-check. The site copy changed in the same commit as its proof.'
 type: task
-status: doing
+status: done
 ---
 
 
@@ -78,3 +78,21 @@ commit that records that proof — saying what a user can check themselves
 Tag `v0.1.2` exists and points at `efdddfd`. The draft release carries all six
 artefacts. Re-running needs either a new tag or a deliberate re-run of run
 `32926140417` after the fix lands.
+
+## Closed 2026-08-27 — both blocked properties were proven at v0.1.3
+
+Resolved by `e360997`, five releases before this file was reconciled; it sat at
+`doing` the whole time, which is why the checkpoint that read it reported a
+stale in-flight item and missed what was actually at risk.
+
+- **The dmg decision was taken** — sign *and* notarize *and* staple the
+  container, option 2, not the cheap `dmg.sign` fix and not a relaxed gate.
+- **The re-download check has now run**, which was the one property that could
+  not be proved without a published release: the dmg re-fetched from the public
+  asset with a cache-buster, sha512 cross-checked against `latest-mac.yml`
+  before any verdict, then codesign / spctl / stapler on both the dmg and the
+  app inside it. It is no longer a scratchpad script — `release.yml:653`
+  downloads the published artefacts, so the check cannot be skipped.
+- **The DO NOT TOUCH on the site copy is discharged**, and was discharged the
+  correct way: the claim and its evidence landed in the same commit, and
+  Windows stays unsigned everywhere it appears.

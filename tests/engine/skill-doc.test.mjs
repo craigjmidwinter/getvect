@@ -87,6 +87,87 @@ test('the exit codes the docs name match the ones the CLI uses', () => {
   assert.match(SKILL, /73/, 'SKILL.md does not mention the overwrite exit code');
 });
 
+/**
+ * THE EXIT TABLE IS A PUBLISHED INTERFACE. Treat it like the on-disk katra
+ * format, not like an internal enum.
+ *
+ * These numbers are documented in SKILL.md and docs/CLI.md as a contract an
+ * outside caller can be written against. No such caller is known today, and
+ * this guard does not exist because one would break. It exists because nobody
+ * can build against a table that moves: freezing it is the precondition for the
+ * integration, not a reaction to one.
+ *
+ * The guard above only checks that numbers the DOCS name are numbers the CLI
+ * can return. That direction catches a stale doc. It does not catch the
+ * direction that breaks a caller: renumbering or deleting a code and updating
+ * the docs in the same commit passes clean. Verified by mutation, `badInput`
+ * 65 -> 68 across source and both documents went green on all five tests.
+ * A refactor can do that without anyone noticing, and the failure downstream is
+ * silent, because a caller branching on 65 just stops matching.
+ *
+ * So the numbers are frozen here by name. Adding a code is fine and needs no
+ * edit to this list. Changing or removing one requires editing this list, which
+ * is the point: it cannot happen as a side effect, only as a decision, and the
+ * diff on this block is where the note about breaking a downstream caller goes.
+ */
+const PUBLISHED_EXIT_CODES = {
+  ok: 0,
+  usage: 64,
+  badInput: 65,
+  noInput: 66,
+  notBuilt: 69,
+  traceFailed: 70,
+  cannotWrite: 73,
+};
+
+test('no published exit code is renumbered or removed', () => {
+  const table = /export const EXIT = \{([\s\S]*?)\} as const;/.exec(cliSrc);
+  assert.ok(table, 'the EXIT table moved — re-point this guard');
+  const codes = new Map();
+  for (const m of table[1].matchAll(/(\w+):\s*(\d+)/g)) codes.set(m[1], Number(m[2]));
+
+  for (const [name, number] of Object.entries(PUBLISHED_EXIT_CODES)) {
+    assert.ok(
+      codes.has(name),
+      `EXIT.${name} was removed. It is published in SKILL.md and docs/CLI.md and ` +
+        `callers outside this repo branch on ${number}. If removing it is deliberate, ` +
+        `delete it from PUBLISHED_EXIT_CODES in this file and say so in the commit.`,
+    );
+    assert.equal(
+      codes.get(name),
+      number,
+      `EXIT.${name} moved from ${number} to ${codes.get(name)}. That silently breaks ` +
+        `every caller branching on ${number}. If the renumber is deliberate, change it ` +
+        `in PUBLISHED_EXIT_CODES too and say so in the commit.`,
+    );
+  }
+});
+
+/**
+ * The same asymmetry for the flags a caller writes into a command line. Adding
+ * a flag is additive and free; removing or renaming one breaks a script that
+ * already shipped. `--force` is here because it is the documented escape hatch
+ * from 73 — the two are one contract and neither is useful alone.
+ */
+const PUBLISHED_FLAGS = [
+  '--force', '--stats', '--format', '--colors', '--preset', '--detail',
+  '--smoothing', '--despeckle', '--detail-level', '--anti-aliasing',
+  '--noise-reduction', '--min-area', '--roundness', '--threshold',
+  '--dxf-lines', '--help', '--version',
+];
+
+test('no published flag is removed or renamed', () => {
+  const real = realFlags();
+  for (const flag of PUBLISHED_FLAGS) {
+    assert.ok(
+      real.has(flag),
+      `${flag} is documented as part of the CLI contract and the parser no longer ` +
+        `accepts it. If the removal is deliberate, drop it from PUBLISHED_FLAGS here ` +
+        `and note the break in the commit.`,
+    );
+  }
+});
+
 test('SKILL.md leads with when NOT to use it, and warns about the derived filename', () => {
   // An agent needs the negative case as much as the positive one: the common
   // failure is reaching for a vectoriser on a photograph.
