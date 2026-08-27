@@ -18,7 +18,16 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const read = (p) => readFileSync(join(root, p), 'utf8');
+/**
+ * Newlines normalised on read.
+ *
+ * Git checks these files out with CRLF on Windows, and a `\n`-anchored pattern
+ * then matches nothing — which failed the v0.1.7 release on the Windows runner
+ * while passing on every developer machine. A guard that is fine on the platform
+ * its author uses and red on another is worse than no guard: it blocks a release
+ * for a reason that has nothing to do with the thing it checks.
+ */
+const read = (p) => readFileSync(join(root, p), 'utf8').replace(/\r\n/g, '\n');
 const SKILL = read('SKILL.md');
 const CLI_DOC = read('docs/CLI.md');
 const cliSrc = read('src/cli/index.ts');

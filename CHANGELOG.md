@@ -14,7 +14,7 @@ detailed record of *why* things changed; this file is the short answer to
 
 Nothing yet.
 
-## [0.1.7] — 2026-08-27
+## [0.1.8] — 2026-08-27
 
 **The command line will not overwrite an existing file.** Writing to a path that
 is already there now exits `73` and writes nothing; pass `--force` to replace it.
