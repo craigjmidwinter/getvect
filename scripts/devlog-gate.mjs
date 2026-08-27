@@ -31,34 +31,19 @@ import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { forbiddenIn } from './forbidden-names.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const KATRA = join(ROOT, 'katra');
 const ENTRIES = join(KATRA, 'entries');
 
 /**
- * Names that must not appear in anything published.
- *
- * Two different reasons, kept apart because they are not the same risk:
- * `competitor` is a product this project measured itself against and has decided
- * not to name; `rightsholder` is a third party whose artwork was removed from
- * the repository, where naming them in prose is a different kind of exposure
- * from shipping their file.
- *
- * The list is deliberately literal. A regex that tried to be clever about word
- * boundaries would eventually pass something through, and the cost of a false
- * positive here is "a human looks at an entry", which is cheap.
+ * The forbidden names live in ./forbidden-names.mjs as digests, not literals,
+ * because this file is public and a blocklist has to contain the string in order
+ * to match it. Matching semantics are unchanged: still a plain substring test
+ * over the whole entry, see that file for why that mattered more than the
+ * storage format.
  */
-const FORBIDDEN = [
-  { term: 'vectorizer.io', why: 'competitor, by name' },
-  { term: 'vectormagic', why: 'competitor, by name' },
-  { term: 'vector magic', why: 'competitor, by name' },
-  { term: 'snorlax', why: 'third-party character whose artwork was removed' },
-  { term: 'nintendo', why: 'rightsholder of removed artwork' },
-  { term: 'game freak', why: 'rightsholder of removed artwork' },
-  { term: 'pokemon', why: 'rightsholder of removed artwork' },
-  { term: 'pokémon', why: 'rightsholder of removed artwork' },
-];
 
 const frontmatter = (text) => (text.startsWith('---') ? text.split('---')[1] ?? '' : '');
 
@@ -95,10 +80,9 @@ export async function inspect() {
     const optedIn = /^publish:\s*true\s*$/m.test(fm);
     const blockers = [];
 
-    const lower = text.toLowerCase();
-    for (const { term, why } of FORBIDDEN) {
-      if (lower.includes(term)) blockers.push(`names "${term}" (${why})`);
-    }
+    // Reasons rather than terms: the terms are digests here and cannot be
+    // printed. The reason plus the entry name is enough to find the sentence.
+    for (const why of forbiddenIn(text)) blockers.push(`names a forbidden term (${why})`);
 
     for (const ref of mediaRefs(text)) {
       try {
