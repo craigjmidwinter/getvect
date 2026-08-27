@@ -29,7 +29,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import {
   EXIT, FORMATS, INPUT_EXTENSIONS,
-  canvasIngest, decodeImage, helpText, parseArgs, refuseToClobber,
+  canvasIngest, decodeImage, helpText, parseArgs, refuseStdoutCollision, refuseToClobber,
   type RawImage,
 } from '../cli';
 
@@ -114,6 +114,12 @@ export async function runHeadless(argv: string[]): Promise<number> {
   // Checked BEFORE the trace, not before the write: a caller who is going to be
   // refused should find out in milliseconds rather than after a multi-second
   // trace it cannot use.
+  const collision = refuseStdoutCollision(toStdout, opts.stats);
+  if (collision) {
+    err(collision);
+    return EXIT.usage;
+  }
+
   const clobber = refuseToClobber(output, opts.force, existsSync);
   if (clobber) {
     err(clobber);

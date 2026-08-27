@@ -195,3 +195,30 @@ test('--force and the refusal are both documented in --help', { skip: !built }, 
   assert.match(stdout, /--force/, '--help does not mention --force');
   assert.match(stdout, /NOT OVERWRITTEN|already exists/i, '--help does not state the behaviour');
 });
+
+test('--stats and `-` cannot share stdout', { skip: !built }, async () => {
+  /**
+   * They both write there, and the document has no terminator the JSON could
+   * follow safely: the object was appended straight onto `</svg>`, so
+   * `getvect in.png - --stats > out.svg` wrote a corrupt SVG and exited 0.
+   *
+   * Found by checking docs/CLI.md's claims against the binary rather than from a
+   * report — which is the only way it surfaces. Both halves are present, the
+   * exit code says success, and the damage is at the end of a file nobody reads
+   * to the bottom of.
+   */
+  const both = await cli(FIXTURE, '-', '--stats');
+  assert.notEqual(both.code, 0, 'the combination was allowed');
+  assert.equal(both.stdout, '', 'wrote a corruptible stream to stdout anyway');
+  assert.match(both.stderr, /stats cannot be combined/i);
+
+  // Each alone is untouched.
+  const piped = await cli(FIXTURE, '-');
+  assert.equal(piped.code, 0);
+  assert.ok(piped.stdout.trimEnd().endsWith('</svg>'), 'the piped document is not clean');
+
+  const dir = await mkdtemp(join(tmpdir(), 'getvect-cli-'));
+  const stats = await cli(FIXTURE, join(dir, 'o.svg'), '--stats');
+  assert.equal(stats.code, 0);
+  assert.doesNotThrow(() => JSON.parse(stats.stdout.trim()), 'stats alone is not clean JSON');
+});

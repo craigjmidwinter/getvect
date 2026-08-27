@@ -31,7 +31,7 @@ if (!existsSync(CLI) || !existsSync(ENGINE)) {
 }
 
 const cli = await import(pathToFileURL(CLI).href);
-const { EXIT, FORMATS, INPUT_EXTENSIONS, canvasIngest, decodeImage, helpText, parseArgs, refuseToClobber } = cli;
+const { EXIT, FORMATS, INPUT_EXTENSIONS, canvasIngest, decodeImage, helpText, parseArgs, refuseStdoutCollision, refuseToClobber } = cli;
 
 const out = (s) => process.stdout.write(s);
 const err = (s) => process.stderr.write(`${NAME}: ${s}\n`);
@@ -87,6 +87,12 @@ if (output && output === input) {
 
 // Before the trace, not before the write: a caller about to be refused should
 // find out in milliseconds rather than after a multi-second trace it cannot use.
+const collision = refuseStdoutCollision(toStdout, opts.stats);
+if (collision) {
+  err(collision);
+  done(EXIT.usage);
+}
+
 const clobber = refuseToClobber(output, opts.force, existsSync);
 if (clobber) {
   err(clobber);

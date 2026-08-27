@@ -118,6 +118,28 @@ Runs entirely on this machine. No account, no upload, no network.
  *
  * Returns the error to print, or null when it is safe to proceed.
  */
+/**
+ * `--stats` and `-` both want stdout, and they cannot share it.
+ *
+ * Writing the document and then the JSON produced a stream where the object was
+ * glued straight onto `</svg>` with no separator, so
+ * `getvect logo.png - --stats > logo.svg` wrote a CORRUPT SVG and exited 0.
+ * Found while checking the claims in docs/CLI.md against the binary rather than
+ * from a report, which is the only way this surfaces: both halves are present,
+ * the exit code says success, and the damage is at the end of a file nobody
+ * reads to the bottom of.
+ *
+ * A separator would not fix it — the caller piping to a file still gets JSON in
+ * their document. So the combination is refused, and the message names the fix.
+ *
+ * Returns the error to print, or null.
+ */
+export function refuseStdoutCollision(toStdout: boolean, stats: boolean): string | null {
+  if (!toStdout || !stats) return null;
+  return '--stats cannot be combined with `-`: both write to stdout, and the JSON would ' +
+    'be appended to the document. Write the document to a file and --stats stays on stdout.';
+}
+
 export function refuseToClobber(
   output: string | null,
   force: boolean,

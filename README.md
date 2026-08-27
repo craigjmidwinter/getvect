@@ -311,6 +311,11 @@ node bin/getvect.mjs logo.png - > logo.svg    # stdout, for a pipe
 node bin/getvect.mjs logo.png out.svg --stats # SVG to the file, JSON to stdout
 ```
 
+**Full reference: [docs/CLI.md](docs/CLI.md)** — every flag with its range and
+default, every exit code and what it means, exactly what goes to stdout versus
+stderr, and the failure modes a caller has to handle. **[SKILL.md](SKILL.md)** is
+the same contract written for an agent rather than a person.
+
 `node bin/getvect.mjs --help` lists every setting the app exposes — palette
 size, model preset, detail, smoothing, despeckle, anti-aliasing, noise
 reduction, minimum area, roundness, the black/white threshold, and DXF
