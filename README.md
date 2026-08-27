@@ -13,7 +13,12 @@ No account, no credits, no subscription. Offline by default.
 
 [![CI](https://github.com/craigjmidwinter/getvect/actions/workflows/ci.yml/badge.svg)](https://github.com/craigjmidwinter/getvect/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-![Platform: macOS | Windows](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
+![Platform: macOS | Windows | Browser](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Browser-lightgrey)
+
+**[Try it in your browser](https://getvect.midwinter.io/app/)** — no install, no
+account, and after the page loads it runs entirely on your machine.
+**[Download the app](https://github.com/craigjmidwinter/getvect/releases/latest)** for
+the command-line tracer, AI Enhance and in-place updates.
 
 </div>
 
@@ -34,6 +39,15 @@ Enhance ships off, needs a key you supply, and sends the image you are working o
 Google under that key. The update check asks one question — is there a newer GetVect —
 sends no identifier, and fails silently when you are offline. Nothing else, ever, leaves
 the machine.
+
+**The browser version is counted separately, on purpose.** A page is fetched over the
+network by definition, so "exactly two touchpoints" is a sentence about the desktop app
+and does not transfer verbatim. What is true there:
+[getvect.midwinter.io/app](https://getvect.midwinter.io/app/) downloads once and then
+runs entirely on your machine — load it, turn off your wifi, and it keeps tracing. It is
+served with `connect-src 'none'`, so the browser *refuses* a network request rather than
+the code merely not making one. It has no AI Enhance and no update check: a page is
+always current, and a browser has nowhere safe to keep an API key.
 
 The quality bar is explicit and measured. A 21-fixture harness scores every trace on
 colour error, SSIM, ink recall, boundary geometry and document structure, and gates it —
