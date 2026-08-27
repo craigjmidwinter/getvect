@@ -469,7 +469,7 @@ export function App() {
     const bridge = api();
     if (!bridge) return;
     let live = true;
-    void bridge.aiEnhance.hasKey(aiProvider).then((value) => {
+    void bridge.aiEnhance?.hasKey(aiProvider).then((value) => {
       if (live) setAiHasKey(value);
     });
     // `available()` is the CHEAP one and never opens the keychain — see
@@ -479,7 +479,7 @@ export function App() {
     // it creates the item and is on its own ACL. This deferral is hygiene, not a
     // fix — an app has no business reaching into a keychain before the feature
     // that needs one is used. See aiEnhance.ts for why a dev build disagrees.
-    void bridge.aiEnhance.available().then((value) => {
+    void bridge.aiEnhance?.available().then((value) => {
       if (live) setAiStorageAvailable(value);
     });
     return () => {
@@ -499,7 +499,7 @@ export function App() {
     if (storageChecked.current) return;
     storageChecked.current = true;
     const bridge = api();
-    if (!bridge?.aiEnhance.checkStorage) return;
+    if (!bridge?.aiEnhance?.checkStorage) return;
     void bridge.aiEnhance.checkStorage().then(setAiStorageAvailable);
   }, []);
 
@@ -532,7 +532,7 @@ export function App() {
       patchImage(id, { aiState: 'running', aiError: null });
       try {
         const png = await rasterToPngBytes(image.raster);
-        const outcome = await bridge.aiEnhance.run({
+        const outcome = await bridge.aiEnhance!.run({
           provider: aiProvider,
           image: png,
           // A cut-out subject must come back cut out: the prompt asks for a
@@ -1043,7 +1043,7 @@ export function App() {
   const saveAiKey = useCallback(async () => {
     const bridge = api();
     if (!bridge) return;
-    const outcome = await bridge.aiEnhance.setKey(aiProvider, aiKeyDraft);
+    const outcome = await bridge.aiEnhance!.setKey(aiProvider, aiKeyDraft);
     if (!outcome.ok) {
       setToast(outcome.error ?? 'The API key could not be saved.');
       return;
@@ -1057,7 +1057,7 @@ export function App() {
   const clearAiKey = useCallback(async () => {
     const bridge = api();
     if (!bridge) return;
-    await bridge.aiEnhance.clearKey(aiProvider);
+    await bridge.aiEnhance!.clearKey(aiProvider);
     setAiKeyDraft('');
     setAiHasKey(false);
     setAiEnabled(false);
@@ -1661,6 +1661,16 @@ export function App() {
                 rather than in a tooltip. It is the configuration for the
                 Enhance control's `AI` option, not a second switch.
               */}
+              {/*
+                Hidden entirely when the build has no AI Enhance — which is the
+                browser build, where it is left out because it is the one feature
+                that talks to a server and a browser has nowhere safe to keep an
+                API key. Hidden, not disabled: a greyed-out control that can send
+                an image somewhere still tells the reader this page might, and
+                the whole point of the web version is that it demonstrably does
+                not.
+              */}
+              {api()?.aiEnhance ? (
               <div
                 data-testid={TESTIDS.aiEnhanceGroup}
                 className="ai-enhance"
@@ -1767,6 +1777,7 @@ export function App() {
                   {aiStatusLabel(aiStateAttr, providerInfo.label, selected?.aiError ?? null)}
                 </span>
               </div>
+              ) : null}
 
               <Field label="Noise reduction">
                 <select

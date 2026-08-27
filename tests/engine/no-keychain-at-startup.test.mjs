@@ -164,7 +164,11 @@ test('the renderer asks the expensive question only from a user action', () => {
 
   // The mount effect that caused this must not call it. It is identified by the
   // hasKey lookup it still legitimately performs.
-  const mountStart = src.indexOf('void bridge.aiEnhance.hasKey(aiProvider)');
+  // Matched on the call, not the whole expression: `bridge.aiEnhance` became
+  // optional when the browser build landed (it has no AI Enhance), so the
+  // literal `bridge.aiEnhance.hasKey` stopped existing and this guard correctly
+  // refused to pass on an anchor it could no longer find.
+  const mountStart = src.indexOf('hasKey(aiProvider)');
   assert.notEqual(mountStart, -1, 'the mount effect moved — re-point this guard');
   // Bound the slice by the effect's own dependency array, not by a character
   // count. A fixed 900 ran past the end of the effect and swallowed the

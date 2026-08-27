@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      `connect-src 'none'` IS THE POINT OF THIS FILE.
+
+      The desktop app's CSP allows `connect-src 'self'`. The web build does not
+      need even that, and saying so turns the project's central claim from a
+      promise into something the browser enforces: with this header, no script on
+      this page can fetch, XHR, WebSocket, EventSource or sendBeacon ANYWHERE,
+      including back to the origin it came from. An upload is not
+      "not implemented" here — it is refused by the browser, visibly, in the
+      console, for anyone who goes looking.
+
+      That matters because this audience checks. A reader can open devtools,
+      switch the network panel to offline, drop in an image and watch it trace.
+      They can also read this line.
+
+      `blob:` stays for scripts and workers: the vectorization worker is bundled
+      inline and instantiated from a blob URL, which is what keeps tracing off
+      the UI thread (src/renderer/lib/engineClient.ts). Creating a worker from a
+      blob is governed by `worker-src`, not `connect-src`, so the two do not
+      conflict.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' blob:; worker-src 'self' blob:; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="GetVect — raster to vector, entirely in your browser. PNG, JPEG and BMP in; SVG, EPS, DXF and PDF out. No account, no upload, no server."
+    />
+    <link rel="icon" type="image/png" sizes="32x32" href="./favicon.png" />
+    <title>GetVect — vectorize in your browser</title>
+    <style>
+      /* The claim strip. Outside #root so the app never paints over it, and so
+         it is in the served HTML rather than something JavaScript asserts. */
+      .offline-claim {
+        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: #9aa4b2;
+        background: #12141a;
+        border-top: 1px solid #23262e;
+        padding: 8px 14px;
+        text-align: center;
+      }
+      .offline-claim b { color: #ff62b0; font-weight: 600; }
+      .offline-claim code { color: #c9d1d9; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <footer class="offline-claim">
+      <b>This runs entirely in your browser.</b>
+      Your image is never uploaded — there is no server to upload it to.
+      Check it yourself: open devtools, go offline, and trace anyway.
+      This page is served with <code>connect-src 'none'</code>, so it
+      <em>cannot</em> make a network request even if it tried.
+    </footer>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

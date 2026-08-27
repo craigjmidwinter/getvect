@@ -28,13 +28,15 @@ export function UpdateBanner() {
     if (!bridge) return;
     let live = true;
     // Ask once (the check may have finished before this mounted), then listen.
-    void bridge.update.status().then((s) => {
+    void bridge.update?.status().then((s) => {
       if (live) setStatus(s);
     });
-    const off = bridge.update.onChanged(setStatus);
+    const off = bridge.update?.onChanged(setStatus);
     return () => {
       live = false;
-      off();
+      // `off` is undefined on a build with no update channel (the web version):
+      // there was nothing to subscribe to, so there is nothing to unsubscribe.
+      off?.();
     };
   }, []);
 
@@ -69,7 +71,7 @@ export function UpdateBanner() {
           data-testid={TESTIDS.updateInstallButton}
           type="button"
           className="update-action"
-          onClick={() => void api()?.update.install()}
+          onClick={() => void api()?.update?.install()}
         >
           Restart
         </button>
@@ -78,7 +80,7 @@ export function UpdateBanner() {
           data-testid={TESTIDS.updateDownloadButton}
           type="button"
           className="update-action"
-          onClick={() => void api()?.update.download()}
+          onClick={() => void api()?.update?.download()}
         >
           Download
         </button>
@@ -90,7 +92,7 @@ export function UpdateBanner() {
         className="link update-dismiss"
         aria-label="Dismiss"
         title="Don't show this again for this version"
-        onClick={() => void api()?.update.dismiss(version)}
+        onClick={() => void api()?.update?.dismiss(version)}
       >
         ×
       </button>

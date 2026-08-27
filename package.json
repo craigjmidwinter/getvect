@@ -57,7 +57,8 @@
     "docs:screenshots": "npm run build && node scripts/docs-screenshots.mjs",
     "dist": "electron-builder",
     "devlog:audit": "node scripts/devlog-gate.mjs --audit",
-    "devlog:build": "node scripts/devlog-gate.mjs --build"
+    "devlog:build": "node scripts/devlog-gate.mjs --build",
+    "build:web": "vite build --config vite.web.config.mts"
   },
   "devDependencies": {
     "@playwright/test": "^1.47.2",

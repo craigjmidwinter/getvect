@@ -28,7 +28,16 @@ export interface GetVectApi {
    * process (src/main/aiEnhance.ts); this side can save one, clear one and ask
    * whether one exists — there is no way to read it back.
    */
-  aiEnhance: {
+  /**
+   * OPTIONAL because the browser build does not offer it.
+   *
+   * AI Enhance is the one feature that talks to a server, and a browser has
+   * nowhere safe to keep an API key. Omitting it is what lets the web version
+   * claim, without an asterisk, that nothing leaves your machine. Marking it
+   * optional makes the compiler enumerate every place that assumed otherwise,
+   * rather than leaving a TypeError to be discovered in a tab.
+   */
+  aiEnhance?: {
     setKey(provider: EnhanceProviderId, key: string): Promise<EnhanceKeyResult>;
     clearKey(provider: EnhanceProviderId): Promise<EnhanceKeyResult>;
     hasKey(provider: EnhanceProviderId): Promise<boolean>;
@@ -47,7 +56,8 @@ export interface GetVectApi {
    * process checks once per launch on its own schedule, and this side can only
    * read the answer, act on it, or say "not this version".
    */
-  update: {
+  /** OPTIONAL: a web page is always current, so there is nothing to check. */
+  update?: {
     status(): Promise<UpdateStatus>;
     dismiss(version: string): Promise<UpdateStatus>;
     /** notify mode: open the release page. auto mode: start the download. */
