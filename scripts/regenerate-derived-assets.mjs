@@ -38,6 +38,21 @@ import sharp from 'sharp';
 import { Resvg } from '@resvg/resvg-js';
 import { decodeImageFile, canvasIngest } from '../instruments/lib/decode.mjs';
 
+/**
+ * The engine's own defaults, loaded before anything else so `DEMO_SETTINGS` can
+ * be derived from them rather than restated.
+ *
+ * Top-level, because `MANIFEST` embeds the demo settings in its note and is
+ * evaluated at module load. Same clear sentence `traceMascot()` used to give for
+ * this, because "run the build first" is the likeliest reason anyone lands here.
+ */
+const ENGINE_PATH = join(dirname(dirname(fileURLToPath(import.meta.url))), 'dist', 'engine', 'index.js');
+if (!existsSync(ENGINE_PATH)) {
+  console.error('dist/engine is missing — run `npm run build:node` first.');
+  process.exit(1);
+}
+const { DEFAULT_SETTINGS } = await import(ENGINE_PATH);
+
 // ===========================================================================
 // CONFIG — the single source of truth. Everything else in this file is
 // mechanism.
@@ -57,16 +72,43 @@ const MASCOT_SOURCE = 'fixtures/reference/frankie-sticker.png';
 const SLUG = 'frankie';
 
 /**
- * THE DEMO TRACE. The settings docs/assets/<slug>-vector.svg is generated at,
- * and the ones README.md and site/index.html describe in prose ("Traced at 8
- * colours with Smart anti-aliasing"). If you change these, the copy has to
- * change with them — the drift table this script prints will say so.
+ * THE DEMO TRACE — THE APP'S OWN DEFAULTS, DERIVED, NOT RESTATED.
  *
- * These are also the settings the mascot exemplar A/B is recorded at, minus
- * Enhance: the demo asset is what the app gives you with the palette set to 8,
- * nothing else touched.
+ * The site and README say the before/after is what you get out of the box with
+ * nothing touched, and people repeat that claim in public. It has to be true by
+ * construction rather than by coincidence.
+ *
+ * It used to be a literal — `{ colorCount: 8, antiAliasing: 'smart',
+ * minArea: 5 }` — which happened to equal `DEFAULT_SETTINGS` and was tied to it
+ * by nothing at all. Change the app's default palette to 12 and this script
+ * would go on emitting 8, the site would go on saying 8, no test would fail and
+ * no picture would look wrong. The claim would quietly become false.
+ *
+ * THAT IS A GAP THE DRIFT TABLE CANNOT SEE. It checks the published copy
+ * against THIS SCRIPT. Nothing checked this script against the ENGINE — a claim
+ * about what the app does, made by a script that never asked the app.
+ *
+ * So every value below is read from `DEFAULT_SETTINGS`. A reader can now tell at
+ * a glance which settings are the app's and which were chosen for the demo,
+ * because a chosen one would appear in `DEMO_DEPARTURES` with a reason beside
+ * it. Today there are none: the demo is the defaults, exactly.
+ *
+ * Settings not listed here are not omissions — `resolveSettings()` fills every
+ * unspecified field from the same defaults, so the trace follows the app
+ * wherever it goes.
  */
-const DEMO_SETTINGS = { colorCount: 8, antiAliasing: 'smart', minArea: 5 };
+const DEMO_DEPARTURES = {
+  // e.g. minArea: [0, 'the demo shows speck removal off so the difference is visible']
+  // Anything added here is a DELIBERATE difference from what a user gets, and
+  // the copy on the site must stop saying "nothing touched".
+};
+
+const DEMO_SETTINGS = {
+  colorCount: DEFAULT_SETTINGS.colorCount,
+  antiAliasing: DEFAULT_SETTINGS.antiAliasing,
+  minArea: DEFAULT_SETTINGS.minArea,
+  ...Object.fromEntries(Object.entries(DEMO_DEPARTURES).map(([k, [v]]) => [k, v])),
+};
 
 /**
  * THE BEFORE/AFTER COMPOSITE. Two panels on a dark card: the source raster,
