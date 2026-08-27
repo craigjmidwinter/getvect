@@ -36,7 +36,7 @@
   "scripts": {
     "postinstall": "node node_modules/electron/install.js && node -e \"if (process.platform === 'darwin') require('child_process').execFileSync('xattr', ['-cr', 'node_modules/electron/dist/Electron.app'])\" || exit 0",
     "clean": "node scripts/clean.mjs",
-    "build:node": "node scripts/ensure-deps.mjs && tsc -p tsconfig.node.json && node scripts/bundle-updater.mjs",
+    "build:node": "node scripts/ensure-deps.mjs && tsc -p tsconfig.node.json && node scripts/bundle-updater.mjs && node scripts/bundle-engine.mjs",
     "build:renderer": "vite build",
     "build": "npm run build:node && npm run build:renderer && npm run notices",
     "notices": "node scripts/generate-third-party-notices.mjs",

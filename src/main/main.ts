@@ -4,6 +4,24 @@ import * as path from 'node:path';
 import { registerAiEnhanceIpc } from './aiEnhance';
 import { registerUpdaterIpc } from './updater';
 import { installWindowGuard } from './windowGuard';
+import { looksLikeCliInvocation } from '../cli';
+
+/**
+ * IS THIS A COMMAND-LINE RUN? Decided from argv, at module load, before
+ * anything can put a window on screen.
+ *
+ * Homebrew's shim execs Electron against the app directory and passes every
+ * remaining argument straight through, so a user typing `getvect logo.png` has
+ * always been handing this process an image path. It used to ignore it and open
+ * a window; now it traces and exits, which is why brew's command needs no
+ * formula change and the dmg gets a CLI for free.
+ *
+ * `process.defaultApp` is true when Electron was pointed at a directory
+ * (`electron .`, and that shim), in which case the directory is argv[1] and the
+ * user's arguments start at 2. In a packaged app they start at 1.
+ */
+const CLI_ARGV = process.defaultApp ? process.argv.slice(2) : process.argv.slice(1);
+const IS_CLI = looksLikeCliInvocation(CLI_ARGV);
 
 /**
  * Electron main process.
@@ -379,10 +397,36 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
+  // A CLI run has no windows by design, so the macOS "reopen" gesture must not
+  // conjure one — that would be the failure this whole path exists to prevent,
+  // arriving late.
+  if (IS_CLI) return;
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
+  /**
+   * The command-line path, and it RETURNS — it never falls through to the GUI
+   * boot below. `createWindow()` is called further down in this same callback,
+   * so returning here is what guarantees no window; `activate` returns early for
+   * the same reason.
+   *
+   * `app.exit` rather than `app.quit`: quit runs the normal lifecycle, and
+   * `window-all-closed` on a run that never opened a window is a different path
+   * that would discard the exit code the caller is waiting on.
+   */
+  if (IS_CLI) {
+    const { runHeadless } = await import('./cliMain');
+    let code = 70;
+    try {
+      code = await runHeadless(CLI_ARGV);
+    } catch (err) {
+      process.stderr.write(`getvect: ${err instanceof Error ? err.message : String(err)}\n`);
+    }
+    app.exit(code);
+    return;
+  }
+
   if (isE2E) {
     if (process.platform === 'darwin') {
       // Accessory apps get no Dock icon and cannot become the active app, so

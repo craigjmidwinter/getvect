@@ -2,7 +2,10 @@
   "compilerOptions": {
     "composite": true,
     "target": "ES2022",
-    "lib": ["ES2022", "DOM"],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
     "module": "CommonJS",
     "moduleResolution": "node",
     "rootDir": "src",
@@ -14,7 +17,14 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src/main/**/*.ts", "src/engine/**/*.ts", "src/shared/**/*.ts"]
+  "include": [
+    "src/main/**/*.ts",
+    "src/engine/**/*.ts",
+    "src/shared/**/*.ts",
+    "src/cli/**/*.ts"
+  ]
 }

@@ -302,11 +302,16 @@ size, model preset, detail, smoothing, despeckle, anti-aliasing, noise
 reduction, minimum area, roundness, the black/white threshold, and DXF
 splines-vs-lines.
 
-> **Run it by path, not by name.** The Homebrew formula already installs a
-> `getvect` command, and that one launches the GUI — so `npm link` would put a
-> second, different `getvect` on your `PATH` and whichever wins is an accident of
-> ordering. The packaged app has no CLI inside it either. Until the app itself
-> can trace headlessly, `node bin/getvect.mjs` from a clone is the CLI.
+**Or install it.** `brew install craigjmidwinter/tap/getvect` puts `getvect` on
+your `PATH`: with arguments it traces, with none it opens the app.
+
+```bash
+getvect logo.png                       # same thing, no clone
+```
+
+> Do not `npm link` from a clone — that would put a second, different `getvect`
+> on your `PATH`, and which one wins is an accident of ordering. Run it by path
+> or install it, not both.
 
 **The contract it holds, because a subprocess has no way to ask:**
 
