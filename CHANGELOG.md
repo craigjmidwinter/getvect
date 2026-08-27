@@ -14,6 +14,25 @@ detailed record of *why* things changed; this file is the short answer to
 
 Nothing yet.
 
+## [0.1.6] — 2026-08-26
+
+**GetVect has a command line.** The same engine, without the window — for a
+caller that is not a person:
+
+```bash
+node bin/getvect.mjs logo.png            # -> logo.svg
+node bin/getvect.mjs shot.jpg -f dxf -c 16 -p photo
+node bin/getvect.mjs logo.png - > logo.svg
+```
+
+Every setting the app exposes is a flag, output format follows the extension
+(svg, eps, dxf, pdf, png), and the trace is byte-identical to what the app
+produces from the same file. stdout stays empty unless you ask for `--stats`,
+every failure exits non-zero with one line on stderr, and it never prompts,
+opens a window, touches a keychain or reaches the network.
+
+Run it by path from a clone. The packaged app does not carry the CLI yet.
+
 ## [0.1.5] — 2026-08-26
 
 **GetVect now ships the licence texts of the software it includes.** Every build
