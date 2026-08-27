@@ -99,7 +99,34 @@ if (clobber) {
   done(EXIT.cannotWrite);
 }
 
-/** sharp, only for JPEG — PNG and BMP use the shared decoders. */
+/**
+ * sharp, only for JPEG — PNG and BMP use the shared pure decoders.
+ *
+ * THE TWO FRONT DOORS DO NOT HAVE THE SAME DEPENDENCY SET, and assuming they do
+ * is how this project's Homebrew formula has broken before. Spelled out because
+ * the assumption is the natural one:
+ *
+ *   this file (clone / Homebrew)   npm install is present, so sharp decodes JPEG
+ *                                  and @resvg/resvg-js renders `-f png`
+ *   the packaged app (dmg)         electron-builder excludes node_modules on
+ *                                  purpose, so it has NEITHER. JPEG goes through
+ *                                  Electron's nativeImage instead, and `-f png`
+ *                                  is refused with exit 64 rather than faked
+ *
+ * Consequences for anyone packaging this:
+ *
+ *   - a production prune MUST keep `sharp` and `@resvg/resvg-js`. Both are in
+ *     `dependencies`, so `npm prune --omit=dev` keeps them — but that prune has
+ *     already removed something load-bearing from this formula once (electron),
+ *     so it is worth re-checking rather than assuming;
+ *   - Homebrew relocates what it installs, which breaks the ad-hoc signature on
+ *     native artefacts. A relocated libvips that macOS then refuses to load kills
+ *     the process with SIGKILL and an empty stderr — nothing to paste into a bug
+ *     report. The formula signs `@img` and `@resvg` alongside Electron for this
+ *     reason;
+ *   - the GUI never exercises either package, so neither of the above shows up
+ *     until the first CLI invocation.
+ */
 async function decodeJpegWithSharp(buf) {
   const sharp = (await import('sharp')).default;
   const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
