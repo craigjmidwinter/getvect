@@ -109,6 +109,23 @@ code {
   letter-spacing: 0.02em;
 }
 
+/*
+  The wordmark heading. `display: flex` so the img is not sitting on a text
+  baseline with descender space under it, and the height matches the img's own
+  attribute so the box is reserved whether or not the asset has arrived.
+*/
+.brand-mark {
+  display: flex;
+  align-items: center;
+  height: 26px;
+}
+
+.brand-mark img {
+  display: block;
+  width: 76px;
+  height: 26px;
+}
+
 .brand p {
   margin: 2px 0 0;
   color: var(--ink-dim);

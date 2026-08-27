@@ -31,6 +31,7 @@ import {
 } from '../shared/aiEnhance';
 import { api } from './api';
 import { basename, decodeBlob, mimeForName, stemOf } from './lib/decode';
+import wordmarkUrl from './getvect-wordmark.svg';
 import { vectorizeImage } from './lib/engineClient';
 import { hasMeaningfulAlpha, rasterToPngBytes, svgToPngBase64 } from './lib/raster';
 import { Preview, fmt, type PreviewMode } from './components/Preview';
@@ -247,6 +248,12 @@ export function App() {
   const [aiProvider, setAiProvider] = useState<EnhanceProviderId>(DEFAULT_ENHANCE_PROVIDER);
   const [aiQuality, setAiQuality] = useState<EnhanceQuality>('fast');
   const [aiHasKey, setAiHasKey] = useState(false);
+  /**
+   * The wordmark asset failed to load, so the heading falls back to type.
+   * A brand mark is worth having and is not worth an empty header.
+   */
+  const [wordmarkFailed, setWordmarkFailed] = useState(false);
+
   const [aiKeyDraft, setAiKeyDraft] = useState('');
   const [aiEnabled, setAiEnabled] = useState(false);
   /** False when the OS cannot encrypt at rest, in which case we refuse to store. */
@@ -1230,7 +1237,42 @@ export function App() {
 
       <aside className="sidebar">
         <header className="brand">
-          <h1>GetVect</h1>
+          {/*
+            THE WORDMARK, INSIDE THE h1 RATHER THAN INSTEAD OF IT.
+
+            Swapping a heading for an image silently removes the only <h1> a
+            screen reader has to navigate by. Keeping the h1 and putting the mark
+            inside it means the heading stays in the accessibility tree and the
+            `alt` supplies its text, so the announced document structure is
+            unchanged — the picture is an implementation detail of the heading.
+
+            Explicit width and height, not CSS alone: the web build fetches this
+            over a network, and a header with no reserved box reflows the whole
+            sidebar when it lands. 76x26 is the intrinsic 495x169 at the same
+            visual weight as the 17px type it replaces.
+
+            The mark carries its own colour (#FF2D95, the brand accent) rather
+            than currentColor, so it cannot inherit its way into invisibility on
+            this dark panel. See the note in the chronicle: that pink is NOT the
+            app's accent, which is blue, and this is the first place the two meet.
+
+            onError falls back to the text. An asset that 404s should cost the
+            wordmark, never the heading.
+          */}
+          <h1 className="brand-mark">
+            {wordmarkFailed ? (
+              'GetVect'
+            ) : (
+              <img
+                src={wordmarkUrl}
+                alt="GetVect"
+                width={76}
+                height={26}
+                draggable={false}
+                onError={() => setWordmarkFailed(true)}
+              />
+            )}
+          </h1>
           <p>Raster → vector, locally.</p>
         </header>
 
