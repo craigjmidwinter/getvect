@@ -6,10 +6,10 @@ tags:
     - web
     - tests
     - honesty
-hash: 1ecaf5c
+hash: c5b65d7
 stat:
     f: 5
-    a: 370
+    a: 375
     d: 14
 summary: src/web/bridge.ts named a test that did not exist, for the claim the browser build rests on. Writing it was the easy half; the entry point and the mutation sweep were the part that decided whether it was worth anything.
 ---
