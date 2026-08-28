@@ -26,7 +26,16 @@
  *
  * `tests/engine/web-bridge.test.mjs` asserts the first of those in the source,
  * because "we don't upload anything" is exactly the kind of claim that should
- * not rest on someone remembering.
+ * not rest on someone remembering. It walks the static import graph from
+ * `src/web/main.tsx` — this file, App, the engine, the exporters and the
+ * vectorize worker — and fails on fetch, XHR, WebSocket, EventSource or
+ * sendBeacon. Its window is FIRST-PARTY SOURCE: react and react-dom are in the
+ * bundle and are not scanned, and what covers them is `connect-src 'none'` in
+ * index.html, which the browser enforces against every script on the page.
+ *
+ * `tests/e2e/w-web-offline.spec.ts` is the other half and neither replaces the
+ * other: it takes the page offline and traces anyway, which is stronger evidence
+ * about one path, and blind to a call on a branch it does not walk.
  */
 import type { GetVectApi } from '../renderer/api';
 

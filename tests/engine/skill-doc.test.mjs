@@ -129,25 +129,30 @@ test('no published exit code is renumbered or removed', () => {
   for (const [name, number] of Object.entries(PUBLISHED_EXIT_CODES)) {
     assert.ok(
       codes.has(name),
-      `EXIT.${name} was removed. It is published in SKILL.md and docs/CLI.md and ` +
-        `callers outside this repo branch on ${number}. If removing it is deliberate, ` +
-        `delete it from PUBLISHED_EXIT_CODES in this file and say so in the commit.`,
+      `EXIT.${name} was removed. It is published in SKILL.md and docs/CLI.md as ` +
+        `${number}, so any caller written against that table branches on it. If removing ` +
+        `it is deliberate, delete it from PUBLISHED_EXIT_CODES here and say so in the commit.`,
     );
     assert.equal(
       codes.get(name),
       number,
-      `EXIT.${name} moved from ${number} to ${codes.get(name)}. That silently breaks ` +
-        `every caller branching on ${number}. If the renumber is deliberate, change it ` +
-        `in PUBLISHED_EXIT_CODES too and say so in the commit.`,
+      `EXIT.${name} moved from ${number} to ${codes.get(name)}. A caller branching on ` +
+        `${number} would not error — it would silently stop matching. If the renumber is ` +
+        `deliberate, change it in PUBLISHED_EXIT_CODES too and say so in the commit.`,
     );
   }
 });
 
 /**
  * The same asymmetry for the flags a caller writes into a command line. Adding
- * a flag is additive and free; removing or renaming one breaks a script that
- * already shipped. `--force` is here because it is the documented escape hatch
- * from 73 — the two are one contract and neither is useful alone.
+ * a flag is additive and free; removing or renaming one breaks any script written
+ * against the documented set. `--force` is here because it is the documented
+ * escape hatch from 73 — the two are one contract and neither is useful alone.
+ *
+ * Phrased conditionally on purpose. No shipped script is known to use these (see
+ * the note above the exit table), and an earlier version of these messages stated
+ * the dependency as fact. That is the retracted claim, and a guard that argues
+ * from it hands the next reader a reason not to change something.
  */
 const PUBLISHED_FLAGS = [
   '--force', '--stats', '--format', '--colors', '--preset', '--detail',
@@ -162,8 +167,8 @@ test('no published flag is removed or renamed', () => {
     assert.ok(
       real.has(flag),
       `${flag} is documented as part of the CLI contract and the parser no longer ` +
-        `accepts it. If the removal is deliberate, drop it from PUBLISHED_FLAGS here ` +
-        `and note the break in the commit.`,
+        `accepts it, so any command line written from the docs now fails. If the removal ` +
+        `is deliberate, drop it from PUBLISHED_FLAGS here and note the break in the commit.`,
     );
   }
 });
