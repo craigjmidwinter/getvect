@@ -630,8 +630,9 @@ async function main() {
   const spikes = drawSpikesAndBands(384, 256);
   const arcs = drawArcs(560, 256);
   // Public-domain-by-construction: this is authored geometry, not sampled art.
-  // Four-times rendering followed by box reduction makes the one-to-three-pixel
-  // lines genuinely antialiased while preserving a deterministic ground truth.
+  // Four-times rendering followed by Sharp's supported linear reduction makes
+  // the one-to-three-pixel lines antialiased while preserving deterministic
+  // authored geometry. Sharp 0.33 has no box kernel.
   const lineNetworkSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="2944" height="2272" viewBox="0 0 736 568">
     <rect width="736" height="568" fill="#fff"/>
     <g fill="none" stroke="#101820" stroke-linecap="round" stroke-linejoin="miter">
@@ -649,7 +650,7 @@ async function main() {
 
   await writePng(spikes, join(outDir, 'spikes-bands-384.png'));
   await writePng(arcs, join(outDir, 'arcs-560x256.png'));
-  await sharp(Buffer.from(lineNetworkSvg)).resize(736, 568, { kernel: 'box' }).png().toFile(join(outDir, 'line-network-736.png'));
+  await sharp(Buffer.from(lineNetworkSvg)).resize(736, 568, { kernel: sharp.kernel.linear }).png().toFile(join(outDir, 'line-network-736.png'));
   await writePng(sticker, join(outDir, 'sticker-alpha-256.png'));
   await writePng(logo512, join(outDir, 'logo-flat-512.png'));
   await writePng(noisy512, join(outDir, 'logo-noisy-512.png'));
