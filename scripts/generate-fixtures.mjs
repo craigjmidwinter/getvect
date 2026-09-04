@@ -629,9 +629,27 @@ async function main() {
   const sticker = drawSticker(256);
   const spikes = drawSpikesAndBands(384, 256);
   const arcs = drawArcs(560, 256);
+  // Public-domain-by-construction: this is authored geometry, not sampled art.
+  // Four-times rendering followed by box reduction makes the one-to-three-pixel
+  // lines genuinely antialiased while preserving a deterministic ground truth.
+  const lineNetworkSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="2944" height="2272" viewBox="0 0 736 568">
+    <rect width="736" height="568" fill="#fff"/>
+    <g fill="none" stroke="#101820" stroke-linecap="round" stroke-linejoin="miter">
+      <path stroke-width="1.5" d="M44 118 C125 34 196 188 278 72 S402 159 482 60"/>
+      <path stroke-width="2" d="M70 236 L188 132 L250 236 L310 132 L382 236"/>
+      <path stroke-width="2" d="M476 108 L476 246 M414 176 L538 176 M476 176 L548 102 M476 176 L548 250"/>
+      <path stroke-width="2" d="M58 348 C128 264 210 432 288 344 C346 278 392 298 442 350"/>
+      <path stroke-width="2" d="M78 390 C154 318 230 462 306 382"/>
+      <path stroke-width="2" d="M76 394 C152 322 228 466 304 386"/>
+      <path stroke-width="3" d="M498 324 L634 324 L634 468 L498 468 Z M530 356 L602 356 L602 436 L530 436 Z"/>
+      <path stroke-width="2" d="M100 500 L188 444 L260 506 L338 452 L418 508"/>
+      <path stroke-width="1.25" d="M438 514 C480 454 524 548 572 488 S648 532 688 474"/>
+    </g>
+  </svg>`;
 
   await writePng(spikes, join(outDir, 'spikes-bands-384.png'));
   await writePng(arcs, join(outDir, 'arcs-560x256.png'));
+  await sharp(Buffer.from(lineNetworkSvg)).resize(736, 568, { kernel: 'box' }).png().toFile(join(outDir, 'line-network-736.png'));
   await writePng(sticker, join(outDir, 'sticker-alpha-256.png'));
   await writePng(logo512, join(outDir, 'logo-flat-512.png'));
   await writePng(noisy512, join(outDir, 'logo-noisy-512.png'));
@@ -665,6 +683,25 @@ async function main() {
   const manifest = {
     _doc: MANIFEST_DOC,
     fixtures: [
+      {
+        id: 'line-network-736',
+        provenance: 'synthetic',
+        file: 'line-network-736.png',
+        kind: 'drawing',
+        format: 'png',
+        width: 736,
+        height: 568,
+        supported: true,
+        distinctColors: null,
+        settings: { preset: 'drawing', detailLevel: 'high', colorCount: 8, enhance: false, noiseReduction: 'off', antiAliasing: 'smart', mergeThreshold: 0 },
+        thresholds: {
+          meanColorError: 3, ssim: 0.975, minInkRecall: 0.94, minStrictInkRecall: 0.84,
+          maxInkComponentRatio: 1.5, minInkCoverageRatio: 0.9, maxInkCoverageRatio: 1.2,
+          minSupportedInkPrecision: 0.98, minEnclosedLightRetention: 0.8,
+          maxStrokeWidthRatio: 1.5, maxBytes: 65536, maxMs: 10000,
+        },
+        note: 'Public-domain-by-construction sparse line network: antialiased 1–3px curves and diagonals, acute corners, T/Y joins, parallel 2px corridors, nested outlines and counters.',
+      },
       {
         id: 'logo-flat-512',
         provenance: 'synthetic',

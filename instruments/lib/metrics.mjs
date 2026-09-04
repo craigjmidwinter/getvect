@@ -197,6 +197,33 @@ export function strictInkRecall(reference, traced, { inkLuma = 60 } = {}) {
   return inkRecall(reference, traced, { inkLuma, keptLuma: inkLuma });
 }
 
+/** Of the trace's ink, the share supported by source ink within one Euclidean pixel. */
+export function inkSupportProfile(reference, traced, { inkLuma = 60, radius = 1 } = {}) {
+  assertSameSize(reference, traced);
+  const { width, height } = reference;
+  const ink = (image, p) => {
+    const i = p * 4;
+    return 0.299 * image.data[i] + 0.587 * image.data[i + 1] + 0.114 * image.data[i + 2] < inkLuma;
+  };
+  let tracedInkPixels = 0, supportedInkPixels = 0;
+  for (let p = 0; p < width * height; p++) {
+    if (!ink(traced, p)) continue;
+    tracedInkPixels++;
+    const x = p % width, y = (p - x) / width;
+    let supported = false;
+    for (let dy = -radius; dy <= radius && !supported; dy++) for (let dx = -radius; dx <= radius; dx++) {
+      if (dx * dx + dy * dy > radius * radius) continue;
+      const nx = x + dx, ny = y + dy;
+      if (nx >= 0 && ny >= 0 && nx < width && ny < height && ink(reference, ny * width + nx)) {
+        supported = true;
+        break;
+      }
+    }
+    if (supported) supportedInkPixels++;
+  }
+  return { tracedInkPixels, supportedInkPixels, supportedInkPrecision: tracedInkPixels ? supportedInkPixels / tracedInkPixels : 1 };
+}
+
 /**
  * Ink COVERAGE — how much of this crop is ink at all, ours over the source's.
  *
@@ -839,6 +866,44 @@ export function enclosedLightComponents(image, { lightLuma = 200, minPixels = 6 
     if (size >= minPixels && !touchesBorder) components++;
   }
   return components;
+}
+
+/** Source enclosed light components retained as light over at least 75% of their own pixels. */
+export function enclosedLightRetention(reference, traced, { lightLuma = 200, minPixels = 6, retainedFraction = 0.75 } = {}) {
+  assertSameSize(reference, traced);
+  const { width, height, data } = reference;
+  const light = new Uint8Array(width * height);
+  for (let p = 0; p < light.length; p++) {
+    const i = p * 4;
+    light[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2] >= lightLuma ? 1 : 0;
+  }
+  const seen = new Uint8Array(light.length), stack = new Int32Array(light.length);
+  let sourceEnclosedLightComponents = 0, retainedEnclosedLightComponents = 0;
+  for (let p = 0; p < light.length; p++) {
+    if (!light[p] || seen[p]) continue;
+    let top = 0, count = 0, retained = 0, border = false;
+    stack[top++] = p; seen[p] = 1;
+    while (top) {
+      const q = stack[--top], x = q % width, y = (q - x) / width;
+      count++;
+      if (x === 0 || y === 0 || x === width - 1 || y === height - 1) border = true;
+      const qi = q * 4;
+      if (0.299 * traced.data[qi] + 0.587 * traced.data[qi + 1] + 0.114 * traced.data[qi + 2] >= lightLuma) retained++;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const n = ny * width + nx;
+        if (light[n] && !seen[n]) { seen[n] = 1; stack[top++] = n; }
+      }
+    }
+    if (!border && count >= minPixels) {
+      sourceEnclosedLightComponents++;
+      if (retained / count >= retainedFraction) retainedEnclosedLightComponents++;
+    }
+  }
+  return { sourceEnclosedLightComponents, retainedEnclosedLightComponents,
+    enclosedLightRetention: sourceEnclosedLightComponents ? retainedEnclosedLightComponents / sourceEnclosedLightComponents : 1 };
 }
 
 /**

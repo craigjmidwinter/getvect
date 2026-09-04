@@ -58,6 +58,8 @@ import {
   parseColor,
   inkComponentRatio,
   inkCoverageProfile,
+  inkSupportProfile,
+  enclosedLightRetention,
   inkRecall,
   layerCompactness,
   maskedMeanColorError,
@@ -251,6 +253,13 @@ const GATES = [
   ['meanColorError', 'meanColorError', 'max', (v) => v.toFixed(2)],
   ['ssim', 'ssim', 'min', (v) => v.toFixed(4)],
   ['minInkRecall', 'inkRecall', 'min', (v) => v.toFixed(4)],
+  ['minStrictInkRecall', 'strictInkRecall', 'min', (v) => v.toFixed(4)],
+  ['maxInkComponentRatio', 'inkComponentRatio', 'max', (v) => `${v.toFixed(2)}x`],
+  ['minInkCoverageRatio', 'inkCoverageRatio', 'min', (v) => `${v.toFixed(2)}x`],
+  ['maxInkCoverageRatio', 'inkCoverageRatio', 'max', (v) => `${v.toFixed(2)}x`],
+  ['minSupportedInkPrecision', 'supportedInkPrecision', 'min', (v) => v.toFixed(4)],
+  ['minEnclosedLightRetention', 'enclosedLightRetention', 'min', (v) => v.toFixed(4)],
+  ['maxStrokeWidthRatio', 'strokeWidthRatio', 'max', (v) => `${v.toFixed(2)}x`],
   ['maxPaths', 'pathCount', 'max', String],
   // pathCount is not a shape count — one compound path per colour layer hides
   // thousands of specks inside a single element, so the economy bar is only
@@ -742,6 +751,10 @@ async function main() {
       // of dashes, which `inkRecall`'s luma-128 "kept" test forgives.
       strictInkRecall: strictInkRecall(reference, traced),
       inkComponentRatio: inkComponentRatio(reference, traced),
+      ...inkCoverageProfile(reference, traced),
+      ...inkSupportProfile(reference, traced),
+      ...enclosedLightRetention(reference, traced),
+      ...(strokeWidthProfile(reference, traced) ?? {}),
       // Small sharp features, and the cracks between layers. Two defects a
       // person names on sight and no averaging metric here can see: welding two
       // outlines 4px apart into one chain, and a white hairline drawn along a
@@ -836,6 +849,8 @@ async function main() {
           // scores 1.0 on every recall number in this file (metrics.mjs
           // `inkCoverageProfile`).
           ...inkCoverageProfile(refRegion, outRegion),
+          ...inkSupportProfile(refRegion, outRegion),
+          ...enclosedLightRetention(refRegion, outRegion),
           meanColorError: meanColorError(refRegion, outRegion),
           ssim: ssim(refRegion, outRegion),
           // "Is there a colour in here that is not in the picture?" — see the

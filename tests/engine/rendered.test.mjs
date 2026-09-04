@@ -27,6 +27,11 @@ import {
   fillLayerChunks,
   foreignColorRatio,
   inkRecall,
+  inkComponentRatio,
+  inkCoverageProfile,
+  inkSupportProfile,
+  enclosedLightRetention,
+  strokeWidthProfile,
   layerBoundaryWobble,
   layerCompactness,
   meanColorError,
@@ -72,6 +77,7 @@ const RAW = { ...S, antiAliasing: 'off' };
 const flat = await load('logo-flat-512.png');
 const noisy = await load('logo-noisy-512.png');
 const photo = await load('photo-gradient-512x384.jpg');
+const lineNetwork = await load('line-network-736.png');
 /** Judged against (opaque). */
 const fox = await load('reference/fox-sticker.png');
 /** Handed to the engine (alpha preserved). */
@@ -95,6 +101,44 @@ function render(svg, width, height) {
 }
 
 const renderResult = (r) => render(r.svg, r.width, r.height);
+
+test('[Drawing] line-network Smart preserves sparse topology', async () => {
+  const r = await engine.vectorize(lineNetwork, {
+    ...S, preset: 'drawing', detailLevel: 'high', colorCount: 8, enhance: false,
+    noiseReduction: 'off', antiAliasing: 'smart', mergeThreshold: 0,
+  });
+  const out = renderResult(r);
+  const coverage = inkCoverageProfile(lineNetwork, out);
+  const support = inkSupportProfile(lineNetwork, out);
+  const enclosed = enclosedLightRetention(lineNetwork, out);
+  const width = strokeWidthProfile(lineNetwork, out);
+  assert.ok(meanColorError(lineNetwork, out) <= 3, 'Drawing MAE gate');
+  assert.ok(engine.DEFAULT_SETTINGS && inkRecall(lineNetwork, out) >= .94, 'Drawing ink recall gate');
+  assert.ok(strictInkRecall(lineNetwork, out) >= .84, 'Drawing strict ink gate');
+  assert.ok(inkComponentRatio(lineNetwork, out) <= 1.5, 'Drawing continuity gate');
+  assert.ok(coverage.inkCoverageRatio >= .9 && coverage.inkCoverageRatio <= 1.2, 'Drawing ink coverage gate');
+  assert.ok(support.supportedInkPrecision >= .98, 'Drawing one-pixel support gate');
+  assert.ok(enclosed.enclosedLightRetention >= .8, 'Drawing enclosed-light gate');
+  assert.ok((width.strokeWidthRatio ?? 1) <= 1.5, 'Drawing width gate');
+  assert.ok(r.svg.length <= 65536, 'Drawing SVG budget');
+});
+
+test('[metrics] sparse-line faults move their intended measurements', () => {
+  const image = (points) => {
+    const data = new Uint8ClampedArray(11 * 11 * 4).fill(255);
+    for (let i = 3; i < data.length; i += 4) data[i] = 255;
+    for (const [x, y] of points) { const i = (y * 11 + x) * 4; data[i] = data[i + 1] = data[i + 2] = 0; data[i + 3] = 255; }
+    return { width: 11, height: 11, data };
+  };
+  const branch = image([[5,2],[5,3],[5,4],[5,5],[5,6],[5,7],[5,8]]);
+  const erased = image([[5,2],[5,3],[5,4],[5,6],[5,7],[5,8]]);
+  const ring = image([...Array(7)].flatMap((_, n) => [[2+n,2],[2+n,8],[2,2+n],[8,2+n]]));
+  const filled = image([...Array(7)].flatMap((_, y) => [...Array(7)].map((_, x) => [x+2,y+2])));
+  const dilated = image([...Array(7)].flatMap((_, y) => [[3,y+2],[4,y+2],[5,y+2],[6,y+2],[7,y+2]]));
+  assert.ok(strictInkRecall(branch, erased) < strictInkRecall(branch, branch), 'erased branch faults recall');
+  assert.ok(enclosedLightRetention(ring, filled).enclosedLightRetention < 1, 'filled counter faults retention');
+  assert.ok(inkSupportProfile(branch, dilated).supportedInkPrecision < 1, 'dilated line faults support precision');
+});
 
 
 test('[B2] every slider changes the rendered picture, not just the bytes', async () => {
