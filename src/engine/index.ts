@@ -711,7 +711,11 @@ export async function vectorize(
    * they are independent controls: Smart is simply the *default* (above).
    */
   const smartAa = opts.antiAliasing === 'smart';
-  if (smartAa || opts.antiAliasing === 'mid') {
+  // Drawing is already binary after its direct threshold. The generic ramp,
+  // majority, fringe and seam cleanup target shaded multi-colour boundaries;
+  // on sparse linework they widen strokes, close counters and erase diagonals.
+  const drawing = opts.preset === 'drawing';
+  if (!drawing && (smartAa || opts.antiAliasing === 'mid')) {
     source = deAntialias(source, smartAa ? 2 : 1);
   }
   if (opts.preset === 'sketch') source = toGrayscale(source);
@@ -764,7 +768,7 @@ export async function vectorize(
    * gradient it finds no ramp to snap, yet the quantized regions are still
    * ragged.
    */
-  const indexPasses = smartAa ? 2 : opts.antiAliasing === 'mid' ? 1 : 0;
+  const indexPasses = drawing ? 0 : smartAa ? 2 : opts.antiAliasing === 'mid' ? 1 : 0;
   for (let i = 0; i < indexPasses; i++) {
     indices = majorityFilter(indices, width, height, clusters.length, TRANSPARENT_INDEX);
   }
