@@ -150,11 +150,12 @@ const WHEEL_STEP = 1.0015;
 /** Must match `.preview-pane { gap }` in styles.css — used for fit-zoom maths. */
 const VIEW_GAP = 10;
 /**
- * How far the artwork may be dragged out of the view, as a fraction of the
- * pane. Panning has to be free enough to inspect a corner at 40x and bounded
- * enough that "Fit" is never the only way back (REFERENCE C2).
+ * How far past the point where an image edge meets the view edge the artwork
+ * may still be dragged, as a fraction of the view. The bound is derived from the
+ * image size (see `clampPan`), so this is only comfort slack and the drift
+ * limit: bounded, so "Fit" is never the only way back (REFERENCE C2).
  */
-const PAN_LIMIT = 0.35;
+const PAN_SLACK = 0.1;
 
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -799,11 +800,19 @@ export function App() {
    */
   const clampPan = useCallback(
     (next: { x: number; y: number }, atZoom: number) => {
-      const limitX = paneSize.w > 0 ? (paneSize.w * PAN_LIMIT) / atZoom : Infinity;
-      const limitY = paneSize.h > 0 ? (paneSize.h * PAN_LIMIT) / atZoom : Infinity;
+      if (!previewImage || paneSize.w <= 0 || paneSize.h <= 0) return next;
+      const viewW = mode === 'side-by-side' ? (paneSize.w - VIEW_GAP) / 2 : paneSize.w;
+      // Pan is the image centre's offset from the view centre, in image px.
+      // An image edge meets the matching view edge at |pan| = |imgHalf -
+      // viewHalf / zoom|, so that is the reach; the slack lets the edge pass a
+      // little further so it is never a pixel short of the border.
+      const limit = (img: number, view: number) =>
+        Math.abs(img / 2 - view / 2 / atZoom) + (view * PAN_SLACK) / atZoom;
+      const limitX = limit(previewImage.width, viewW);
+      const limitY = limit(previewImage.height, paneSize.h);
       return { x: clamp(next.x, -limitX, limitX), y: clamp(next.y, -limitY, limitY) };
     },
-    [paneSize],
+    [paneSize, previewImage, mode],
   );
 
   const zoomBy = useCallback(
@@ -2279,10 +2288,11 @@ function phaseLabel(phase: VectorizePhase | null): string {
 /** One-line description of what the current result cost (REFERENCE "Economy"). */
 function summaryOf(image: ImageEntry): string {
   if (!image.result) return '';
-  const { palette, pathCount, durationMs, width, height } = image.result;
+  const { palette, pathCount, durationMs, width, height, lineArtDetected } = image.result;
   const colors = `${palette.length} colour${palette.length === 1 ? '' : 's'}`;
   const paths = `${pathCount} layer${pathCount === 1 ? '' : 's'}`;
-  return `${width}×${height} · ${colors} · ${paths} · ${Math.round(durationMs)} ms`;
+  const detected = lineArtDetected ? ' · detected: drawing' : '';
+  return `${width}×${height} · ${colors} · ${paths} · ${Math.round(durationMs)} ms${detected}`;
 }
 
 function formatBytes(bytes: number): string {

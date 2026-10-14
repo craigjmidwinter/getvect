@@ -118,6 +118,40 @@ test('[C2] panning cannot throw the artwork off screen', async ({ page }) => {
   ).toBeGreaterThan(0.25);
 });
 
+test('[C2] a zoomed artwork can be dragged until every edge reaches the view', async ({ page }) => {
+  await loadViaPicker(page, FIXTURE.flat512);
+  await waitForReady(page);
+  await page.locator(tid(TESTIDS.zoomFit)).click();
+  for (let i = 0; i < 6; i++) await page.locator(tid(TESTIDS.zoomIn)).click();
+
+  const pane = await rectOf(page, TESTIDS.previewPane);
+  const cx = pane.x + pane.width / 2;
+  const cy = pane.y + pane.height / 2;
+  const drag = async (dx: number, dy: number) => {
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx + dx, cy + dy, { steps: 8 });
+    await page.mouse.up();
+  };
+
+  // Drag far past the bound in each direction: the opposite edge of the
+  // artwork must have come all the way in to (or past) the view's edge. The old
+  // clamp was a fraction of the pane and ignored the image size, so a zoomed
+  // image stopped well short of its own edges.
+  // Each drag stays inside the window; repeating them is the "keep pulling" gesture.
+  const pull = async (sx: number, sy: number) => {
+    for (let i = 0; i < 12; i++) await drag(sx * 400, sy * 200);
+  };
+  await pull(1, 1);
+  let art = await svgRect(page);
+  expect(art.x, 'left edge unreachable').toBeGreaterThanOrEqual(pane.x - 1);
+  expect(art.y, 'top edge unreachable').toBeGreaterThanOrEqual(pane.y - 1);
+  await pull(-1, -1);
+  art = await svgRect(page);
+  expect(art.x + art.width, 'right edge unreachable').toBeLessThanOrEqual(pane.x + pane.width + 1);
+  expect(art.y + art.height, 'bottom edge unreachable').toBeLessThanOrEqual(pane.y + pane.height + 1);
+});
+
 test('[C2] preview controls are inert until an image is loaded', async ({ page }) => {
   for (const id of [
     TESTIDS.previewToggle,
