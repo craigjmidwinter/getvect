@@ -120,6 +120,14 @@ export interface VectorizeSettings {
    * near-duplicate colour layer; `mid` keeps a single blended step.
    */
   antiAliasing?: AntiAliasing;
+  /**
+   * Recognise line art (near-achromatic, mostly paper, almost no mid-tones) and
+   * trace it as a drawing: Smart anti-aliasing and Enhance stand down and the
+   * Clipart preset becomes Drawing. Default true. Only settings still at their
+   * generic defaults are overridden — an explicit `mid`/`off` anti-aliasing or a
+   * non-Clipart preset is the user's own choice and is left alone.
+   */
+  autoLineArt?: boolean;
 
   // --- B5: advanced vectorization ------------------------------------------
 
@@ -206,6 +214,8 @@ export interface VectorizeResult {
    * `color-count-hint`).
    */
   sourceColors: number;
+  /** True when the input was recognised as line art and traced as a drawing (`autoLineArt`). */
+  lineArtDetected?: boolean;
   /**
    * The colour table as the engine's own segmentation sees it: one entry per
    * surviving colour *slot*, in the coverage rank the palette editor displays,

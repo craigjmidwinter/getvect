@@ -132,6 +132,7 @@ export const DEFAULT_SETTINGS: ResolvedSettings = {
    * ticked.
    */
   antiAliasing: 'smart',
+  autoLineArt: true,
   // B5 — the reference product's own defaults: middle roundness, 5px² specks
   // dropped.
   roundness: 1,
@@ -583,6 +584,7 @@ export function resolveSettings(settings?: Partial<VectorizeSettings> | null): R
     bwThreshold: Math.round(clamp(Number(s.bwThreshold ?? 128), 0, 255)),
     noiseReduction: oneOf(s.noiseReduction, ['off', 'low', 'high'] as const, 'off'),
     antiAliasing: oneOf(s.antiAliasing, ['off', 'smart', 'mid'] as const, 'off'),
+    autoLineArt: s.autoLineArt !== false,
     roundness: clamp(Math.round(Number(s.roundness ?? 1)), 0, 2) as 0 | 1 | 2,
     minArea,
     overlap: oneOf(s.overlap, ['full', 'high'] as const, 'high'),
@@ -594,6 +596,47 @@ export function resolveSettings(settings?: Partial<VectorizeSettings> | null): R
     mergeThreshold: clamp(Number(s.mergeThreshold ?? 0), 0, 100),
     sortOrder: oneOf(s.sortOrder, ['coverage', 'brightness', 'hue'] as const, 'coverage'),
   };
+}
+
+/**
+ * Is this a line drawing — black strokes on paper — rather than flat colour
+ * artwork or a photograph?
+ *
+ * Measured on every fixture in the corpus plus a coloring-book page: line art is
+ * near-achromatic (chroma > 40 on < 1 % of pixels), mostly paper (>= 60 % at
+ * luma >= 215), has real ink (>= 1 % under luma 90) and almost nothing between
+ * (<= 15 % mid-tones; the coloring page is 0.8 %, an antialiased hand drawing
+ * stays well under it). Every colour fixture fails the chroma test, and the
+ * dense 1872 engraving fails the mid-tone one (19.9 %), which is deliberate:
+ * hatching that fine is where Smart anti-aliasing's cleanup is doing real work.
+ *
+ * Why it matters: Smart anti-aliasing snaps ramp pixels toward ink
+ * (`INK_RAMP_BIAS`), which on a clean drawing fattens strokes by ~26 % and fills
+ * in small enclosed cells (2 of 21 lost on the coloring page), and Enhance
+ * shreds thin strokes into dashes. Pixels with alpha < 128 are not counted.
+ */
+export function looksLikeLineArt(image: RasterImage, opaque: Uint8Array | null): boolean {
+  const { data, width, height } = image;
+  let n = 0;
+  let light = 0;
+  let dark = 0;
+  let mid = 0;
+  let chroma = 0;
+  for (let p = 0; p < width * height; p++) {
+    if (opaque && !opaque[p]) continue;
+    const i = p * 4;
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+    n++;
+    if (Math.max(r, g, b) - Math.min(r, g, b) > 40) chroma++;
+    if (luma >= 215) light++;
+    else if (luma < 90) dark++;
+    else mid++;
+  }
+  if (n === 0) return false;
+  return chroma / n < 0.01 && light / n >= 0.6 && dark / n >= 0.01 && mid / n <= 0.15;
 }
 
 /**
@@ -663,7 +706,7 @@ export async function vectorize(
   onProgress?: ProgressCallback,
 ): Promise<VectorizeResult> {
   const started = now();
-  const opts = resolveSettings(settings);
+  let opts = resolveSettings(settings);
   const width = image.width | 0;
   const height = image.height | 0;
 
@@ -692,6 +735,15 @@ export async function vectorize(
    * exporting a sticker and exporting a black rectangle.
    */
   const opaque = opacityMask(image);
+  const lineArt = opts.autoLineArt && looksLikeLineArt(image, opaque);
+  if (lineArt) {
+    opts = {
+      ...opts,
+      enhance: false,
+      preset: opts.preset === 'clipart' ? 'drawing' : opts.preset,
+      antiAliasing: opts.antiAliasing === 'smart' ? 'off' : opts.antiAliasing,
+    };
+  }
   let source: RasterImage = opaque ? bleedTransparent(image, opaque, 3) : image;
   source = opts.enhance ? enhanceSync(source) : source;
   source = reduceNoise(source, opts.noiseReduction);
@@ -1235,6 +1287,7 @@ export async function vectorize(
     height,
     durationMs: Math.max(0, now() - started),
     sourceColors,
+    lineArtDetected: lineArt,
     slots,
   };
 }
