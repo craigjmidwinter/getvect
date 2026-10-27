@@ -48,10 +48,13 @@ import {
   enhanceSync,
   majorityFilter,
   reduceNoise,
+  isFlatArt,
   regularizeBoundaries,
+  supersample,
+  supersampleFactorFor,
 } from './preprocess';
 import { renderSvg } from './svg';
-import { maskForIndex, traceMask, type TraceOptions, type TracedLayer } from './trace';
+import { maskForIndex, scaleLayer, traceMask, type TraceOptions, type TracedLayer } from './trace';
 import {
   EngineNotImplementedError,
   type DetailLevel,
@@ -464,6 +467,17 @@ const INK_LUMA = 60;
  * outside the window.
  */
 const HALO_FOLD_PERCENT = 7.25;
+/**
+ * The same fold for a supersampled working copy.
+ *
+ * A one-pixel anti-aliased edge becomes a two-pixel band at 2x, wide enough to
+ * quantize into a colour of its own that sits just outside `HALO_FOLD_PERCENT`
+ * of the region it hugs (8.4 % on the comet logo: a mid-blue streak along every
+ * cyan edge). 10 % folds it. Measured on that logo against the source, mean
+ * error is 2.83 at 7.25 and 2.87 at 10, so the fold costs nothing the eye can
+ * see and removes a layer.
+ */
+const SUPERSAMPLED_HALO_FOLD_PERCENT = 10;
 
 /**
  * Which palette slots hold dark ink — the line art the cleanup passes must not
@@ -701,18 +715,18 @@ function report(
  * unordered iteration order.
  */
 export async function vectorize(
-  image: RasterImage,
+  input: RasterImage,
   settings: VectorizeSettings = DEFAULT_SETTINGS,
   onProgress?: ProgressCallback,
 ): Promise<VectorizeResult> {
   const started = now();
   let opts = resolveSettings(settings);
-  const width = image.width | 0;
-  const height = image.height | 0;
+  const outWidth = input.width | 0;
+  const outHeight = input.height | 0;
 
-  if (width <= 0 || height <= 0 || image.data.length < width * height * 4) {
+  if (outWidth <= 0 || outHeight <= 0 || input.data.length < outWidth * outHeight * 4) {
     throw new Error(
-      `vectorize(): expected ${width * height * 4} RGBA bytes for ${width}x${height}, got ${image.data.length}`,
+      `vectorize(): expected ${outWidth * outHeight * 4} RGBA bytes for ${outWidth}x${outHeight}, got ${input.data.length}`,
     );
   }
 
@@ -734,8 +748,7 @@ export async function vectorize(
    * from becoming the backdrop rect — which together are the difference between
    * exporting a sticker and exporting a black rectangle.
    */
-  const opaque = opacityMask(image);
-  const lineArt = opts.autoLineArt && looksLikeLineArt(image, opaque);
+  const lineArt = opts.autoLineArt && looksLikeLineArt(input, opacityMask(input));
   if (lineArt) {
     opts = {
       ...opts,
@@ -744,6 +757,18 @@ export async function vectorize(
       antiAliasing: opts.antiAliasing === 'smart' ? 'off' : opts.antiAliasing,
     };
   }
+  /**
+   * Small flat logos are traced on a 2x working copy and scaled back (see
+   * `supersampleFactorFor`). Clipart only: a photo has no one-pixel keylines to
+   * save, and line art is already handled as a drawing. `width`/`height` from
+   * here on are the WORKING size; the document and the result are in source
+   * units (`outWidth`/`outHeight`).
+   */
+  const scale = opts.preset === 'clipart' ? supersampleFactorFor(outWidth, outHeight) : 1;
+  const image = scale > 1 ? supersample(input, scale) : input;
+  const width = image.width;
+  const height = image.height;
+  const opaque = opacityMask(image);
   let source: RasterImage = opaque ? bleedTransparent(image, opaque, 3) : image;
   source = opts.enhance ? enhanceSync(source) : source;
   source = reduceNoise(source, opts.noiseReduction);
@@ -816,7 +841,18 @@ export async function vectorize(
    * gradient it finds no ramp to snap, yet the quantized regions are still
    * ragged.
    */
-  const indexPasses = smartAa ? 2 : opts.antiAliasing === 'mid' ? 1 : 0;
+  /**
+   * ...except on a flat mark, which keeps its geometry.
+   *
+   * Those two passes exist to remove ragged one-pixel bands on shaded art. On a
+   * logo they remove corners instead: with both on, a straight-edged triangle
+   * comes back as a bowed arch with rounded corners (fixtures/spikes-bands-384),
+   * and either one alone does it too. A mark is flat when it has few shapes
+   * (`isFlatArt`); Smart anti-aliasing's pixel-level snap and its
+   * fringe collapse still run for it, so the colour fold is unchanged.
+   */
+  const flatArt = smartAa && isFlatArt(indices, source, clusters, scale, TRANSPARENT_INDEX);
+  const indexPasses = flatArt ? 0 : smartAa ? 2 : opts.antiAliasing === 'mid' ? 1 : 0;
   for (let i = 0; i < indexPasses; i++) {
     indices = majorityFilter(indices, width, height, clusters.length, TRANSPARENT_INDEX);
   }
@@ -857,7 +893,7 @@ export async function vectorize(
    * wherever two regions meet, and a filter that creates fringes should clean up
    * after itself.
    */
-  const collapseFringes = indexPasses > 0 || opts.noiseReduction === 'high';
+  const collapseFringes = indexPasses > 0 || smartAa || opts.noiseReduction === 'high';
   if (collapseFringes) {
     despeckleIndices(indices, width, height, {
       minArea: 0,
@@ -885,7 +921,10 @@ export async function vectorize(
   //   character's mouth and eyelids and left dashes behind. Minimum Area does
   //   not get the exemption, because its promise is about area, full stop.
   const minArea =
-    opts.minArea * areaScaleFor(detailFor(opts.detail, opts.detailLevel), opts.despeckle);
+    opts.minArea *
+    areaScaleFor(detailFor(opts.detail, opts.detailLevel), opts.despeckle) *
+    scale *
+    scale;
   if (minArea > 1) {
     despeckleIndices(indices, width, height, {
       minArea,
@@ -905,7 +944,7 @@ export async function vectorize(
       transparentIndex: TRANSPARENT_INDEX,
     });
   }
-  const noiseArea = minAreaFor(opts.despeckle, width, height);
+  const noiseArea = minAreaFor(opts.despeckle, width, height) * scale * scale;
   if (noiseArea > 1) {
     despeckleIndices(indices, width, height, {
       minArea: noiseArea,
@@ -941,6 +980,23 @@ export async function vectorize(
       TRANSPARENT_INDEX,
       clusterInk,
     );
+  }
+  /**
+   * The area floor, once more, on a supersampled copy.
+   *
+   * The seam pass above can leave a few-pixel remnant of a halo colour behind,
+   * and the tracer then drops it for being under Minimum Area — so the palette
+   * lists a swatch that is nowhere on the canvas. At 1x the remnants are single
+   * pixels the earlier floor already took; at 2x they are 2x2 blocks that
+   * appear after it. Full-size images skip this, which keeps their output
+   * byte-identical.
+   */
+  if (scale > 1 && minArea > 1) {
+    despeckleIndices(indices, width, height, {
+      minArea,
+      palette: clusters,
+      transparentIndex: TRANSPARENT_INDEX,
+    });
   }
   report(onProgress, 'simplify', 0.4);
   await tick();
@@ -980,7 +1036,11 @@ export async function vectorize(
   //     (`HALO_FOLD_PERCENT`).
   //   - The output-groups merge threshold folds away colours that barely appear
   //     (REFERENCE B3), which is a coverage question.
-  if (smartAa) computed = mergeSimilarColors(indices, computed, HALO_FOLD_PERCENT).palette;
+  if (smartAa) computed = mergeSimilarColors(
+      indices,
+      computed,
+      scale > 1 ? SUPERSAMPLED_HALO_FOLD_PERCENT : HALO_FOLD_PERCENT,
+    ).palette;
   /**
    * The output-groups merge threshold is the ONLY thing that folds by coverage,
    * and it is the control the panel shows (REFERENCE B3).
@@ -1057,6 +1117,7 @@ export async function vectorize(
     boundaryShift: boundaryShiftFor(opts.smoothing, detail),
     straightTolerance: straightToleranceFor(opts.roundness),
     circleDetection: opts.circleDetection,
+    pixelScale: scale,
     minArea,
     /**
      * Enhance is a simplification bundle, so its canvas-proportional floor has
@@ -1260,7 +1321,7 @@ export async function vectorize(
       if (traced.regionCount === 0 && (layerOptions.softMinArea ?? 0) > minArea) {
         traced = traceMask(mask, width, height, i, { ...layerOptions, softMinArea: 0 });
       }
-      layers.push(traced);
+      layers.push(scaleLayer(traced, 1 / scale));
     }
     report(onProgress, 'trace', 0.45 + 0.4 * ((position + 1) / Math.max(1, order.length)));
     if (position % 4 === 3) await tick();
@@ -1270,8 +1331,8 @@ export async function vectorize(
   // 5. Serialize ------------------------------------------------------------
   report(onProgress, 'serialize', 0.9);
   const rendered = renderSvg(layers, palette, {
-    width,
-    height,
+    width: outWidth,
+    height: outHeight,
     precision: PATH_PRECISION,
     backgroundIndex,
     resultStyle: opts.resultStyle,
@@ -1283,8 +1344,8 @@ export async function vectorize(
     svg: rendered.svg,
     palette,
     pathCount: rendered.pathCount,
-    width,
-    height,
+    width: outWidth,
+    height: outHeight,
     durationMs: Math.max(0, now() - started),
     sourceColors,
     lineArtDetected: lineArt,

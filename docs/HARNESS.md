@@ -671,7 +671,7 @@ Counted honestly, the corpus that ships in a clone:
 
 | | count | what |
 | --- | --- | --- |
-| `synthetic` | 10 | flat logos, a speckled logo, a BMP, a sticker, spikes-and-bands, arcs, a generated gradient, two unsupported files |
+| `synthetic` | 12 | flat logos, a speckled logo, a BMP, a sticker, spikes-and-bands, arcs, a small flame logo at two sizes (one on a transparent background), a generated gradient, two unsupported files |
 | `in-house` | 6 rows / 2 images | `fox-sticker.png` ("an original generated mascot") and `frankie-sticker.png` (the maintainer's cat) |
 | `third-party` | 4 | `fixtures/third-party/` — public-domain artwork nobody here drew |
 
@@ -725,6 +725,8 @@ exactly six colours and palette assertions can be exact.
 | `shapes-256.bmp` | 24-bit uncompressed BMP | BMP ingest (A1) |
 | `sticker-alpha-256.png` | 3 flat colours on a **fully transparent** background | the alpha channel — REFERENCE's sticker/decal use case. Every other generated fixture is opaque, which is how transparent-background tracing stayed broken for a lap |
 | `arcs-560x256.png` | four antialiased discs (r=100/60/32/16) and an annulus, drawn from the circle equation | the only fixture whose *shape* is known, so `boundarySmoothness` can ask whether a smooth source arc came back smooth rather than comparing us with a smoothed copy of ourselves. The manifest entry carries the circles as `arcs[]` |
+| `comet-flame-219x168.png` | a 3-colour flame mark: sharp spikes, a 1.4px white keyline, four detached shards, a partial ring — antialiased, every feature a pixel or two wide | the case no other fixture covers: flat art SMALL and THIN at once. Reported as a smooth blob (spikes rounded, shards gone, keyline closed); `tests/engine/small-logo.test.mjs` carries the feature-level bars because a mean colour error dilutes a lost keyline |
+| `comet-flame-sticker-542x416.png` | the same mark at 542px on a **transparent** background with a white sticker outline | the same defects were reported again at this size and with alpha, so the fix has to hold for both |
 | `unsupported-animation.gif` | valid 4×4 GIF89a | rejection (A2) — a real image the app must still refuse |
 | `unsupported-notes.txt` | plain text | rejection (A2) |
 | `reference/fox-sticker.png` | real 1024×1024 artwork, **76.5 % transparent** (**not** generated) | REFERENCE's gold-standard A/B source; instrumented three times, as `reference-fox` (8 colours + Smart AA + min-area 5 + Enhance — the settings the checked-in exemplar was captured at — exemplar `reference/fox-sticker-clipart-8colors-smartAA.svg`, regions = the face, the **muzzle** and the paw), `reference-fox-16c-nomerge` (16 colours + Enhance with `mergeThreshold: 0` — a bigger request with the colour fold explicitly turned off, see below) and `reference-fox-default` (**no `settings` key at all**, regions = face / muzzle / paw, each with its own bar — whatever `DEFAULT_SETTINGS` says today, on real artwork. The other rows pin a configuration, which is how the default a user actually gets went unmeasured while its output painted a region the wrong hue). On this artwork the defaults are also the Enhance-off configuration, so `-default` carries the default-settings economy ratios rather than a separate `-noenhance` row measuring the identical run twice |

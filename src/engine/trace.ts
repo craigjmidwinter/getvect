@@ -36,6 +36,15 @@ import type { Segment, SubPath } from './path';
 
 export interface TraceOptions extends FitOptions {
   /**
+   * Upscale factor of the working copy being traced (1 when it is the source).
+   * A test that is a promise about SOURCE pixels has to widen with it. The one
+   * that needs it is the ring check: two concentric circles are a stroked circle
+   * when their centres are within a pixel, and on a 2x copy the two centres of a
+   * perfect ring are legitimately a working pixel apart. Without it circle
+   * detection finds both rings and then stops calling them one.
+   */
+  pixelScale?: number;
+  /**
    * Minimum bounding-box area, in px², a shape must have to survive
    * (REFERENCE B5 "Minimum Area 0/5/90"). Measured on the *fitted* geometry, so
    * the promise "no shape smaller than this is in the document" is literal.
@@ -305,7 +314,10 @@ export function traceMask(
       if (
         holes.length === 1 &&
         hole.circle &&
-        Math.hypot(hole.circle.cx - outer.circle.cx, hole.circle.cy - outer.circle.cy) <= 1 &&
+        // "Concentric" is a promise about source pixels: on a 2x working copy the
+        // two centres of a ring are legitimately a working pixel apart.
+        Math.hypot(hole.circle.cx - outer.circle.cx, hole.circle.cy - outer.circle.cy) <=
+          (options.pixelScale ?? 1) &&
         hole.circle.r < outer.circle.r
       ) {
         const width = outer.circle.r - hole.circle.r;
@@ -337,4 +349,44 @@ export function maskForIndex(
   const mask = out ?? new Uint8Array(indices.length);
   for (let p = 0; p < indices.length; p++) mask[p] = indices[p] === colorIndex ? 1 : 0;
   return mask;
+}
+
+/**
+ * A traced layer rescaled about the origin. The engine may trace a supersampled
+ * working copy (`supersample`); its geometry goes back to source units here, so
+ * the document, its viewBox and every export stay in the units of the image the
+ * user supplied.
+ */
+export function scaleLayer(layer: TracedLayer, f: number): TracedLayer {
+  if (f === 1) return layer;
+  const seg = (s: Segment): Segment =>
+    s.t === 'L'
+      ? { t: 'L', x: s.x * f, y: s.y * f }
+      : s.t === 'Q'
+        ? { t: 'Q', cx: s.cx * f, cy: s.cy * f, x: s.x * f, y: s.y * f }
+        : {
+            t: 'C',
+            c1x: s.c1x * f,
+            c1y: s.c1y * f,
+            c2x: s.c2x * f,
+            c2y: s.c2y * f,
+            x: s.x * f,
+            y: s.y * f,
+          };
+  return {
+    ...layer,
+    subpaths: layer.subpaths.map((sp) => ({
+      ...sp,
+      x: sp.x * f,
+      y: sp.y * f,
+      segments: sp.segments.map(seg),
+    })),
+    circles: layer.circles.map((c) => ({
+      ...c,
+      cx: c.cx * f,
+      cy: c.cy * f,
+      r: c.r * f,
+      strokeWidth: c.strokeWidth * f,
+    })),
+  };
 }

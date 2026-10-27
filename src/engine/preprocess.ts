@@ -17,7 +17,7 @@
  */
 
 import { computePaletteSync, indicesToRaster, mapToPalette } from './color';
-import type { NoiseReduction, RasterImage } from './types';
+import type { NoiseReduction, RasterImage, RgbColor } from './types';
 
 /**
  * Palette size used by the colour-simplification pass.
@@ -995,4 +995,241 @@ export function cloneRaster(image: RasterImage): RasterImage {
     height: image.height,
     data: new Uint8ClampedArray(image.data),
   };
+}
+
+/**
+ * Longest side below which Clipart traces a supersampled working copy.
+ *
+ * Every cleanup between the pixels and the tracer (the 3x3 majority votes, the
+ * seam regularizer, the fringe collapse, the area floors) is defined in whole
+ * pixels, and so are the fit's tolerance and its boundary low-pass. On a logo
+ * whose spikes, keylines and shards are a few pixels across, that is the scale
+ * of the features themselves: the cleanup cannot tell a drawn feature from the
+ * noise it exists to remove, and the fit rounds a thin sliver into a lobe.
+ * Flame spikes round off, shards go fat or vanish, the white keyline between two
+ * colours closes. A 2x copy puts the same filters at half the scale relative to
+ * the artwork and leaves their behaviour on larger images untouched.
+ *
+ * THIS IS A PARTIAL FIX, and the limit is known. A 542px export of the same logo
+ * fails the same way (a shard's pointed corner comes back as a bulge) and is NOT
+ * covered: raising this to 640 fixes it on that logo (mean error against the
+ * source 1.17 to 0.79, pixels off by > 60 from 0.41% to 0.10%) but fails the
+ * spikes-bands-384 corner and staircase gates, because the cause is not the
+ * image size. It is the index-level cleanup that Smart anti-aliasing adds, the
+ * majority votes and the seam regularizer: with both off the straight-edged
+ * triangles in that fixture come back straight and sharp, and with either on they
+ * bow into arches. Switching them off is a corpus-wide change that costs shapes
+ * on busy art (docs/HARNESS.md; see the chronicle), so it is a decision and not
+ * a tuning of this constant.
+ */
+const SUPERSAMPLE_BELOW_PX = 320;
+
+/**
+ * Integer upscale factor for the working copy of a small input, or 1.
+ *
+ * Capped at 2x on purpose. At 4x the same filters read resampling ripple as
+ * boundary detail and the edges come back ragged — the wrong scale for them in
+ * the other direction.
+ */
+export function supersampleFactorFor(width: number, height: number): number {
+  return Math.max(width, height) < SUPERSAMPLE_BELOW_PX ? 2 : 1;
+}
+
+/**
+ * Catmull-Rom upscale by an integer factor, in premultiplied alpha so a soft
+ * transparent edge does not drag its (meaningless) colour into the opaque side.
+ * Deterministic: fixed taps, fixed order, one rounding at the end.
+ */
+export function supersample(image: RasterImage, factor: number): RasterImage {
+  const { width, height, data } = image;
+  const outW = width * factor;
+  const outH = height * factor;
+  const pre = new Float32Array(width * height * 4);
+  for (let p = 0; p < width * height; p++) {
+    const a = data[p * 4 + 3] / 255;
+    pre[p * 4] = data[p * 4] * a;
+    pre[p * 4 + 1] = data[p * 4 + 1] * a;
+    pre[p * 4 + 2] = data[p * 4 + 2] * a;
+    pre[p * 4 + 3] = data[p * 4 + 3];
+  }
+  const weights = (t: number): [number, number, number, number] => [
+    0.5 * (-t + 2 * t * t - t * t * t),
+    0.5 * (2 - 5 * t * t + 3 * t * t * t),
+    0.5 * (t + 4 * t * t - 3 * t * t * t),
+    0.5 * (-t * t + t * t * t),
+  ];
+  // Horizontal pass, then vertical: separable, so 8 taps a sample rather than 16.
+  const mid = new Float32Array(outW * height * 4);
+  for (let x = 0; x < outW; x++) {
+    const src = (x + 0.5) / factor - 0.5;
+    const x0 = Math.floor(src);
+    const w = weights(src - x0);
+    for (let y = 0; y < height; y++) {
+      for (let c = 0; c < 4; c++) {
+        let acc = 0;
+        for (let k = 0; k < 4; k++) {
+          const sx = Math.min(width - 1, Math.max(0, x0 - 1 + k));
+          acc += w[k] * pre[(y * width + sx) * 4 + c];
+        }
+        mid[(y * outW + x) * 4 + c] = acc;
+      }
+    }
+  }
+  const out = new Uint8ClampedArray(outW * outH * 4);
+  for (let y = 0; y < outH; y++) {
+    const src = (y + 0.5) / factor - 0.5;
+    const y0 = Math.floor(src);
+    const w = weights(src - y0);
+    for (let x = 0; x < outW; x++) {
+      const acc = [0, 0, 0, 0];
+      for (let k = 0; k < 4; k++) {
+        const sy = Math.min(height - 1, Math.max(0, y0 - 1 + k));
+        for (let c = 0; c < 4; c++) acc[c] += w[k] * mid[(sy * outW + x) * 4 + c];
+      }
+      const a = Math.min(255, Math.max(0, acc[3]));
+      const o = (y * outW + x) * 4;
+      if (a > 0) {
+        const un = 255 / a;
+        out[o] = Math.round(acc[0] * un);
+        out[o + 1] = Math.round(acc[1] * un);
+        out[o + 2] = Math.round(acc[2] * un);
+      }
+      out[o + 3] = Math.round(a);
+    }
+  }
+  return { width: outW, height: outH, data: out };
+}
+
+/**
+ * How many distinct regions of at least `minPixels` the index image has.
+ *
+ * 4-connected, per colour; see-through pixels belong to no region. Used to tell
+ * a flat mark from busy art by counting its shapes (see `flatArtRegionLimit`).
+ */
+export function countRegions(
+  indices: Uint8Array,
+  width: number,
+  height: number,
+  minPixels: number,
+  transparentIndex: number,
+): number {
+  const n = width * height;
+  const seen = new Uint8Array(n);
+  const stack = new Int32Array(n);
+  let regions = 0;
+  for (let start = 0; start < n; start++) {
+    if (seen[start] || indices[start] === transparentIndex) continue;
+    const color = indices[start];
+    let top = 0;
+    let area = 0;
+    stack[top++] = start;
+    seen[start] = 1;
+    while (top > 0) {
+      const p = stack[--top];
+      area++;
+      const x = p % width;
+      const y = (p - x) / width;
+      if (x > 0 && !seen[p - 1] && indices[p - 1] === color) {
+        seen[p - 1] = 1;
+        stack[top++] = p - 1;
+      }
+      if (x < width - 1 && !seen[p + 1] && indices[p + 1] === color) {
+        seen[p + 1] = 1;
+        stack[top++] = p + 1;
+      }
+      if (y > 0 && !seen[p - width] && indices[p - width] === color) {
+        seen[p - width] = 1;
+        stack[top++] = p - width;
+      }
+      if (y < height - 1 && !seen[p + width] && indices[p + width] === color) {
+        seen[p + width] = 1;
+        stack[top++] = p + width;
+      }
+    }
+    if (area >= minPixels) regions++;
+  }
+  return regions;
+}
+
+/**
+ * A region smaller than this (in source pixels) is debris for the purpose of
+ * counting shapes: the anti-aliasing band along an edge quantizes into hundreds
+ * of one- and two-pixel regions that say nothing about how many shapes the
+ * artwork has.
+ */
+const FLAT_ART_MIN_REGION_PX = 16;
+
+/**
+ * The most shapes (regions of FLAT_ART_MIN_REGION_PX or more) a piece of art may
+ * have and still be treated as a flat mark.
+ *
+ * Counted across the fixtures at default settings, the flat marks have 7 to 97
+ * (arcs 7, logo 10, spikes 19, comet 30, sticker 43, shapes 74, speckled logo 97)
+ * and everything busier has 155 or more (Frankie 155, lowres poster 209, sticker
+ * figure 259, fox 277-441, line art 697, poster 1105, photo 7073). 120 sits in
+ * that gap. The margin is real but not wide: the neighbours either side are the
+ * speckled logo at 97 and the gold-standard cartoon at 155, so a mark with more
+ * than ~120 shapes keeps the old behaviour, which is the safe direction.
+ */
+const FLAT_ART_MAX_REGIONS = 120;
+
+/**
+ * The most pixels (as a share of the opaque ones) that may sit far from the
+ * palette colour they were quantized to, and still be a flat mark.
+ *
+ * Counting shapes cannot tell a flat mark from a smooth gradient: the quantizer
+ * folds a gradient into a handful of big bands, which is a handful of shapes.
+ * The B4 contract (Smart anti-aliasing must change the document) found that out.
+ * What differs is how far pixels sit from their colour. A flat mark's pixels ARE
+ * their palette colour, and only the thin anti-aliasing fringe is off it; a
+ * gradient is off it everywhere. Share of opaque pixels more than 60 apart (sum
+ * of the three channel differences) from their palette colour, measured at
+ * default settings: flat marks 0.000 to 0.058 (the highest is the transparent
+ * sticker, whose outline is all fringe), the gradient 0.260. 0.12 is twice the
+ * worst flat mark and under half the gradient.
+ */
+const FLAT_ART_MAX_OFF_PALETTE_SHARE = 0.12;
+const FLAT_ART_OFF_PALETTE_DISTANCE = 60;
+
+/**
+ * Is this a flat mark (a logo, a sticker, a symbol) rather than shaded, busy or
+ * continuous-tone art? It has few shapes AND its pixels sit on its palette.
+ * Decided on the quantized image, before the index-level cleanup passes run.
+ *
+ * It matters because those passes (the 3x3 majority votes and the seam
+ * regularizer) exist to clear ragged one-pixel bands on shaded art, and on a
+ * logo they clear corners instead: a straight-edged triangle comes back as a
+ * bowed arch. For a flat mark they are skipped.
+ *
+ * `scale` is the working copy's upscale factor; the debris threshold is in SOURCE
+ * pixels, so it grows with the square of it. Without that, the same mark counts
+ * as busier the larger its working copy is.
+ */
+export function isFlatArt(
+  indices: Uint8Array,
+  source: RasterImage,
+  palette: RgbColor[],
+  scale: number,
+  transparentIndex: number,
+): boolean {
+  const { width, height } = source;
+  const minPixels = FLAT_ART_MIN_REGION_PX * scale * scale;
+  if (countRegions(indices, width, height, minPixels, transparentIndex) > FLAT_ART_MAX_REGIONS) {
+    return false;
+  }
+  let opaque = 0;
+  let off = 0;
+  for (let p = 0; p < indices.length; p++) {
+    const k = indices[p];
+    if (k === transparentIndex) continue;
+    const c = palette[k];
+    const o = p * 4;
+    const d =
+      Math.abs(source.data[o] - c.r) +
+      Math.abs(source.data[o + 1] - c.g) +
+      Math.abs(source.data[o + 2] - c.b);
+    opaque++;
+    if (d > FLAT_ART_OFF_PALETTE_DISTANCE) off++;
+  }
+  return off <= opaque * FLAT_ART_MAX_OFF_PALETTE_SHARE;
 }

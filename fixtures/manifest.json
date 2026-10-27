@@ -77,6 +77,51 @@
       "note": "Responsiveness bar: must vectorize in under 10s."
     },
     {
+      "id": "comet-flame-219x168",
+      "provenance": "synthetic",
+      "file": "comet-flame-219x168.png",
+      "kind": "flat",
+      "format": "png",
+      "width": 219,
+      "height": 168,
+      "supported": true,
+      "distinctColors": null,
+      "thresholds": {
+        "meanColorError": 4,
+        "ssim": 0.9,
+        "maxPaths": 100,
+        "maxSubPaths": 100,
+        "maxTinySubPathRatio": 0.02,
+        "minCurveCommandRatio": 0.3,
+        "maxBytes": 51200,
+        "maxMs": 10000
+      },
+      "note": "Three colours, 219x168, features one to three pixels wide: sharp outward spikes, a 1.4px white keyline, four detached shards, a partial ring. Antialiased (drawn at 4x and box-averaged)."
+    },
+    {
+      "id": "comet-flame-sticker-542x416",
+      "provenance": "synthetic",
+      "file": "comet-flame-sticker-542x416.png",
+      "kind": "alpha",
+      "format": "png",
+      "width": 542,
+      "height": 416,
+      "supported": true,
+      "distinctColors": null,
+      "thresholds": {
+        "meanColorError": 4,
+        "ssim": 0.9,
+        "maxTransparentAreaColorError": 8,
+        "maxPaths": 100,
+        "maxSubPaths": 100,
+        "maxTinySubPathRatio": 0.02,
+        "minCurveCommandRatio": 0.3,
+        "maxBytes": 51200,
+        "maxMs": 10000
+      },
+      "note": "The comet at 542x416 with a fully transparent background and a white sticker outline all the way round. Fidelity is judged against the source flattened on white, as for the other alpha fixtures."
+    },
+    {
       "id": "photo-gradient",
       "provenance": "synthetic",
       "file": "photo-gradient-512x384.jpg",

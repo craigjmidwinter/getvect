@@ -395,6 +395,234 @@ function drawSpikesAndBands(width, height) {
   return canvas;
 }
 
+/**
+ * THE SMALL-LOGO FIXTURE: a three-colour comet, 219x168, drawn at 4x and
+ * box-averaged so every edge is anti-aliased the way a real small logo is.
+ *
+ * It exists because of a report that is easy to state and was invisible to every
+ * gate here: a flat logo whose features are one to three pixels wide came back as
+ * soft blobs. Every cleanup between the pixels and the tracer works in whole
+ * pixels, so at this size a spike tip, a detached shard and a one-pixel white
+ * keyline between two colours are indistinguishable from the noise those passes
+ * remove. Nothing else in `fixtures/` is this small AND this thin:
+ * spikes-bands-384 has 15px spikes, the 256px logos have no feature under 5px.
+ *
+ * What is in it, and why: a serrated wedge (spike tips 2-3px wide at 1x), an
+ * inner wedge separated from it by a 1.4px white keyline, a partial ring (a
+ * curve, to keep honest next to all the corners) and four detached shards of
+ * 2-6px. Synthetic: the shapes are this script's own, nothing is traced from
+ * anyone's artwork.
+ *
+ * The drawing is laid out on a 219x168 design grid and scaled to whatever
+ * `width` asks for, so the same mark exists at 219px (where every feature is a
+ * pixel or two) and at 542px (where the same defects were reported again). With
+ * `transparent` the paper is see-through and the mark gets a white sticker
+ * outline all the way round, the way a logo exported for a decal arrives: the
+ * outline is a layer of its own and the keyline inside the mark is part of it.
+ */
+function drawComet(width, height, { transparent = false } = {}) {
+  const S = 4;
+  const U = S * (width / 219); // big-canvas pixels per design unit
+  const big = new Canvas(width * S, height * S);
+  const white = hex('#feffff');
+  const navy = hex('#06385d');
+  const cyan = hex('#059cd8');
+  big.fill(white);
+
+  const inPoly = (poly, x, y) => {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i];
+      const [xj, yj] = poly[j];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  };
+  const distToPoly = (poly, x, y) => {
+    let best = Infinity;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [ax, ay] = poly[j];
+      const [bx, by] = poly[i];
+      const dx = bx - ax;
+      const dy = by - ay;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)));
+      best = Math.min(best, Math.hypot(x - (ax + t * dx), y - (ay + t * dy)));
+    }
+    return best;
+  };
+  /** Fill a polygon (1x coordinates), optionally grown outward by `grow` px. */
+  const fillPoly = (poly, c, grow = 0) => {
+    const pts = poly.map(([x, y]) => [x * U, y * U]);
+    const g = grow * U;
+    const xs = pts.map((q) => q[0]);
+    const ys = pts.map((q) => q[1]);
+    const y0 = Math.max(0, Math.floor(Math.min(...ys) - g));
+    const y1 = Math.min(big.height - 1, Math.ceil(Math.max(...ys) + g));
+    const x0 = Math.max(0, Math.floor(Math.min(...xs) - g));
+    const x1 = Math.min(big.width - 1, Math.ceil(Math.max(...xs) + g));
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (inPoly(pts, x + 0.5, y + 0.5) || (g > 0 && distToPoly(pts, x + 0.5, y + 0.5) <= g)) {
+          big.set(x, y, c);
+        }
+      }
+    }
+  };
+
+  /**
+   * A straight run from a to b with a saw tooth every `pitch` px: a ramp out to a
+   * sharp tip `height` px from the run, then a near-vertical drop back onto it.
+   * `side` picks which side of the direction of travel the tips point to.
+   */
+  const serrated = (a, b, pitch, height, side) => {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy);
+    const ux = dx / len;
+    const uy = dy / len;
+    const nx = -uy * side;
+    const ny = ux * side;
+    const out = [a];
+    const n = Math.floor(len / pitch);
+    for (let k = 0; k < n; k++) {
+      const h = height * (0.6 + (0.4 * ((k * 7) % 5)) / 4);
+      const t0 = k * pitch + pitch * 0.15;
+      const tipAt = k * pitch + pitch * 0.85;
+      const t1 = k * pitch + pitch * 0.9;
+      out.push([a[0] + ux * t0, a[1] + uy * t0]);
+      out.push([a[0] + ux * tipAt + nx * h, a[1] + uy * tipAt + ny * h]);
+      out.push([a[0] + ux * t1, a[1] + uy * t1]);
+    }
+    out.push(b);
+    return out;
+  };
+
+  const tip = [30, 20];
+  const outer = [
+    ...serrated(tip, [150, 80], 13, 6, -1),
+    [158, 90],
+    [146, 98],
+    [124, 96],
+    ...serrated([112, 112], [96, 128], 11, 5, -1),
+    ...serrated([96, 128], tip, 12, 5, -1).slice(1),
+  ];
+  fillPoly(outer, navy);
+
+  // The keyline: grow the inner wedge by 1.4px in white, then lay the wedge on top.
+  const inner = [
+    [41, 31],
+    ...serrated([41, 31], [124, 76], 11, 4, -1).slice(1),
+    [140, 88],
+    [120, 97],
+    [108, 108],
+    [92, 112],
+  ];
+  fillPoly(inner, white, 1.4);
+  fillPoly(inner, cyan);
+
+  // A curve beside all the corners: a partial ring hugging the head.
+  const ringC = [128, 118];
+  for (let y = 0; y < big.height; y++) {
+    for (let x = 0; x < big.width; x++) {
+      const dx = (x + 0.5) / U - ringC[0];
+      const dy = (y + 0.5) / U - ringC[1];
+      const d = Math.hypot(dx, dy);
+      const ang = (Math.atan2(dy, dx) * 180) / Math.PI;
+      if (ang <= -5 || ang >= 150) continue;
+      if (d <= 34 && d >= 27) big.set(x, y, navy);
+      else if (d < 25.6 && d >= 11) big.set(x, y, cyan);
+    }
+  }
+
+  // Detached shards, 2-6px: the thing a speck filter is most likely to take.
+  fillPoly([[22, 38], [27, 41], [24, 46]], navy);
+  fillPoly([[104, 46], [114, 50], [105, 51]], navy);
+  fillPoly([[70, 120], [76, 126], [72, 133]], navy);
+  fillPoly([[160, 60], [166, 64], [161, 66]], navy);
+
+  if (!transparent) return downsample(big, S);
+
+  // Sticker: everything within a disc of the artwork becomes opaque (white where
+  // there is no ink, which includes the keyline), everything else see-through.
+  const W = big.width;
+  const H = big.height;
+  const isInk = (i) => !(big.data[i] === white.r && big.data[i + 1] === white.g && big.data[i + 2] === white.b);
+  const prefix = new Int32Array((W + 1) * H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      prefix[y * (W + 1) + x + 1] = prefix[y * (W + 1) + x] + (isInk((y * W + x) * 4) ? 1 : 0);
+    }
+  }
+  const R = Math.round(1.1 * U);
+  const opaque = new Uint8Array(W * H);
+  for (let dy = -R; dy <= R; dy++) {
+    const hw = Math.floor(Math.sqrt(R * R - dy * dy));
+    for (let y = 0; y < H; y++) {
+      const yy = y + dy;
+      if (yy < 0 || yy >= H) continue;
+      const row = yy * (W + 1);
+      for (let x = 0; x < W; x++) {
+        if (opaque[y * W + x]) continue;
+        const lo = Math.max(0, x - hw);
+        const hi = Math.min(W, x + hw + 1);
+        if (prefix[row + hi] - prefix[row + lo] > 0) opaque[y * W + x] = 1;
+      }
+    }
+  }
+  const outline = { r: 255, g: 255, b: 255 };
+  for (let p = 0; p < W * H; p++) {
+    const i = p * 4;
+    if (!opaque[p]) {
+      big.data[i + 3] = 0;
+      continue;
+    }
+    if (!isInk(i)) {
+      big.data[i] = outline.r;
+      big.data[i + 1] = outline.g;
+      big.data[i + 2] = outline.b;
+    }
+  }
+  return downsampleAlpha(big, S);
+}
+
+/**
+ * Box downsample that respects alpha: colour is averaged weighted by coverage, so
+ * an edge pixel half over the paper keeps the ink's colour at half opacity
+ * rather than greying toward the (meaningless) colour under the see-through part.
+ */
+function downsampleAlpha(src, factor) {
+  const w = Math.floor(src.width / factor);
+  const h = Math.floor(src.height / factor);
+  const out = new Canvas(w, h);
+  const n = factor * factor;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let a = 0;
+      for (let j = 0; j < factor; j++) {
+        for (let i = 0; i < factor; i++) {
+          const q = ((y * factor + j) * src.width + (x * factor + i)) * 4;
+          const cov = src.data[q + 3];
+          r += src.data[q] * cov;
+          g += src.data[q + 1] * cov;
+          b += src.data[q + 2] * cov;
+          a += cov;
+        }
+      }
+      const o = (y * w + x) * 4;
+      if (a > 0) {
+        out.data[o] = Math.round(r / a);
+        out.data[o + 1] = Math.round(g / a);
+        out.data[o + 2] = Math.round(b / a);
+      }
+      out.data[o + 3] = Math.round(a / n);
+    }
+  }
+  return out;
+}
+
 /** Photo-ish continuous-tone gradient (deliberately hard for a tracer). */
 function drawGradient(width, height) {
   const c = new Canvas(width, height);
@@ -629,9 +857,13 @@ async function main() {
   const sticker = drawSticker(256);
   const spikes = drawSpikesAndBands(384, 256);
   const arcs = drawArcs(560, 256);
+  const comet = drawComet(219, 168);
+  const cometSticker = drawComet(542, 416, { transparent: true });
 
   await writePng(spikes, join(outDir, 'spikes-bands-384.png'));
   await writePng(arcs, join(outDir, 'arcs-560x256.png'));
+  await writePng(comet, join(outDir, 'comet-flame-219x168.png'));
+  await writePng(cometSticker, join(outDir, 'comet-flame-sticker-542x416.png'));
   await writePng(sticker, join(outDir, 'sticker-alpha-256.png'));
   await writePng(logo512, join(outDir, 'logo-flat-512.png'));
   await writePng(noisy512, join(outDir, 'logo-noisy-512.png'));
@@ -756,6 +988,72 @@ async function main() {
           maxMs: 10000,
         },
         note: 'Responsiveness bar: must vectorize in under 10s.',
+      },
+      {
+        /**
+         * THE SMALL-LOGO FIXTURE. See `drawComet`. The feature-level bars
+         * (keyline kept, spike perimeter) live in
+         * `tests/engine/small-logo.test.mjs`, which measures what a mean colour
+         * error cannot: this image scores 4.45 before the fix and 1.90 after on
+         * mean error alone, and the visible failure is a lost keyline and
+         * rounded spikes, which a mean over 36,792 pixels dilutes.
+         */
+        id: 'comet-flame-219x168',
+        provenance: 'synthetic',
+        file: 'comet-flame-219x168.png',
+        kind: 'flat',
+        format: 'png',
+        width: 219,
+        height: 168,
+        supported: true,
+        distinctColors: null,
+        thresholds: {
+          meanColorError: 4,
+          ssim: 0.9,
+          maxPaths: 100,
+          maxSubPaths: 100,
+          maxTinySubPathRatio: 0.02,
+          minCurveCommandRatio: 0.3,
+          maxBytes: 50 * 1024,
+          maxMs: 10000,
+        },
+        note:
+          'Three colours, 219x168, features one to three pixels wide: sharp outward ' +
+          'spikes, a 1.4px white keyline, four detached shards, a partial ring. ' +
+          'Antialiased (drawn at 4x and box-averaged).',
+      },
+      {
+        /**
+         * THE SAME MARK AT 542px, ON A TRANSPARENT BACKGROUND WITH A STICKER
+         * OUTLINE. The 219px fixture was found by a screenshot; the same logo
+         * exported at 542px with a see-through background then failed the same
+         * way, so the fix has to hold at both sizes and with alpha.
+         * `tests/engine/small-logo.test.mjs` carries the feature-level bars.
+         */
+        id: 'comet-flame-sticker-542x416',
+        provenance: 'synthetic',
+        file: 'comet-flame-sticker-542x416.png',
+        kind: 'alpha',
+        format: 'png',
+        width: 542,
+        height: 416,
+        supported: true,
+        distinctColors: null,
+        thresholds: {
+          meanColorError: 4,
+          ssim: 0.9,
+          maxTransparentAreaColorError: 8,
+          maxPaths: 100,
+          maxSubPaths: 100,
+          maxTinySubPathRatio: 0.02,
+          minCurveCommandRatio: 0.3,
+          maxBytes: 50 * 1024,
+          maxMs: 10000,
+        },
+        note:
+          'The comet at 542x416 with a fully transparent background and a white ' +
+          'sticker outline all the way round. Fidelity is judged against the source ' +
+          'flattened on white, as for the other alpha fixtures.',
       },
       {
         id: 'photo-gradient',
