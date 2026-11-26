@@ -1,3 +1,7 @@
+<!-- yarkr:badges:start -->
+[![Indexed on Yarkr](https://api.yarkr.com/functions/v1/api/api/v1/badges/repos/craigjmidwinter/getvect/version.svg)](https://yarkr.com/arks/craigjmidwinter/getvect)
+<!-- yarkr:badges:end -->
+
 <div align="center">
 
 <img src="docs/assets/frankie-mascot.png" alt="Frankie, the GetVect mascot" width="220">
@@ -295,6 +299,38 @@ for the signing and notarization notes; the packaging config itself is
 > `postinstall` hook ([`scripts/verify-electron.mjs`](scripts/verify-electron.mjs))
 > detects this, strips the quarantine xattrs and applies an ad-hoc signature. If you ever
 > see that ENOENT, run `npm run postinstall`.
+
+<!-- yarkr:install:start -->
+## Install with Yarkr
+
+This repo is indexed on [Yarkr](https://yarkr.com/arks/craigjmidwinter/getvect) as the ark [craigjmidwinter/getvect](https://yarkr.com/arks/craigjmidwinter/getvect), so its skills install into Claude Code, Codex, Cursor and other agent harnesses with one command.
+
+### CLI
+
+Install the whole ark, which Yarkr keeps equal to this repo:
+
+```bash
+npx yarkr-cli sync craigjmidwinter/getvect
+```
+
+Or add individual skills:
+
+```bash
+npx yarkr-cli add skill:craigjmidwinter/getvect/getvect
+```
+
+No Node.js? `curl -fsSL https://yarkr.com/install.sh | sh` (macOS, Linux) or `irm https://yarkr.com/install.ps1 | iex` (Windows PowerShell) installs `yarkr` as a standalone binary; then type `yarkr` in place of `npx yarkr-cli`.
+
+### MCP
+
+Connect your agent to the ark over MCP:
+
+```bash
+npx yarkr-cli mcp add craigjmidwinter/getvect
+```
+
+Or point any MCP client at `https://api.yarkr.com/functions/v1/api/mcp/o/craigjmidwinter/getvect`.
+<!-- yarkr:install:end -->
 
 ## Command line
 
